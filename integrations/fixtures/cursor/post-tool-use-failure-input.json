@@ -1,17 +1,18 @@
 {
-  "hook_event_name": "preToolUse",
+  "hook_event_name": "postToolUseFailure",
   "cursor_version": "1.7.2",
   "conversation_id": "conv-abc123",
-  "generation_id": "gen-002",
+  "generation_id": "gen-003",
   "model": "composer-2",
   "workspace_roots": ["/Users/dev/projects/llm_notch"],
   "session_id": "cursor-session-42",
   "tool_name": "Shell",
   "tool_input": {
-    "command": "cargo test -p notch-protocol",
-    "description": "Run protocol crate tests"
+    "command": "cargo test -p notch-adapters-cursor"
   },
-  "tool_use_id": "tool-use-1",
+  "tool_use_id": "tool-use-2",
   "cwd": "/Users/dev/projects/llm_notch",
-  "agent_message": "Running tests"
+  "error_message": "Command timed out after 30s",
+  "failure_type": "timeout",
+  "duration": 5000
 }

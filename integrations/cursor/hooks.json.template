@@ -1,40 +1,40 @@
 {
   "version": 1,
-  "_comment": "TEMPLATE ONLY — not installed automatically. Review diff before applying. Paths assume project hooks (cwd = repo root). For user hooks, rewrite paths relative to ~/.cursor/.",
+  "_comment": "TEMPLATE ONLY — not installed automatically. Review diff before applying. {{LLM_NOTCH_HELPER}} is replaced at install time with the absolute bundled helper path.",
   "hooks": {
     "sessionStart": [
       {
-        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event sessionStart",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event sessionStart --hook-mode",
         "timeout": 2
       }
     ],
     "preToolUse": [
       {
-        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event preToolUse",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event preToolUse --hook-mode",
         "timeout": 2
       }
     ],
     "postToolUse": [
       {
-        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event postToolUse",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event postToolUse --hook-mode",
         "timeout": 2
       }
     ],
     "postToolUseFailure": [
       {
-        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event postToolUseFailure",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event postToolUseFailure --hook-mode",
         "timeout": 2
       }
     ],
     "stop": [
       {
-        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event stop",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event stop --hook-mode",
         "timeout": 2
       }
     ],
     "sessionEnd": [
       {
-        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event sessionEnd",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event sessionEnd --hook-mode",
         "timeout": 2
       }
     ]
