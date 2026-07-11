@@ -209,6 +209,63 @@ pub fn reject_hardlink(path: &Path) -> Result<(), ConnectorError> {
     Ok(())
 }
 
+/// Revalidate that `expected` still resolves under `root` via `relative`, rejecting parent swaps.
+pub fn revalidate_locked_target(
+    root: &Path,
+    relative: &Path,
+    expected: &Path,
+) -> Result<PathBuf, ConnectorError> {
+    let resolved = validate_under_root(root, relative)?;
+    let expected = std::fs::canonicalize(expected).unwrap_or_else(|_| expected.to_path_buf());
+    let resolved = std::fs::canonicalize(&resolved).unwrap_or(resolved);
+    if resolved != expected {
+        return Err(ConnectorError::PathEscapesScope(
+            "target path changed under lock".into(),
+        ));
+    }
+    assert_parent_chain_safe(&resolved)?;
+    reject_hardlink(&resolved)?;
+    Ok(resolved)
+}
+
+/// Reject symlink/junction/reparse components in the parent chain of `path`.
+pub fn assert_parent_chain_safe(path: &Path) -> Result<(), ConnectorError> {
+    let mut current = path.parent();
+    while let Some(parent) = current {
+        if parent.as_os_str().is_empty() {
+            break;
+        }
+        if parent.exists() {
+            lstat_component(parent)?;
+        }
+        current = parent.parent();
+    }
+    Ok(())
+}
+
+/// Allocate a sibling backup path with an unpredictable name under the target directory.
+pub fn secure_backup_path(target: &Path, timestamp: &str) -> Result<PathBuf, ConnectorError> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| ConnectorError::Internal("target has no parent".into()))?;
+    assert_parent_chain_safe(parent)?;
+    let file_name = target
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".into());
+    let backup_path = parent.join(format!(
+        "{file_name}.llm-notch.bak.{timestamp}.{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    if backup_path.exists() {
+        reject_hardlink(&backup_path)?;
+        return Err(ConnectorError::PathEscapesScope(
+            "backup path already exists".into(),
+        ));
+    }
+    Ok(backup_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

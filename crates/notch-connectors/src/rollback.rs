@@ -48,6 +48,9 @@ pub fn preview_rollback(
     let backup_text = String::from_utf8_lossy(&backup_bytes).into_owned();
     let backup_hash = sha256_file(&backup_path)
         .map_err(|error| ConnectorError::Internal(format!("hash backup failed: {error}")))?;
+    if backup_hash != backup.content_sha256 {
+        return Err(ConnectorError::RollbackHashMismatch);
+    }
 
     if let Some(applied_hash) = &backup.applied_hash {
         if current_hash == *applied_hash {
@@ -58,6 +61,8 @@ pub fn preview_rollback(
                 canonical,
                 current_hash,
                 backup_text,
+                scope_root,
+                target.relative_path.clone(),
                 now_ms,
             );
         }
@@ -82,6 +87,8 @@ fn build_exact_restore_preview(
     canonical: std::path::PathBuf,
     current_hash: String,
     backup_text: String,
+    scope_root: &ScopeRoot,
+    relative_path: std::path::PathBuf,
     now_ms: i64,
 ) -> Result<(ConnectorPlanPreview, StoredPlan), ConnectorError> {
     use crate::diff::unified_diff;
@@ -120,6 +127,8 @@ fn build_exact_restore_preview(
         expires_at_ms: preview.expires_at_ms,
         summary: preview.summary.clone(),
         files: vec![PlanFileSnapshot {
+            scope_canonical: scope_root.canonical.clone(),
+            relative_path,
             canonical_path: canonical,
             display_path,
             baseline_sha256: current_hash,
@@ -178,8 +187,8 @@ mod tests {
         };
         journal.record_backup(entry.clone()).expect("record");
 
-        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let registry = AdapterRegistry::new(repo, dir.path().join("llm-notch-hook.exe"));
+        let integrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
+        let registry = AdapterRegistry::new(integrations, dir.path().join("llm-notch-hook.exe"));
         let root = ScopeRoot {
             canonical: std::fs::canonicalize(dir.path()).expect("canonicalize"),
             display_prefix: "~".into(),

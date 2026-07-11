@@ -8,6 +8,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::atomic::durable_replace;
 use crate::error::ConnectorError;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -95,11 +96,13 @@ impl Journal {
         let raw = serde_json::to_string_pretty(state).map_err(|error| {
             ConnectorError::Internal(format!("journal serialize failed: {error}"))
         })?;
-        let temp = self.path.with_extension("tmp");
+        let temp = self
+            .path
+            .with_extension(format!("tmp.{}", Uuid::new_v4().simple()));
         fs::write(&temp, raw.as_bytes()).map_err(|error| {
             ConnectorError::Internal(format!("journal temp write failed: {error}"))
         })?;
-        fs::rename(&temp, &self.path).map_err(|error| {
+        durable_replace(&temp, &self.path).map_err(|error| {
             ConnectorError::Internal(format!("journal replace failed: {error}"))
         })?;
         Ok(())
@@ -116,6 +119,11 @@ impl Journal {
         }
         self.persist(&state)?;
         Ok((applies_removed, backups_removed))
+    }
+
+    #[cfg(test)]
+    pub fn apply_count(&self) -> usize {
+        self.state.lock().applies.len()
     }
 }
 
@@ -177,5 +185,26 @@ mod tests {
         assert_eq!(applies, 1);
         assert_eq!(backups, 0);
         assert_eq!(journal.find_backup(&entry.id), Some(entry));
+    }
+
+    #[test]
+    fn journal_replace_updates_multiple_times() {
+        let dir = TempDir::new().expect("tempdir");
+        let journal = Journal::open(dir.path()).expect("open");
+        for index in 0..5 {
+            journal
+                .record_apply(ConnectorJournalEntry {
+                    id: Journal::new_journal_id(),
+                    plan_id: format!("plan-{index}"),
+                    source: AgentSource::Cursor,
+                    scope: ConnectorScope::User,
+                    started_at_ms: index,
+                    completed_at_ms: Some(index),
+                    file_results: Vec::new(),
+                    rollback_available: false,
+                })
+                .expect("record");
+        }
+        assert_eq!(journal.apply_count(), 5);
     }
 }

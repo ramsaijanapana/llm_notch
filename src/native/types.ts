@@ -150,7 +150,10 @@ export interface NativeClient {
     source: AdapterCapabilities['source'],
     scope?: ConnectorScope,
   ): Promise<ConnectorPlanPreview>
-  applyConnectorChange(planId: string): Promise<ConnectorApplyResult>
+  applyConnectorChange(
+    planId: string,
+    selectedDisplayPaths?: string[],
+  ): Promise<ConnectorApplyResult>
   removeConnector(
     source: AdapterCapabilities['source'],
     scope?: ConnectorScope,

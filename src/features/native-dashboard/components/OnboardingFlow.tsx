@@ -34,11 +34,13 @@ export function OnboardingFlow({
   connectScope,
   onConnectScopeChange,
   pendingPlan,
+  pendingPlanCount = 1,
   applyProgress,
   applyResult,
   onPreviewConnect,
   onConfirmApply,
   onSkipConnect,
+  onTogglePlanFile,
   shortcutLabel,
   autostartEnabled,
   onAutostartChange,
@@ -303,17 +305,24 @@ export function OnboardingFlow({
 
         {step === 3 ? (
           <>
+            {pendingPlanCount > 1 ? (
+              <p className={styles.muted} role="status">
+                One confirmation will apply {pendingPlanCount} vendor plans sequentially with
+                per-file results below.
+              </p>
+            ) : null}
             {pendingPlan ? (
               <DiffReviewPanel
                 plan={pendingPlan.plan}
                 selectedFilePaths={pendingPlan.selectedFilePaths}
-                onToggleFile={(displayPath, selected) =>
+                onToggleFile={(displayPath, selected) => {
+                  onTogglePlanFile?.(displayPath, selected)
                   onConnectSelectionChange(
                     connectSelections.map((entry) =>
                       entry.displayPath === displayPath ? { ...entry, selected } : entry,
                     ),
                   )
-                }
+                }}
                 onConfirm={onConfirmApply}
                 onCancel={onSkipConnect}
               />

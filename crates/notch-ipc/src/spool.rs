@@ -73,19 +73,23 @@ impl EventSpool {
     }
 
     fn enforce_limits(&self) -> IpcResult<()> {
-        let files = self.list_frames()?;
-        if files.len() >= MAX_SPOOL_FILES {
-            return Err(IpcError::SpoolLimitExceeded);
+        loop {
+            let files = self.list_frames()?;
+            if files.len() < MAX_SPOOL_FILES {
+                let total: u64 = files
+                    .iter()
+                    .filter_map(|path| fs::metadata(path).ok())
+                    .map(|meta| meta.len())
+                    .sum();
+                if total < MAX_SPOOL_BYTES {
+                    return Ok(());
+                }
+            }
+            let Some(oldest) = files.first() else {
+                return Ok(());
+            };
+            self.remove(oldest)?;
         }
-        let total: u64 = files
-            .iter()
-            .filter_map(|path| fs::metadata(path).ok())
-            .map(|meta| meta.len())
-            .sum();
-        if total >= MAX_SPOOL_BYTES {
-            return Err(IpcError::SpoolLimitExceeded);
-        }
-        Ok(())
     }
 }
 
@@ -99,9 +103,28 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::limits::IPC_WIRE_VERSION;
+    use crate::limits::{MAX_SPOOL_FILES, IPC_WIRE_VERSION};
     use crate::wire::{IngestPayload, WireMessage, decode_frame_bytes};
     use tempfile::tempdir;
+
+    #[test]
+    fn spool_evicts_oldest_when_file_limit_reached() {
+        let dir = tempdir().expect("tempdir");
+        let spool = EventSpool::new(dir.path()).expect("spool");
+        for index in 0..MAX_SPOOL_FILES {
+            spool
+                .spool_message(&ingest_message(
+                    &format!("req-{index}"),
+                    "sessionStart",
+                    index as i64,
+                ))
+                .expect("spool");
+        }
+        spool
+            .spool_message(&ingest_message("req-new", "sessionStart", MAX_SPOOL_FILES as i64))
+            .expect("evict and spool");
+        assert_eq!(spool.list_frames().expect("list").len(), MAX_SPOOL_FILES);
+    }
 
     #[test]
     fn spools_and_lists_frame() {

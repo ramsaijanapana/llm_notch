@@ -2,6 +2,8 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
+use uuid::Uuid;
+
 use crate::error::ConnectorError;
 
 /// Atomically replace `target` with `content`, using platform-specific replace semantics.
@@ -12,16 +14,13 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ConnectorError> {
     fs::create_dir_all(parent)
         .map_err(|error| ConnectorError::Internal(format!("create parent failed: {error}")))?;
 
-    let temp_name = format!(
-        ".{}.llm-notch.tmp",
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("file")
-    );
-    let temp_path = parent.join(temp_name);
+    let temp_path = parent.join(format!(".{}.llm-notch.tmp", Uuid::new_v4().simple()));
 
     {
-        let mut temp = fs::File::create(&temp_path)
+        let mut temp = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
             .map_err(|error| ConnectorError::Internal(format!("temp create failed: {error}")))?;
         temp.write_all(content)
             .map_err(|error| ConnectorError::Internal(format!("temp write failed: {error}")))?;
@@ -29,11 +28,12 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ConnectorError> {
             .map_err(|error| ConnectorError::Internal(format!("temp sync failed: {error}")))?;
     }
 
-    replace_file(&temp_path, path)?;
+    durable_replace(&temp_path, path)?;
     Ok(())
 }
 
-fn replace_file(from: &Path, to: &Path) -> Result<(), ConnectorError> {
+/// Replace `to` with the contents of `from`, deleting `from` on success.
+pub fn durable_replace(from: &Path, to: &Path) -> Result<(), ConnectorError> {
     if !to.exists() {
         fs::rename(from, to)
             .map_err(|error| ConnectorError::Internal(format!("rename failed: {error}")))?;
@@ -61,7 +61,7 @@ fn replace_file(from: &Path, to: &Path) -> Result<(), ConnectorError> {
         };
         if ok.is_err() {
             // Fallback to rename swap when ReplaceFileW fails (e.g. cross-volume).
-            let backup = to.with_extension("llm-notch.pre-replace");
+            let backup = to.with_extension(format!("llm-notch.pre-replace.{}", Uuid::new_v4().simple()));
             let _ = fs::remove_file(&backup);
             fs::rename(to, &backup).map_err(|error| {
                 ConnectorError::Internal(format!("backup rename failed: {error}"))
@@ -110,5 +110,18 @@ mod tests {
         let target = dir.path().join("nested/hooks.json");
         atomic_write(&target, b"{}").expect("write");
         assert!(target.exists());
+    }
+
+    #[test]
+    fn durable_replace_updates_existing_file_multiple_times() {
+        let dir = TempDir::new().expect("tempdir");
+        let target = dir.path().join("journal.json");
+        fs::write(&target, b"v1").expect("seed");
+        for version in [b"v2".as_slice(), b"v3", b"v4"] {
+            let temp = dir.path().join(format!("{}.tmp", Uuid::new_v4().simple()));
+            fs::write(&temp, version).expect("temp");
+            durable_replace(&temp, &target).expect("replace");
+            assert_eq!(fs::read(&target).expect("read"), version);
+        }
     }
 }

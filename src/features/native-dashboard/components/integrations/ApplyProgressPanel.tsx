@@ -49,7 +49,12 @@ export function ApplyProgressPanel({ progress, result }: ApplyProgressPanelProps
         </p>
       ) : null}
       {!hasFailure && progress.every((entry) => entry.phase === 'done') ? (
-        <p className={styles.muted}>All selected files verified.</p>
+        <p className={styles.muted}>All selected files applied and verified.</p>
+      ) : null}
+      {progress.some((entry) => entry.phase === 'applying') ? (
+        <p className={styles.muted} role="status">
+          Waiting for backend apply to finish…
+        </p>
       ) : null}
     </section>
   )

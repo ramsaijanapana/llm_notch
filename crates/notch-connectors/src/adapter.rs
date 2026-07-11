@@ -73,14 +73,14 @@ fn strip_template_comments(value: &mut Value) {
 }
 
 pub struct AdapterRegistry {
-    repo_root: PathBuf,
+    integrations_root: PathBuf,
     helper_path: PathBuf,
 }
 
 impl AdapterRegistry {
-    pub fn new(repo_root: PathBuf, helper_path: PathBuf) -> Self {
+    pub fn new(integrations_root: PathBuf, helper_path: PathBuf) -> Self {
         Self {
-            repo_root,
+            integrations_root,
             helper_path,
         }
     }
@@ -110,8 +110,8 @@ impl AdapterRegistry {
         AdapterDescriptor {
             source: AgentSource::Cursor,
             template_path: self
-                .repo_root
-                .join("integrations/cursor/hooks.json.template"),
+                .integrations_root
+                .join("cursor/hooks.json.template"),
             user_target: TargetFile {
                 relative_path: PathBuf::from(".cursor/hooks.json"),
                 format: ConfigFormat::HooksJson,
@@ -128,8 +128,8 @@ impl AdapterRegistry {
         AdapterDescriptor {
             source: AgentSource::ClaudeCode,
             template_path: self
-                .repo_root
-                .join("integrations/claude-code/settings.hooks.template.json"),
+                .integrations_root
+                .join("claude-code/settings.hooks.template.json"),
             user_target: TargetFile {
                 relative_path: PathBuf::from(".claude/settings.json"),
                 format: ConfigFormat::ClaudeSettings,
@@ -146,8 +146,8 @@ impl AdapterRegistry {
         AdapterDescriptor {
             source: AgentSource::Codex,
             template_path: self
-                .repo_root
-                .join("integrations/codex/hooks.json.template"),
+                .integrations_root
+                .join("codex/hooks.json.template"),
             user_target: TargetFile {
                 relative_path: PathBuf::from(".codex/hooks.json"),
                 format: ConfigFormat::HooksJson,
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn registry_loads_cursor_template() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
         let registry =
             AdapterRegistry::new(root.clone(), root.join("target/fake/llm-notch-hook.exe"));
         let adapter = registry.get(AgentSource::Cursor).expect("cursor");

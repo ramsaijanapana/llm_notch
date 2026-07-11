@@ -246,11 +246,13 @@ pub fn compute_aggregate(
     let mut cpu = MetricAvailability::Available;
     let mut io = io_quality;
     let mut reasons = Vec::new();
+    let mut contributed = 0_u32;
 
     for tree in session_metrics.values() {
         if tree.quality.cpu == MetricAvailability::Unavailable {
             continue;
         }
+        contributed += 1;
         cpu_core_percent += tree.cpu_core_percent;
         rss_bytes += tree.rss_bytes;
         runtime_ms = runtime_ms.max(tree.runtime_ms);
@@ -266,7 +268,7 @@ pub fn compute_aggregate(
         }
     }
 
-    if session_metrics.is_empty() {
+    if session_metrics.is_empty() || contributed == 0 {
         cpu = MetricAvailability::Unavailable;
         io = IoQuality::Unavailable;
         attribution = AttributionQuality::Unknown;
@@ -353,6 +355,30 @@ mod tests {
             write_bytes_delta: write,
             io_available: true,
         }
+    }
+
+    #[test]
+    fn aggregate_unavailable_when_no_trees_contribute() {
+        let mut metrics = BTreeMap::new();
+        metrics.insert(
+            "sess-1".into(),
+            TreeMetrics {
+                cpu_core_percent: 0.0,
+                rss_bytes: 0,
+                runtime_ms: 0,
+                process_count: 0,
+                read_bytes_per_sec: 0,
+                write_bytes_per_sec: 0,
+                quality: MetricQuality {
+                    attribution: AttributionQuality::Exact,
+                    cpu: MetricAvailability::Unavailable,
+                    io: IoQuality::Disk,
+                    reason: Some("missing root".into()),
+                },
+            },
+        );
+        let agg = compute_aggregate(&metrics, 2_000, 4, 1, 0, IoQuality::Disk);
+        assert_eq!(agg.quality.cpu, MetricAvailability::Unavailable);
     }
 
     #[test]

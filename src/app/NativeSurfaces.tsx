@@ -30,6 +30,7 @@ import type {
   AgentSource,
   AppSnapshot,
   ConnectorApplyResult,
+  ConnectorFileApplyResult,
   ConnectorScope,
   DecisionRequest,
   DecisionResponseRecord,
@@ -289,34 +290,37 @@ export function persistedHistoryBundle(
 async function runApplyProgress(
   planId: string,
   filePaths: string[],
-  apply: (planId: string) => Promise<ConnectorApplyResult>,
+  apply: (planId: string, selectedDisplayPaths?: string[]) => Promise<ConnectorApplyResult>,
   onProgress: (entries: ApplyProgressEntry[]) => void,
+  selectedDisplayPaths?: string[],
 ): Promise<ConnectorApplyResult> {
-  const phases: ApplyProgressEntry['phase'][] = ['backingUp', 'writing', 'verifying', 'done']
-  const progress = filePaths.map((displayPath) => ({
-    displayPath,
-    phase: 'backingUp' as const,
-  }))
-
-  for (const phase of phases) {
-    onProgress(progress.map((entry) => ({ ...entry, phase })))
-    await new Promise((resolve) => setTimeout(resolve, 100))
-  }
-
-  const result = await apply(planId)
-  const failedPaths = new Set(
-    result.fileResults.filter((file) => file.outcome === 'failed').map((file) => file.displayPath),
+  onProgress(
+    filePaths.map((displayPath) => ({
+      displayPath,
+      phase: 'applying' as const,
+    })),
   )
-  if (failedPaths.size > 0) {
-    onProgress(
-      progress.map((entry) => ({
-        ...entry,
-        phase: failedPaths.has(entry.displayPath) ? 'failed' : 'done',
-        message: failedPaths.has(entry.displayPath) ? 'Apply failed for this file' : undefined,
-      })),
-    )
-  }
+
+  const result = await apply(planId, selectedDisplayPaths)
+  onProgress(
+    result.fileResults.map((file) => ({
+      displayPath: file.displayPath,
+      phase: mapFileResultPhase(file.outcome),
+      message:
+        file.outcome === 'failed'
+          ? (file.message ?? 'Apply failed for this file')
+          : file.outcome === 'skipped'
+            ? (file.message ?? 'No changes needed')
+            : undefined,
+    })),
+  )
   return result
+}
+
+function mapFileResultPhase(
+  outcome: ConnectorFileApplyResult['outcome'],
+): ApplyProgressEntry['phase'] {
+  return outcome === 'failed' ? 'failed' : 'done'
 }
 
 function defaultConnectorStatus(): ConnectorUserStatus {
@@ -339,6 +343,7 @@ export function NativeDashboardSurface() {
   const [health, setHealth] = useState<IntegrationHealthReport | null>(null)
   const [backups, setBackups] = useState<import('../native/contracts.ts').BackupJournalEntry[]>([])
   const [pendingPlan, setPendingPlan] = useState<PendingPlanReview>()
+  const [pendingPlanQueue, setPendingPlanQueue] = useState<PendingPlanReview[]>([])
   const [applyProgress, setApplyProgress] = useState<ApplyProgressEntry[]>()
   const [applyResult, setApplyResult] = useState<ConnectorApplyResult>()
   const [actionError, setActionError] = useState<string>()
@@ -427,6 +432,29 @@ export function NativeDashboardSurface() {
 
   useEffect(() => {
     let cancelled = false
+    const refreshPendingDecisions = () => {
+      void client
+        .getPendingDecisions()
+        .then((requests) => {
+          if (!cancelled) setPendingDecisions(requests)
+        })
+        .catch(() => {
+          if (!cancelled) setPendingDecisions([])
+        })
+    }
+    refreshPendingDecisions()
+    const interval = window.setInterval(refreshPendingDecisions, 5_000)
+    const onFocus = () => refreshPendingDecisions()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [client])
+
+  useEffect(() => {
+    let cancelled = false
     dispatch({ type: 'SET_DISPLAYS_LOADING' })
     void client
       .listDisplays()
@@ -488,14 +516,6 @@ export function NativeDashboardSurface() {
       })
       .catch(() => {
         if (!cancelled) setBackups([])
-      })
-    void client
-      .getPendingDecisions()
-      .then((requests) => {
-        if (!cancelled) setPendingDecisions(requests)
-      })
-      .catch(() => {
-        if (!cancelled) setPendingDecisions([])
       })
     return () => {
       cancelled = true
@@ -608,15 +628,36 @@ export function NativeDashboardSurface() {
       })
   }
 
+  const togglePlanFile = (displayPath: string, selected: boolean) => {
+    setPendingPlan((current) => {
+      if (!current) return current
+      const selectedFilePaths = selected
+        ? [...new Set([...current.selectedFilePaths, displayPath])]
+        : current.selectedFilePaths.filter((path) => path !== displayPath)
+      const next = { ...current, selectedFilePaths }
+      setPendingPlanQueue((queue) =>
+        queue.map((entry) => (entry.plan.planId === current.plan.planId ? next : entry)),
+      )
+      return next
+    })
+    setConnectSelections((current) =>
+      current.map((entry) =>
+        entry.displayPath === displayPath ? { ...entry, selected } : entry,
+      ),
+    )
+  }
+
   const previewConnect = (source: AgentSource, scope: ConnectorScope = 'user') => {
     setActionError(undefined)
     void client
       .previewConnector(source, scope)
       .then((plan) => {
-        setPendingPlan({
+        const review = {
           plan,
           selectedFilePaths: plan.files.map((file) => file.displayPath),
-        })
+        }
+        setPendingPlan(review)
+        setPendingPlanQueue([review])
       })
       .catch((error: unknown) => {
         setActionError(error instanceof Error ? error.message : 'Connector preview failed')
@@ -624,31 +665,85 @@ export function NativeDashboardSurface() {
   }
 
   const applyPendingPlan = () => {
-    if (!pendingPlan) return
+    const plansToApply =
+      pendingPlanQueue.length > 0
+        ? pendingPlanQueue
+        : pendingPlan
+          ? [pendingPlan]
+          : []
+    if (plansToApply.length === 0) return
     setActionError(undefined)
-    const filePaths = pendingPlan.selectedFilePaths
-    void runApplyProgress(
-      pendingPlan.plan.planId,
-      filePaths,
-      (planId) => client.applyConnectorChange(planId),
-      setApplyProgress,
+    const allFilePaths = plansToApply.flatMap((entry) => entry.selectedFilePaths)
+    setApplyProgress(
+      allFilePaths.map((displayPath) => ({ displayPath, phase: 'applying' as const })),
     )
-      .then((result) => {
-        setApplyResult(result)
+    void (async () => {
+      const aggregatedResults: ConnectorApplyResult['fileResults'] = []
+      let lastResult: ConnectorApplyResult | undefined
+      try {
+        for (const entry of plansToApply) {
+          lastResult = await runApplyProgress(
+            entry.plan.planId,
+            entry.selectedFilePaths,
+            (planId, selectedDisplayPaths) =>
+              client.applyConnectorChange(planId, selectedDisplayPaths),
+            setApplyProgress,
+            entry.selectedFilePaths,
+          )
+          aggregatedResults.push(...lastResult.fileResults)
+        }
+        if (lastResult) {
+          setApplyResult({ ...lastResult, fileResults: aggregatedResults })
+        }
         setPendingPlan(undefined)
+        setPendingPlanQueue([])
         refreshBackups()
         refreshHealth()
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         setApplyProgress(
-          filePaths.map((displayPath) => ({
+          allFilePaths.map((displayPath) => ({
             displayPath,
             phase: 'failed',
             message: error instanceof Error ? error.message : 'Apply failed',
           })),
         )
         setActionError(error instanceof Error ? error.message : 'Connector apply failed')
-      })
+      }
+    })()
+  }
+
+  const previewAllSelectedConnectors = () => {
+    const selectedSources = [
+      ...new Set(
+        connectSelections.filter((entry) => entry.selected).map((entry) => entry.source),
+      ),
+    ]
+    if (selectedSources.length === 0) return
+    setActionError(undefined)
+    void (async () => {
+      try {
+        const reviews: PendingPlanReview[] = []
+        for (const source of selectedSources) {
+          const plan = await client.previewConnector(source, connectScope)
+          reviews.push({
+            plan,
+            selectedFilePaths: plan.files
+              .filter((file) => {
+                const selection = connectSelections.find(
+                  (entry) => entry.source === source && entry.displayPath === file.displayPath,
+                )
+                return selection?.selected ?? true
+              })
+              .map((file) => file.displayPath),
+          })
+        }
+        setPendingPlanQueue(reviews)
+        setPendingPlan(reviews[0])
+        setOnboardingStep(3)
+      } catch (error: unknown) {
+        setActionError(error instanceof Error ? error.message : 'Connector preview failed')
+      }
+    })()
   }
 
   const respondToDecision = (
@@ -807,7 +902,11 @@ export function NativeDashboardSurface() {
                   })
               }}
               onConfirmPlan={applyPendingPlan}
-              onCancelPlan={() => setPendingPlan(undefined)}
+              onCancelPlan={() => {
+                setPendingPlan(undefined)
+                setPendingPlanQueue([])
+              }}
+              onTogglePlanFile={togglePlanFile}
               onRestoreBackup={(backupId) => {
                 void client
                   .rollbackConnector(backupId)
@@ -899,18 +998,17 @@ export function NativeDashboardSurface() {
         connectScope={connectScope}
         onConnectScopeChange={setConnectScope}
         pendingPlan={onboardingStep === 3 ? pendingPlan : undefined}
+        pendingPlanCount={pendingPlanQueue.length || (pendingPlan ? 1 : 0)}
         applyProgress={onboardingStep === 3 ? applyProgress : undefined}
         applyResult={onboardingStep === 3 ? applyResult : undefined}
-        onPreviewConnect={() => {
-          const first = connectSelections.find((entry) => entry.selected)
-          if (first) previewConnect(first.source, connectScope)
-          setOnboardingStep(3)
-        }}
+        onPreviewConnect={previewAllSelectedConnectors}
+        onTogglePlanFile={togglePlanFile}
         onConfirmApply={() => {
           applyPendingPlan()
         }}
         onSkipConnect={() => {
           setPendingPlan(undefined)
+          setPendingPlanQueue([])
           setOnboardingStep(4)
         }}
         shortcutLabel={SHORTCUT_LABEL}

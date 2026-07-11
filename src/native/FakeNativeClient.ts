@@ -355,7 +355,10 @@ export class FakeNativeClient implements NativeClient {
     return previewPlan(source, scope, 'install')
   }
 
-  async applyConnectorChange(planId: string): Promise<ConnectorApplyResult> {
+  async applyConnectorChange(
+    planId: string,
+    _selectedDisplayPaths?: string[],
+  ): Promise<ConnectorApplyResult> {
     const source = planId.includes('claudeCode')
       ? 'claudeCode'
       : planId.includes('codex')

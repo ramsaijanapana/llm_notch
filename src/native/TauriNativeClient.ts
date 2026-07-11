@@ -216,9 +216,15 @@ export class TauriNativeClient implements NativeClient {
     }
   }
 
-  async applyConnectorChange(planId: string): Promise<ConnectorApplyResult> {
+  async applyConnectorChange(
+    planId: string,
+    selectedDisplayPaths?: string[],
+  ): Promise<ConnectorApplyResult> {
     try {
-      return await invoke<ConnectorApplyResult>(NATIVE_COMMANDS.applyConnector, { planId })
+      return await invoke<ConnectorApplyResult>(NATIVE_COMMANDS.applyConnector, {
+        planId,
+        selectedDisplayPaths,
+      })
     } catch (error) {
       throw toNativeError(error, 'Failed to apply connector change')
     }

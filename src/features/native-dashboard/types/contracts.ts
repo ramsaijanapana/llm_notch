@@ -33,7 +33,7 @@ export type OnboardingStep = 0 | 1 | 2 | 3 | 4
 
 export type OnboardingIntegrationChoice = AgentSource | 'none'
 
-export type ApplyProgressPhase = 'backingUp' | 'writing' | 'verifying' | 'done' | 'failed'
+export type ApplyProgressPhase = 'applying' | 'backingUp' | 'writing' | 'verifying' | 'done' | 'failed'
 
 export interface ApplyProgressEntry {
   displayPath: string
@@ -146,11 +146,13 @@ export interface OnboardingFlowProps {
   connectScope: ConnectorScope
   onConnectScopeChange: (scope: ConnectorScope) => void
   pendingPlan?: PendingPlanReview | undefined
+  pendingPlanCount?: number | undefined
   applyProgress?: ApplyProgressEntry[] | undefined
   applyResult?: ConnectorApplyResult | undefined
   onPreviewConnect: () => void
   onConfirmApply: () => void
   onSkipConnect: () => void
+  onTogglePlanFile?: ((displayPath: string, selected: boolean) => void) | undefined
   shortcutLabel: string
   autostartEnabled: boolean
   onAutostartChange: AutostartChangeHandler
@@ -203,6 +205,7 @@ export interface IntegrationsPanelProps {
   onDisable: IntegrationActionHandler
   onConfirmPlan: () => void
   onCancelPlan: () => void
+  onTogglePlanFile?: ((displayPath: string, selected: boolean) => void) | undefined
   onRestoreBackup: (backupId: string) => void
   loadState?: DashboardLoadState | undefined
 }

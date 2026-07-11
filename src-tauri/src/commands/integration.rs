@@ -11,6 +11,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::commands::error::CommandError;
 use crate::commands::validation::{validate_agent_source, validate_plan_id};
 use crate::runtime::helper_path::resolve_helper_path;
+use crate::runtime::integrations_dir::resolve_integrations_dir;
 use crate::state::HostState;
 
 type SharedManager = Arc<Mutex<ConnectorManager>>;
@@ -29,8 +30,7 @@ fn manager(app: &AppHandle) -> Result<SharedManager, CommandError> {
 }
 
 fn connector_config(app: &AppHandle) -> Result<ConnectorConfig, CommandError> {
-    let repo_root = std::env::current_dir()
-        .map_err(|error| CommandError::Internal(format!("cannot resolve repo root: {error}")))?;
+    let integrations_root = resolve_integrations_dir(app);
     let app_data_dir = app
         .path()
         .app_data_dir()
@@ -38,7 +38,7 @@ fn connector_config(app: &AppHandle) -> Result<ConnectorConfig, CommandError> {
     std::fs::create_dir_all(&app_data_dir)
         .map_err(|error| CommandError::Internal(format!("app data dir create failed: {error}")))?;
     Ok(ConnectorConfig {
-        repo_root,
+        integrations_root,
         app_data_dir,
         helper_path: resolve_helper_path(app),
         workspace_root: std::env::current_dir().ok(),
@@ -97,10 +97,14 @@ pub fn preview_connector_change(
 pub fn apply_connector_change(
     app: AppHandle,
     plan_id: String,
+    selected_display_paths: Option<Vec<String>>,
 ) -> Result<ConnectorApplyResult, CommandError> {
     validate_plan_id(&plan_id)?;
     let manager = manager(&app)?;
-    manager.lock().apply(&plan_id).map_err(map_connector_error)
+    manager
+        .lock()
+        .apply(&plan_id, selected_display_paths.as_deref())
+        .map_err(map_connector_error)
 }
 
 #[tauri::command]

@@ -89,7 +89,9 @@ Before writing any config:
 4. Merge only llm_notch entries; preserve unrelated hooks
 5. Show unified diff to the user; require explicit confirm
 
-Nothing installs on first app launch. Automatic apply/remove is disabled in the current host.
+Nothing installs silently on first app launch. Connect/apply runs only after explicit dashboard or onboarding confirmation.
+
+Dashboard decision responses are delivered to Claude Code hooks when capabilities allow; observation-only vendors remain fail-open.
 
 ## Spool directory (helper offline mode)
 
@@ -111,6 +113,7 @@ When the desktop host is not running:
 |--------|--------|
 | Acknowledge attention in overlay | Local UI state only |
 | Open dashboard | Focus llm_notch window |
+| Allow/deny in-app decision (Claude Code) | Delivered to hook when capability + transport succeed; otherwise failed/expired |
 | Click “open in agent” | Hidden — `contextOpen: false` |
 
-No action sends approval/denial back to Cursor, Claude Code, or Codex.
+Observation-only vendors (Cursor, Codex) never receive in-app allow/deny from llm_notch V1 templates.

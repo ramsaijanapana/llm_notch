@@ -4,13 +4,13 @@ use notch_connectors::{ConnectorConfig, ConnectorManager};
 use notch_protocol::{AgentSource, ConnectorFileOutcome, ConnectorScope};
 use tempfile::TempDir;
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+fn integrations_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations")
 }
 
 fn test_config(dir: &TempDir) -> ConnectorConfig {
     ConnectorConfig {
-        repo_root: repo_root(),
+        integrations_root: integrations_root(),
         app_data_dir: dir.path().to_path_buf(),
         helper_path: dir.path().join("llm-notch-hook.exe"),
         workspace_root: Some(std::fs::canonicalize(dir.path()).expect("canonicalize")),
@@ -23,7 +23,7 @@ fn merge_preserves_foreign_entries() {
     let dir = TempDir::new().expect("tempdir");
     let hooks = dir.path().join(".cursor/hooks.json");
     std::fs::create_dir_all(hooks.parent().unwrap()).expect("mkdir");
-    let baseline = repo_root().join("integrations/fixtures/connectors/cursor-user-baseline.json");
+    let baseline = integrations_root().join("fixtures/connectors/cursor-user-baseline.json");
     std::fs::copy(baseline, &hooks).expect("seed");
 
     let manager = ConnectorManager::new(test_config(&dir)).expect("manager");
@@ -33,7 +33,7 @@ fn merge_preserves_foreign_entries() {
     assert!(!preview.files[0].foreign_entries_preserved.is_empty());
     assert!(!preview.files[0].diff_text.is_empty());
 
-    let result = manager.apply(&preview.plan_id).expect("apply");
+    let result = manager.apply(&preview.plan_id, None).expect("apply");
     assert_eq!(
         result.file_results[0].outcome,
         ConnectorFileOutcome::Applied
@@ -56,14 +56,14 @@ fn idempotent_reinstall_skips_backup() {
     let first = manager
         .preview_install(AgentSource::Cursor, ConnectorScope::User)
         .expect("preview");
-    manager.apply(&first.plan_id).expect("apply");
+    manager.apply(&first.plan_id, None).expect("apply");
 
     let preview = manager
         .preview_install(AgentSource::Cursor, ConnectorScope::User)
         .expect("preview");
     assert!(preview.files[0].diff_text.is_empty());
 
-    let result = manager.apply(&preview.plan_id).expect("apply");
+    let result = manager.apply(&preview.plan_id, None).expect("apply");
     assert_eq!(
         result.file_results[0].outcome,
         ConnectorFileOutcome::Skipped
@@ -89,7 +89,7 @@ fn lock_contention_on_concurrent_apply() {
         .create_new(true)
         .open(&lock_path)
         .expect("hold lock");
-    let apply_result = manager.apply(&preview.plan_id);
+    let apply_result = manager.apply(&preview.plan_id, None);
     drop(lock);
     let _ = std::fs::remove_file(lock_path);
     assert!(apply_result.is_err());
@@ -100,7 +100,7 @@ fn remove_plan_strips_managed_entries_only() {
     let dir = TempDir::new().expect("tempdir");
     let hooks = dir.path().join(".cursor/hooks.json");
     std::fs::create_dir_all(hooks.parent().unwrap()).expect("mkdir");
-    let merged = repo_root().join("integrations/fixtures/connectors/cursor-user-merged.json");
+    let merged = integrations_root().join("fixtures/connectors/cursor-user-merged.json");
     std::fs::copy(merged, &hooks).expect("seed");
 
     let manager = ConnectorManager::new(test_config(&dir)).expect("manager");
@@ -108,7 +108,7 @@ fn remove_plan_strips_managed_entries_only() {
         .preview_remove(AgentSource::Cursor, ConnectorScope::User)
         .expect("preview");
     assert!(!preview.files[0].diff_text.is_empty());
-    manager.apply(&preview.plan_id).expect("apply");
+    manager.apply(&preview.plan_id, None).expect("apply");
 
     let after: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&hooks).expect("read")).expect("json");

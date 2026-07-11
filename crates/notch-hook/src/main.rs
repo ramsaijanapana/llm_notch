@@ -550,6 +550,7 @@ mod tests {
         let mut server = notch_ipc::start_ingest_server(notch_ipc::IngestServerConfig {
             runtime_dir: Some(directory.path().to_path_buf()),
             decision_wait_tx: None,
+            ..Default::default()
         })
         .await
         .expect("server");

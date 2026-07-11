@@ -159,7 +159,14 @@ impl DecisionBroker {
             .map(|active| self.reply_for_active(&nonce, active))
             .unwrap_or_else(|| self.neutral_reply(&nonce, DecisionDeliveryState::Expired));
 
-        self.active.lock().remove(&nonce);
+        let retain_active = self
+            .active
+            .lock()
+            .get(&nonce)
+            .is_some_and(|active| matches!(active.internal_state, InternalDeliveryState::Chosen { .. }));
+        if !retain_active {
+            self.active.lock().remove(&nonce);
+        }
         self.waiters.lock().remove(&nonce);
         reply
     }
@@ -174,7 +181,7 @@ impl DecisionBroker {
         let mut guard = self.active.lock();
         let active = guard.get_mut(request_id).ok_or(BrokerError::NotFound)?;
 
-        if active.internal_state.is_terminal() {
+        if !matches!(active.internal_state, InternalDeliveryState::Pending) {
             return Err(BrokerError::AlreadyFinalized);
         }
         if now >= active.expires_at_ms {
@@ -189,14 +196,23 @@ impl DecisionBroker {
             return Err(BrokerError::NotActionable);
         }
 
-        active.internal_state = InternalDeliveryState::Chosen {
-            response: response.clone(),
-            responded_at_ms: now,
-        };
-
         let stdout = match build_stdout_for_active(&active, &response) {
             Ok(stdout) => stdout,
-            Err(AdapterBuildError::CapabilityDisabled) => adapter::neutral_stdout(),
+            Err(AdapterBuildError::CapabilityDisabled) => {
+                active.internal_state = InternalDeliveryState::Failed {
+                    detail: "decision responses disabled for this adapter".into(),
+                };
+                self.persist_state(
+                    &active,
+                    Some(&response),
+                    Some(now),
+                    Some("decision responses disabled for this adapter".into()),
+                );
+                self.wake_waiter(request_id);
+                return Err(BrokerError::Adapter(
+                    "decision responses disabled for this adapter".into(),
+                ));
+            }
             Err(err) => {
                 active.internal_state = InternalDeliveryState::Failed {
                     detail: err.to_string(),
@@ -207,14 +223,69 @@ impl DecisionBroker {
             }
         };
 
-        active.internal_state = InternalDeliveryState::Delivered {
-            stdout_json: stdout.clone(),
-            delivered_at_ms: now,
+        if stdout == adapter::neutral_stdout() {
+            active.internal_state = InternalDeliveryState::Failed {
+                detail: "fail-open neutral output cannot be reported as delivered".into(),
+            };
+            self.persist_state(
+                &active,
+                Some(&response),
+                Some(now),
+                Some("fail-open neutral output cannot be reported as delivered".into()),
+            );
+            self.wake_waiter(request_id);
+            return Err(BrokerError::Adapter(
+                "fail-open neutral output cannot be reported as delivered".into(),
+            ));
+        }
+
+        active.internal_state = InternalDeliveryState::Chosen {
+            response: response.clone(),
+            responded_at_ms: now,
+            stdout_json: stdout,
         };
         self.persist_state(&active, Some(&response), Some(now), None);
         self.wake_waiter(request_id);
 
         Ok(active.response_record(&response, now))
+    }
+
+    /// Mark a chosen decision as delivered after the hook transport write succeeds.
+    pub fn confirm_delivery(&self, request_id: &str) -> Result<(), BrokerError> {
+        let mut guard = self.active.lock();
+        let active = guard.get_mut(request_id).ok_or(BrokerError::NotFound)?;
+        let InternalDeliveryState::Chosen {
+            responded_at_ms,
+            stdout_json,
+            ..
+        } = active.internal_state.clone()
+        else {
+            return Err(BrokerError::AlreadyFinalized);
+        };
+        active.internal_state = InternalDeliveryState::Delivered {
+            stdout_json,
+            delivered_at_ms: responded_at_ms,
+        };
+        self.persist_state(active, None, None, None);
+        drop(guard);
+        self.active.lock().remove(request_id);
+        Ok(())
+    }
+
+    /// Mark a chosen decision as failed when hook transport write fails.
+    pub fn fail_delivery(&self, request_id: &str, detail: &str) -> Result<(), BrokerError> {
+        let mut guard = self.active.lock();
+        let active = guard.get_mut(request_id).ok_or(BrokerError::NotFound)?;
+        if !matches!(active.internal_state, InternalDeliveryState::Chosen { .. }) {
+            return Err(BrokerError::AlreadyFinalized);
+        }
+        active.internal_state = InternalDeliveryState::Failed {
+            detail: detail.into(),
+        };
+        self.persist_state(active, None, None, Some(detail.into()));
+        drop(guard);
+        self.active.lock().remove(request_id);
+        Ok(())
     }
 
     pub fn observe_effect(&self, request_id: &str, evidence: String) -> Result<(), BrokerError> {
@@ -317,7 +388,12 @@ impl DecisionBroker {
             InternalDeliveryState::Expired => {
                 self.neutral_reply(nonce, DecisionDeliveryState::Expired)
             }
-            InternalDeliveryState::Chosen { .. } | InternalDeliveryState::Pending => {
+            InternalDeliveryState::Chosen { stdout_json, .. } => DecisionReplyPayload {
+                nonce: nonce.into(),
+                stdout_json: stdout_json.clone(),
+                delivery_state: DecisionDeliveryState::Pending,
+            },
+            InternalDeliveryState::Pending => {
                 self.neutral_reply(nonce, DecisionDeliveryState::Expired)
             }
             InternalDeliveryState::EffectObserved { .. } => DecisionReplyPayload {
@@ -436,10 +512,55 @@ mod tests {
                 },
             )
             .expect("submit");
-        assert_eq!(record.delivery_state, DecisionDeliveryState::Delivered);
+        assert_eq!(record.delivery_state, DecisionDeliveryState::Pending);
         let reply = broker_task.await.expect("task");
         assert_ne!(reply.stdout_json, adapter::neutral_stdout());
-        assert_eq!(reply.delivery_state, DecisionDeliveryState::Delivered);
+        assert_eq!(reply.delivery_state, DecisionDeliveryState::Pending);
+        broker.confirm_delivery("ack-1").expect("confirm");
+        assert!(broker.active.lock().get("ack-1").is_none());
+    }
+
+    #[tokio::test]
+    async fn capability_disabled_never_reports_delivered() {
+        let broker = Arc::new(test_broker());
+        broker.active.lock().insert(
+            "cap-disabled".into(),
+            ActiveDecision {
+                request: DecisionRequest {
+                    id: "cap-disabled".into(),
+                    session_id: "sess".into(),
+                    source: AgentSource::Cursor,
+                    kind: DecisionKind::Permission,
+                    summary: "allow?".into(),
+                    has_actionable_payload: true,
+                    created_at_ms: 1_000,
+                    expires_at_ms: Some(5_000),
+                },
+                internal_state: InternalDeliveryState::Pending,
+                vendor_event: "PermissionRequest".into(),
+                external_session_id: "ext".into(),
+                respondable_hook: Some("permissionRequest".into()),
+                tool_name: None,
+                connection_id: "conn".into(),
+                vendor_context: None,
+                expires_at_ms: 5_000,
+            },
+        );
+        let err = broker
+            .submit_decision(
+                "cap-disabled",
+                DecisionResponse::Action {
+                    action: DecisionResponseAction::Deny,
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(err, BrokerError::Adapter(_)));
+        let guard = broker.active.lock();
+        let active = guard.get("cap-disabled").expect("active");
+        assert_eq!(
+            active.internal_state.wire_state(),
+            DecisionDeliveryState::Failed
+        );
     }
 
     #[tokio::test]
@@ -470,7 +591,7 @@ mod tests {
                 },
             )
             .unwrap_err();
-        assert_eq!(err, BrokerError::NotFound);
+        assert_eq!(err, BrokerError::AlreadyFinalized);
     }
 
     #[test]

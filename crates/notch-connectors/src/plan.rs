@@ -11,6 +11,8 @@ use crate::error::ConnectorError;
 
 #[derive(Debug, Clone)]
 pub struct PlanFileSnapshot {
+    pub scope_canonical: PathBuf,
+    pub relative_path: PathBuf,
     pub canonical_path: PathBuf,
     pub display_path: String,
     pub baseline_sha256: String,

@@ -43,6 +43,7 @@ pub enum InternalDeliveryState {
     Chosen {
         response: DecisionResponse,
         responded_at_ms: i64,
+        stdout_json: String,
     },
     Delivered {
         stdout_json: String,

@@ -41,7 +41,7 @@ test.describe('Native integration flows', () => {
       .getByRole('button', { name: /^connect$/i })
       .first()
       .click()
-    await expect(page.getByLabelText(/integration diff review/i)).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByLabel(/integration diff review/i)).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText(/~\//)).toBeVisible()
   })
 })

@@ -31,12 +31,27 @@ use crate::wire::{DecisionWaitPayload, WireMessage, validate_wire_message};
 use notch_protocol::DECISION_FAIL_OPEN_TIMEOUT_MS;
 
 /// Configuration for [`start_ingest_server`].
-#[derive(Debug, Clone, Default)]
+#[derive(Clone)]
 pub struct IngestServerConfig {
     /// Override runtime directory (used in tests).
     pub runtime_dir: Option<PathBuf>,
     /// Optional channel for interactive decision waits (never spooled).
     pub decision_wait_tx: Option<mpsc::Sender<PendingDecisionWait>>,
+    /// Called after a decision reply is written to the hook transport.
+    pub decision_delivery_confirm: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    /// Called when a decision reply transport write fails.
+    pub decision_delivery_fail: Option<Arc<dyn Fn(&str, &str) + Send + Sync>>,
+}
+
+impl Default for IngestServerConfig {
+    fn default() -> Self {
+        Self {
+            runtime_dir: None,
+            decision_wait_tx: None,
+            decision_delivery_confirm: None,
+            decision_delivery_fail: None,
+        }
+    }
 }
 
 /// Reply delivered to a waiting hook helper connection.
@@ -141,6 +156,8 @@ pub async fn start_ingest_server(config: IngestServerConfig) -> IpcResult<Ingest
 
     let (tx, rx) = mpsc::channel(MAX_INGEST_QUEUE);
     let decision_wait_tx = config.decision_wait_tx.clone();
+    let decision_delivery_confirm = config.decision_delivery_confirm.clone();
+    let decision_delivery_fail = config.decision_delivery_fail.clone();
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
     let capabilities = SecurityCapabilities::platform_default();
     let limits = Arc::new(IngestRateLimiters::new());
@@ -171,10 +188,21 @@ pub async fn start_ingest_server(config: IngestServerConfig) -> IpcResult<Ingest
                     let expected = expected_token.clone();
                     let caps = caps.clone();
                     let decision_tx = decision_wait_tx.clone();
+                    let confirm = decision_delivery_confirm.clone();
+                    let fail = decision_delivery_fail.clone();
                     tokio::spawn(async move {
                         let _permit = permit;
-                        if let Err(err) =
-                            handle_connection(stream, expected, limits, caps, tx, decision_tx).await
+                        if let Err(err) = handle_connection(
+                            stream,
+                            expected,
+                            limits,
+                            caps,
+                            tx,
+                            decision_tx,
+                            confirm,
+                            fail,
+                        )
+                        .await
                         {
                             debug!(?err, "connection closed");
                         }
@@ -201,6 +229,8 @@ async fn handle_connection(
     capabilities: SecurityCapabilities,
     tx: mpsc::Sender<PendingIngest>,
     decision_tx: Option<mpsc::Sender<PendingDecisionWait>>,
+    decision_delivery_confirm: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    decision_delivery_fail: Option<Arc<dyn Fn(&str, &str) + Send + Sync>>,
 ) -> IpcResult<()> {
     let creds = stream.peer_creds().map_err(IpcError::Io)?;
     verify_same_user_peer(&creds, &capabilities)?;
@@ -349,7 +379,8 @@ async fn handle_connection(
                 .await
                 {
                     Ok(Ok(reply)) => {
-                        write_frame_async(
+                        let request_id = reply.nonce.clone();
+                        match write_frame_async(
                             &mut stream,
                             &WireMessage::DecisionReply {
                                 v: IPC_WIRE_VERSION,
@@ -358,7 +389,20 @@ async fn handle_connection(
                                 delivery_state: reply.delivery_state,
                             },
                         )
-                        .await?;
+                        .await
+                        {
+                            Ok(()) => {
+                                if let Some(confirm) = &decision_delivery_confirm {
+                                    confirm(&request_id);
+                                }
+                            }
+                            Err(error) => {
+                                if let Some(fail) = &decision_delivery_fail {
+                                    fail(&request_id, &error.to_string());
+                                }
+                                return Err(error);
+                            }
+                        }
                     }
                     Ok(Err(_)) | Err(_) => {
                         write_frame_async(
@@ -541,6 +585,7 @@ mod tests {
         let mut handle = start_ingest_server(IngestServerConfig {
             runtime_dir: Some(dir.path().to_path_buf()),
             decision_wait_tx: None,
+            ..Default::default()
         })
         .await
         .expect("start");
@@ -589,6 +634,7 @@ mod tests {
         let mut handle = start_ingest_server(IngestServerConfig {
             runtime_dir: Some(dir.path().to_path_buf()),
             decision_wait_tx: None,
+            ..Default::default()
         })
         .await
         .expect("start");
@@ -657,6 +703,7 @@ mod tests {
         let mut handle = start_ingest_server(IngestServerConfig {
             runtime_dir: Some(dir.path().to_path_buf()),
             decision_wait_tx: None,
+            ..Default::default()
         })
         .await
         .expect("start");
@@ -683,6 +730,7 @@ mod tests {
         let mut handle = start_ingest_server(IngestServerConfig {
             runtime_dir: Some(dir.path().to_path_buf()),
             decision_wait_tx: None,
+            ..Default::default()
         })
         .await
         .expect("start");

@@ -20,6 +20,7 @@ export function IntegrationsPanel({
   onDisable,
   onConfirmPlan,
   onCancelPlan,
+  onTogglePlanFile,
   onRestoreBackup,
   loadState = 'ready',
   nowMs = Date.now(),
@@ -107,7 +108,7 @@ export function IntegrationsPanel({
         <DiffReviewPanel
           plan={pendingPlan.plan}
           selectedFilePaths={pendingPlan.selectedFilePaths}
-          onToggleFile={() => {}}
+          onToggleFile={(displayPath, selected) => onTogglePlanFile?.(displayPath, selected)}
           onConfirm={onConfirmPlan}
           onCancel={onCancelPlan}
           confirmLabel={writeActionsAvailable ? 'Apply reviewed plan' : 'Close preview'}

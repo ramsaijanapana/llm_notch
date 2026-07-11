@@ -190,7 +190,7 @@ export function SettingsPanel({
               checked={purgeScope.includeBackups ?? false}
               onChange={(event) => onPurgeScopeChange?.({ includeBackups: event.target.checked })}
             />
-            Include connector backups (explicit opt-in)
+            Include connector backups (unchecked by default — backups are kept unless you opt in)
           </label>
         </fieldset>
         <div className={styles.actions}>
@@ -201,8 +201,8 @@ export function SettingsPanel({
         {purgeConfirmOpen ? (
           <div className={styles.confirmDialog} role="alertdialog" aria-label="Confirm purge">
             <p className={styles.muted}>
-              Delete selected local data using the purge scope above? Connector backups are kept
-              unless you opt in. This cannot be undone.
+              Delete selected local data using the purge scope above? Connector backup files stay
+              on disk unless you check “Include connector backups” above. This cannot be undone.
             </p>
             <div className={styles.actions}>
               <button type="button" className={styles.button} onClick={onPurgeCancel}>

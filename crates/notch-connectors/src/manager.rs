@@ -20,7 +20,7 @@ use crate::rollback::preview_rollback;
 
 #[derive(Debug, Clone)]
 pub struct ConnectorConfig {
-    pub repo_root: PathBuf,
+    pub integrations_root: PathBuf,
     pub app_data_dir: PathBuf,
     pub helper_path: PathBuf,
     pub workspace_root: Option<PathBuf>,
@@ -39,7 +39,8 @@ pub struct ConnectorManager {
 impl ConnectorManager {
     pub fn new(config: ConnectorConfig) -> Result<Self, ConnectorError> {
         let journal = Journal::open(&config.app_data_dir)?;
-        let registry = AdapterRegistry::new(config.repo_root.clone(), config.helper_path.clone());
+        let registry =
+            AdapterRegistry::new(config.integrations_root.clone(), config.helper_path.clone());
         Ok(Self {
             config,
             registry,
@@ -100,9 +101,24 @@ impl ConnectorManager {
         Ok(preview)
     }
 
-    pub fn apply(&self, plan_id: &str) -> Result<ConnectorApplyResult, ConnectorError> {
+    pub fn apply(
+        &self,
+        plan_id: &str,
+        selected_display_paths: Option<&[String]>,
+    ) -> Result<ConnectorApplyResult, ConnectorError> {
         let now = now_ms();
-        let plan = self.plans.get_valid(plan_id, now)?;
+        let mut plan = self.plans.get_valid(plan_id, now)?;
+        if let Some(selected) = selected_display_paths {
+            let selected: std::collections::HashSet<&str> =
+                selected.iter().map(String::as_str).collect();
+            plan.files
+                .retain(|file| selected.contains(file.display_path.as_str()));
+            if plan.files.is_empty() {
+                return Err(ConnectorError::InvalidRequest(
+                    "no files selected for apply".into(),
+                ));
+            }
+        }
         let capabilities = capabilities_for(plan.source);
         let result = apply_plan(&plan, &self.journal, now, capabilities)?;
         self.plans.remove(plan_id);
@@ -128,7 +144,7 @@ impl ConnectorManager {
                 capabilities: capabilities_for(source),
             });
         }
-        self.apply(&preview.plan_id)
+        self.apply(&preview.plan_id, None)
     }
 
     pub fn health_report(

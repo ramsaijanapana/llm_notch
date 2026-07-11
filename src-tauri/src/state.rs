@@ -433,9 +433,17 @@ impl HostState {
     async fn run_ipc(self: Arc<Self>) {
         let mut shutdown = self.shutdown_tx.subscribe();
         let (decision_tx, mut decision_rx) = tokio::sync::mpsc::channel(64);
+        let broker_for_confirm = Arc::clone(&self.decision_broker);
+        let broker_for_fail = Arc::clone(&self.decision_broker);
         let mut server = match start_ingest_server(IngestServerConfig {
             runtime_dir: self.ipc_runtime_dir.clone(),
             decision_wait_tx: Some(decision_tx),
+            decision_delivery_confirm: Some(Arc::new(move |request_id| {
+                let _ = broker_for_confirm.confirm_delivery(request_id);
+            })),
+            decision_delivery_fail: Some(Arc::new(move |request_id, detail| {
+                let _ = broker_for_fail.fail_delivery(request_id, detail);
+            })),
         })
         .await
         {

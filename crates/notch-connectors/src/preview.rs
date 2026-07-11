@@ -77,6 +77,8 @@ pub fn build_preview(
             expires_at_ms: preview.expires_at_ms,
             summary: preview.summary.clone(),
             files: vec![PlanFileSnapshot {
+                scope_canonical: scope_root.canonical.clone(),
+                relative_path: target.relative_path.clone(),
                 canonical_path: canonical,
                 display_path,
                 baseline_sha256,
@@ -130,6 +132,8 @@ pub fn build_preview(
         expires_at_ms: preview.expires_at_ms,
         summary: preview.summary.clone(),
         files: vec![PlanFileSnapshot {
+            scope_canonical: scope_root.canonical.clone(),
+            relative_path: target.relative_path.clone(),
             canonical_path: canonical,
             display_path,
             baseline_sha256,
@@ -199,11 +203,11 @@ mod tests {
 
     #[test]
     fn idempotent_install_yields_empty_diff() {
-        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let integrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
         let dir = TempDir::new().expect("tempdir");
         let hooks = dir.path().join(".cursor/hooks.json");
         std::fs::create_dir_all(hooks.parent().unwrap()).expect("mkdir");
-        let registry = AdapterRegistry::new(repo.clone(), dir.path().join("llm-notch-hook.exe"));
+        let registry = AdapterRegistry::new(integrations.clone(), dir.path().join("llm-notch-hook.exe"));
         let adapter = registry.get(AgentSource::Cursor).expect("cursor");
         let template = materialize_template(
             &adapter.load_template().expect("template"),

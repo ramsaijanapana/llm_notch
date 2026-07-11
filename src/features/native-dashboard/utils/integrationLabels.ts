@@ -92,9 +92,11 @@ export function decisionDeliveryLabel(state: DecisionDeliveryState): string {
 }
 
 export function applyProgressLabel(
-  phase: 'backingUp' | 'writing' | 'verifying' | 'done' | 'failed',
+  phase: 'applying' | 'backingUp' | 'writing' | 'verifying' | 'done' | 'failed',
 ): string {
   switch (phase) {
+    case 'applying':
+      return 'Applying…'
     case 'backingUp':
       return 'Backed up'
     case 'writing':

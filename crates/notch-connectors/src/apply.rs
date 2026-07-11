@@ -9,9 +9,9 @@ use notch_protocol::{
 use crate::atomic::atomic_write;
 use crate::error::ConnectorError;
 use crate::hash::{sha256_file, sha256_hex};
-use crate::journal::{Journal, backup_file_path, backup_timestamp};
+use crate::journal::{Journal, backup_timestamp};
 use crate::lock::FileLock;
-use crate::path_security::reject_hardlink;
+use crate::path_security::{reject_hardlink, revalidate_locked_target, secure_backup_path};
 use crate::plan::{PlanFileSnapshot, StoredPlan};
 
 pub fn apply_plan(
@@ -125,6 +125,12 @@ fn apply_single_file(
 ) -> Result<ConnectorFileApplyResult, ConnectorError> {
     let _lock = FileLock::acquire(&file.canonical_path)?;
 
+    revalidate_locked_target(
+        &file.scope_canonical,
+        &file.relative_path,
+        &file.canonical_path,
+    )?;
+
     // Re-read under lock.
     let current_hash = if file.canonical_path.exists() {
         sha256_file(&file.canonical_path)
@@ -166,17 +172,28 @@ fn create_backup(
     now_ms: i64,
 ) -> Result<String, ConnectorError> {
     let timestamp = backup_timestamp(now_ms);
-    let backup_path = backup_file_path(&file.canonical_path, &timestamp);
+    let backup_path = secure_backup_path(&file.canonical_path, &timestamp)?;
     fs::copy(&file.canonical_path, &backup_path)
         .map_err(|error| ConnectorError::Internal(format!("backup copy failed: {error}")))?;
     let content_sha256 = sha256_file(&backup_path)
         .map_err(|error| ConnectorError::Internal(format!("backup hash failed: {error}")))?;
+    let backup_file_name = backup_path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| file.backup_display_path.clone());
+    let backup_display_path = if file.display_path.starts_with("~/") {
+        format!("~/{backup_file_name}")
+    } else if let Some(parent) = file.display_path.rsplit_once('/') {
+        format!("{}/{}", parent.0, backup_file_name)
+    } else {
+        backup_file_name
+    };
     let entry = BackupJournalEntry {
         id: Journal::new_backup_id(),
         plan_id: Some(plan_id.into()),
         source,
         display_path: file.display_path.clone(),
-        backup_display_path: file.backup_display_path.clone(),
+        backup_display_path,
         content_sha256,
         applied_hash: Some(sha256_hex(file.merged_text.as_bytes())),
         operation: BackupJournalOperation::Create,
@@ -214,6 +231,11 @@ fn restore_from_backup(target: &Path, backup: &BackupJournalEntry) -> Result<(),
     if !backup_path.exists() {
         return Err(ConnectorError::NotFound("backup file missing".into()));
     }
+    let backup_hash = sha256_file(&backup_path)
+        .map_err(|error| ConnectorError::Internal(format!("backup hash failed: {error}")))?;
+    if backup_hash != backup.content_sha256 {
+        return Err(ConnectorError::RollbackHashMismatch);
+    }
     let bytes = fs::read(&backup_path)
         .map_err(|error| ConnectorError::Internal(format!("backup read failed: {error}")))?;
     atomic_write(target, &bytes)
@@ -240,10 +262,10 @@ mod tests {
 
     #[test]
     fn apply_creates_backup_and_writes_file() {
-        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let integrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
         let dir = TempDir::new().expect("tempdir");
         let journal = Journal::open(dir.path()).expect("journal");
-        let registry = AdapterRegistry::new(repo.clone(), dir.path().join("llm-notch-hook.exe"));
+        let registry = AdapterRegistry::new(integrations.clone(), dir.path().join("llm-notch-hook.exe"));
         let adapter = registry.get(AgentSource::Cursor).expect("cursor");
         let root = ScopeRoot {
             canonical: std::fs::canonicalize(dir.path()).expect("canonicalize"),
