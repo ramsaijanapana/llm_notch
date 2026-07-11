@@ -570,6 +570,14 @@ impl SqliteRepository {
         Ok(deleted)
     }
 
+    pub fn purge_session_events(&self) -> CoreResult<u64> {
+        let conn = self.connection();
+        let deleted = conn
+            .execute("DELETE FROM session_events", [])
+            .map_err(db_err)? as u64;
+        Ok(deleted)
+    }
+
     pub fn store_idempotency_key(&self, key: &str, created_at_ms: i64) -> CoreResult<bool> {
         let conn = self.connection();
         let changed = conn

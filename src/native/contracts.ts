@@ -168,12 +168,23 @@ export interface PublicSettings {
   selectedDisplay?: string
   showOverFullscreen: boolean
   historyRetentionHours: number
+  /** Optional alert sound; off by default and never activates windows. */
+  alertSoundEnabled?: boolean
 }
 
 export interface MetricsFrame {
   host: HostMetricSample
   aggregate: AgentAggregate
   agents: Record<string, MetricSample>
+}
+
+export type ResourceAlertKind = 'cpuWarn' | 'cpuCritical' | 'memoryHigh'
+
+export interface ResourceAlert {
+  kind: ResourceAlertKind
+  message: string
+  sessionId?: string
+  raisedAtMs: number
 }
 
 export interface AppSnapshot {
@@ -184,6 +195,7 @@ export interface AppSnapshot {
   sessions: AgentSession[]
   settings: PublicSettings
   adapters: AdapterCapabilities[]
+  resourceAlerts?: ResourceAlert[]
 }
 
 export type StreamPayload =

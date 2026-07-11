@@ -245,6 +245,10 @@ impl SessionRegistry {
         }
     }
 
+    pub fn clear_events(&mut self) {
+        self.events.clear();
+    }
+
     fn oldest_terminal_session_id(&self) -> Option<String> {
         use crate::domain::is_terminal;
         self.sessions

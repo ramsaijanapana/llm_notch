@@ -3,4 +3,4 @@
 /**
  * User-visible settings safe to expose to overlay and dashboard surfaces.
  */
-export type PublicSettings = { overlayEnabled: boolean, autostartEnabled: boolean, reducedMotion: boolean, samplingIntervalMs: number, selectedDisplay?: string, showOverFullscreen: boolean, historyRetentionHours: number, };
+export type PublicSettings = { overlayEnabled: boolean, autostartEnabled: boolean, reducedMotion: boolean, samplingIntervalMs: number, selectedDisplay?: string, showOverFullscreen: boolean, historyRetentionHours: number, alertSoundEnabled: boolean, };

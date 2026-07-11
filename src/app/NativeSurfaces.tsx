@@ -325,6 +325,12 @@ export function NativeDashboardSurface() {
   const [pendingDiff, setPendingDiff] = useState<IntegrationDiffPreview>()
   const [actionError, setActionError] = useState<string>()
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false)
+  const [purgeScope, setPurgeScope] = useState<import('../native/contracts.ts').PurgeScope>({
+    history: true,
+    sessionEvents: true,
+    connectorJournal: false,
+    includeBackups: false,
+  })
   const [onboardingOpen, setOnboardingOpen] = useState(() => !readOnboardingComplete())
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>(0)
   const [onboardingIntegration, setOnboardingIntegration] =
@@ -375,6 +381,8 @@ export function NativeDashboardSurface() {
       ].slice(-900)
       return {
         ...current,
+        requestedStartMs: Math.max(current.requestedStartMs, Date.now() - 15 * 60_000),
+        requestedEndMs: Date.now(),
         hostCpu,
         aggregateCpu,
         aggregateRss,
@@ -644,10 +652,12 @@ export function NativeDashboardSurface() {
               shortcutLabel={SHORTCUT_LABEL}
               onSettingsChange={updateSettings}
               onPurgeHistory={() => setPurgeConfirmOpen(true)}
+              purgeScope={purgeScope}
+              onPurgeScopeChange={(patch) => setPurgeScope((current) => ({ ...current, ...patch }))}
               purgeConfirmOpen={purgeConfirmOpen}
               onPurgeConfirm={() => {
                 void client
-                  .purgeHistory()
+                  .purgeHistory(purgeScope)
                   .then(() => {
                     const endMs = Date.now()
                     const emptySeries = {

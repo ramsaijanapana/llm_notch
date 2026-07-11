@@ -87,6 +87,7 @@ export type SettingsChangeHandler = (patch: Partial<PublicSettings>) => void
 export type IntegrationActionHandler = (source: AgentSource) => void
 export type HistoryRangeChangeHandler = (range: MetricsHistoryRange) => void
 export type PurgeHistoryHandler = () => void
+export type PurgeScopeChangeHandler = (patch: Partial<import('../../../native/contracts').PurgeScope>) => void
 export type DisplayChangeHandler = (displayId: string | null) => void
 export type OnboardingIntegrationChangeHandler = (choice: OnboardingIntegrationChoice) => void
 export type AutostartChangeHandler = (enabled: boolean) => void
@@ -172,6 +173,8 @@ export interface SettingsPanelProps {
   onDisplayChange: DisplayChangeHandler
   shortcutLabel: string
   onSettingsChange: SettingsChangeHandler
+  purgeScope?: import('../../../native/contracts').PurgeScope | undefined
+  onPurgeScopeChange?: PurgeScopeChangeHandler | undefined
   onPurgeHistory: PurgeHistoryHandler
   purgeConfirmOpen?: boolean | undefined
   onPurgeConfirm: () => void
