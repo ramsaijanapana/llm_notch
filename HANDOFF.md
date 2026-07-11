@@ -5,11 +5,7 @@
 
 ## Commits
 
-Run `git log --oneline feat/contract-freeze-v2..HEAD` after the lane commit lands. Expected commit message:
-
-```
-feat(connectors): implement connector manager with preview, apply, health, rollback
-```
+- `c786eec` — `feat(connectors): implement connector manager with preview, apply, health, rollback`
 
 ## Public API — `notch-connectors`
 
