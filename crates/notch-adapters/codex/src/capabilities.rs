@@ -25,6 +25,8 @@ fn lifecycle_hooks_template() -> AdapterCapabilities {
     caps.observe_tools = true;
     caps.requires_external_trust = true;
     caps.fail_open_hooks = true;
+    caps.context_open = true;
+    caps.context_open_tier = ContextOpenTier::AppActivate;
     caps
 }
 

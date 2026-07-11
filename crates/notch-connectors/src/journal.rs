@@ -65,6 +65,10 @@ impl Journal {
             .cloned()
     }
 
+    pub fn list_backups(&self) -> Vec<BackupJournalEntry> {
+        self.state.lock().backups.clone()
+    }
+
     pub fn latest_backup_for_display_path(
         &self,
         source: AgentSource,

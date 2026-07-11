@@ -23,6 +23,7 @@ fn main() {
         "rollback_connector",
         "detect_connectors",
         "connector_health",
+        "list_connector_backups",
         "list_pending_decisions",
         "submit_decision",
     ];

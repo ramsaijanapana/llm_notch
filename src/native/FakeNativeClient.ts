@@ -33,6 +33,7 @@ import type {
   NativeDisplayOption,
   NativeHistoryRange,
   NativeHistoryResponse,
+  OpenSessionResult,
   OverlayMode,
   SessionEventPage,
   StreamErrorHandler,
@@ -256,7 +257,13 @@ export class FakeNativeClient implements NativeClient {
 
   async openDashboard(): Promise<void> {}
 
-  async openSession(_sessionId: string): Promise<void> {}
+  async openSession(_sessionId: string): Promise<OpenSessionResult> {
+    return {
+      contextOpenTier: 'appActivate',
+      activated: true,
+      message: 'Preview context navigation activated.',
+    }
+  }
 
   async setOverlayMode(mode: OverlayMode): Promise<void> {
     this.overlayMode = mode

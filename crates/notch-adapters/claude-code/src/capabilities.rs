@@ -26,6 +26,8 @@ pub fn capabilities(profile: &ClaudeVersionProfile) -> AdapterCapabilities {
         ClaudeVersionProfile::Known { .. } => {
             caps.respond_decisions = true;
             caps.decision_response = true;
+            caps.context_open = true;
+            caps.context_open_tier = ContextOpenTier::AppActivate;
         }
         ClaudeVersionProfile::Unknown { .. } => {
             caps.respond_decisions = false;

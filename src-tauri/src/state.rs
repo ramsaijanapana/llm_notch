@@ -878,12 +878,24 @@ impl HostState {
 }
 
 pub fn builtin_adapter_capabilities() -> Vec<AdapterCapabilities> {
-    vec![
+    use notch_protocol::ContextOpenTier;
+
+    let mut caps = vec![
         AdapterCapabilities::template(AgentSource::Cursor),
         AdapterCapabilities::template(AgentSource::ClaudeCode),
         AdapterCapabilities::template(AgentSource::Codex),
         AdapterCapabilities::template(AgentSource::Generic),
-    ]
+    ];
+    for entry in caps.iter_mut() {
+        match entry.source {
+            AgentSource::Cursor | AgentSource::ClaudeCode | AgentSource::Codex => {
+                entry.context_open = true;
+                entry.context_open_tier = ContextOpenTier::AppActivate;
+            }
+            _ => {}
+        }
+    }
+    caps
 }
 
 pub fn register_builtin_adapters(core: &DesktopCore) -> Result<(), String> {

@@ -200,6 +200,10 @@ impl ConnectorManager {
             .insert(format!("{source:?}"), at_ms);
     }
 
+    pub fn list_backups(&self) -> Vec<notch_protocol::BackupJournalEntry> {
+        self.journal.list_backups()
+    }
+
     pub fn purge_journal(&self, include_backups: bool) -> Result<(u32, u32), ConnectorError> {
         self.journal.purge_journal(include_backups)
     }

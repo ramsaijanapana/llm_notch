@@ -22,6 +22,8 @@ fn known_template() -> AdapterCapabilities {
     caps.observe_lifecycle = true;
     caps.observe_tools = true;
     caps.fail_open_hooks = true;
+    caps.context_open = true;
+    caps.context_open_tier = ContextOpenTier::AppActivate;
     caps
 }
 

@@ -7,34 +7,29 @@ This branch merges decision (5), context (6), UI (7), observability (8), and pla
 
 See [docs/parity/RC_STATUS.md](docs/parity/RC_STATUS.md) for the release-candidate parity matrix, test evidence, and remaining blockers.
 
-## Lane summaries (pre-merge)
-
-| Lane | Branch | Focus |
-|------|--------|-------|
-| 5 | `feat/lane-5-decision` | Decision broker, hook IPC, `list_pending_decisions` / `submit_decision` |
-| 6 | `feat/lane-6-context` | Context locators, `open_session` → `OpenSessionResult` |
-| 7 | `feat/lane-7-ui` | Onboarding, integrations panel, decision surface |
-| 8 | `feat/lane-8-observability` | Alerts, purge scopes, traffic probes, `record_event` |
-| 9 | `feat/lane-9-platform` | Overlay platform, CI, release gates |
-
 ## IPC surface (canonical)
 
-Decision commands use Lane 5 names:
+| Command | Args | Returns |
+|---------|------|---------|
+| `list_pending_decisions` | — | `DecisionRequest[]` |
+| `submit_decision` | `request_id`, `DecisionResponse` | `DecisionResponseRecord` |
+| `open_session` | `session_id` | `{ contextOpenTier, activated, message? }` |
+| `list_connector_backups` | — | `BackupJournalEntry[]` |
 
-- `list_pending_decisions` → `DecisionRequest[]`
-- `submit_decision` (`request_id`, `DecisionResponse`) → `DecisionResponseRecord`
+Renderer method names (`getPendingDecisions`, `respondDecision`) map to the Lane 5 Rust command names above.
 
-Context:
+## Context-open tiers (honest)
 
-- `open_session` → `{ contextOpenTier, activated, message? }`
+Cursor, Claude Code, and Codex advertise `contextOpenTier: appActivate` when process identity is available. Terminal hosts may achieve `windowFocus` or `exactPane` when verified.
 
-Integration:
+## Platform notes (lane 9)
 
-- `list_connector_backups` (wired in platform/connectors lane)
+- Windows overlay: topmost, non-activating tool window
+- macOS: AppKit panel emulation (not true NSPanel)
+- Helper sidecar resolved via `runtime/helper_path.rs`
 
-## Lane 8 observability notes
+## Observability notes (lane 8)
 
 - Resource alerts via tray/beacon (no focus steal)
 - Scoped purge with `includeBackups` default false
 - IPC ingest calls `ConnectorManager::record_event` for traffic probes
-- `PublicSettings.alertSoundEnabled` (default false)

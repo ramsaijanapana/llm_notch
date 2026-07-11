@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use notch_connectors::{ConnectorConfig, ConnectorManager, ConnectorError as ManagerError};
@@ -11,6 +10,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::commands::error::CommandError;
 use crate::commands::validation::{validate_agent_source, validate_plan_id};
+use crate::runtime::helper_path::resolve_helper_path;
 use crate::state::{HostState};
 
 type SharedManager = Arc<Mutex<ConnectorManager>>;
@@ -45,40 +45,6 @@ fn connector_config(app: &AppHandle) -> Result<ConnectorConfig, CommandError> {
         workspace_root: std::env::current_dir().ok(),
         user_scope_root: None,
     })
-}
-
-fn resolve_helper_path(app: &AppHandle) -> PathBuf {
-    if let Ok(path) = std::env::var("LLM_NOTCH_HOOK_BIN") {
-        let path = PathBuf::from(path);
-        if path.is_file() {
-            return path;
-        }
-    }
-
-    if let Ok(resource) = app.path().resource_dir() {
-        let bundled = resource.join(if cfg!(windows) {
-            "llm-notch-hook.exe"
-        } else {
-            "llm-notch-hook"
-        });
-        if bundled.is_file() {
-            return bundled;
-        }
-    }
-
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let target_helper = manifest_dir
-        .join("../target/debug")
-        .join(if cfg!(windows) {
-            "llm-notch-hook.exe"
-        } else {
-            "llm-notch-hook"
-        });
-    if target_helper.is_file() {
-        return target_helper;
-    }
-
-    target_helper
 }
 
 fn map_connector_error(error: ManagerError) -> CommandError {
@@ -228,6 +194,14 @@ fn connector_apply_error(error: ManagerError, partial: Option<Vec<notch_protocol
 pub fn detect_connectors(app: AppHandle) -> Result<Vec<notch_connectors::DetectedConnector>, CommandError> {
     let manager = manager(&app)?;
     manager.lock().detect_all().map_err(map_connector_error)
+}
+
+#[tauri::command]
+pub fn list_connector_backups(
+    app: AppHandle,
+) -> Result<Vec<notch_protocol::BackupJournalEntry>, CommandError> {
+    let manager = manager(&app)?;
+    Ok(manager.lock().list_backups())
 }
 
 /// Records IPC ingest traffic for connector health probes (Lane 8 hook).

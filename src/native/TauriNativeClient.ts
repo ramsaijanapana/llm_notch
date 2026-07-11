@@ -25,6 +25,7 @@ import type {
   NativeDisplayOption,
   NativeHistoryRange,
   NativeHistoryResponse,
+  OpenSessionResult,
   OverlayMode,
   SessionEventPage,
   StreamErrorHandler,
@@ -128,8 +129,12 @@ export class TauriNativeClient implements NativeClient {
     await this.invokeVoid(NATIVE_COMMANDS.openDashboard)
   }
 
-  async openSession(sessionId: string): Promise<void> {
-    await this.invokeVoid(NATIVE_COMMANDS.openSession, { sessionId })
+  async openSession(sessionId: string): Promise<OpenSessionResult> {
+    try {
+      return await invoke<OpenSessionResult>(NATIVE_COMMANDS.openSession, { sessionId })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to open session context')
+    }
   }
 
   async setOverlayMode(mode: OverlayMode): Promise<void> {
@@ -270,7 +275,7 @@ export class TauriNativeClient implements NativeClient {
     response: DecisionResponse,
   ): Promise<DecisionResponseRecord> {
     try {
-      return await invoke<DecisionResponseRecord>(NATIVE_COMMANDS.respondDecision, {
+      return await invoke<DecisionResponseRecord>(NATIVE_COMMANDS.submitDecision, {
         requestId,
         response,
       })

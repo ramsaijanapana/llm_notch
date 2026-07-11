@@ -24,8 +24,8 @@ export const NATIVE_COMMANDS = {
   rollbackConnector: 'rollback_connector',
   connectorHealth: 'connector_health',
   listConnectorBackups: 'list_connector_backups',
-  respondDecision: 'respond_decision',
-  getPendingDecisions: 'get_pending_decisions',
+  getPendingDecisions: 'list_pending_decisions',
+  submitDecision: 'submit_decision',
 } as const
 
 export type NativeCommandName = (typeof NATIVE_COMMANDS)[keyof typeof NATIVE_COMMANDS]

@@ -7,6 +7,7 @@ import type {
   ConnectorPlanPreview,
   ConnectorScope,
   ConnectorUserStatus,
+  ContextOpenTier,
   DecisionRequest,
   DecisionResponse,
   DecisionResponseRecord,
@@ -116,6 +117,12 @@ export interface SessionEventPage {
   hasMore: boolean
 }
 
+export interface OpenSessionResult {
+  contextOpenTier: ContextOpenTier
+  activated: boolean
+  message?: string
+}
+
 export type StreamFrameHandler = (frame: StreamFrame) => void
 export type StreamErrorHandler = (error: Error) => void
 
@@ -125,7 +132,7 @@ export interface NativeClient {
   bootstrap(): Promise<BootstrapResult>
   subscribe(onFrame: StreamFrameHandler, onError: StreamErrorHandler): Promise<StreamSubscription>
   openDashboard(): Promise<void>
-  openSession(sessionId: string): Promise<void>
+  openSession(sessionId: string): Promise<OpenSessionResult>
   setOverlayMode(mode: OverlayMode): Promise<void>
   acknowledgeLocalAttention(sessionId: string): Promise<void>
   updateSettings(settings: PublicSettings): Promise<PublicSettings>
