@@ -37,7 +37,7 @@ pub fn preview_connector_change(source: AgentSource) -> Result<ConnectorPlanPrev
         source,
         scope: ConnectorScope::User,
         summary: "Preview only: review the versioned template under integrations/; no file changes were made.".into(),
-        expires_at_ms: SystemClock.now_ms() + i64::from(notch_protocol::CONNECTOR_PLAN_TTL_MS),
+        expires_at_ms: SystemClock.now_ms() + i64::try_from(notch_protocol::CONNECTOR_PLAN_TTL_MS).expect("CONNECTOR_PLAN_TTL_MS fits in i64"),
         files: Vec::new(),
         external_trust_actions: Vec::new(),
         backup_display_hint: None,
