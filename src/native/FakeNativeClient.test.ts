@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createFakeNativeClient } from './FakeNativeClient.ts'
+import type { ConnectorHealthEntry } from './types.ts'
 
 describe('FakeNativeClient', () => {
   afterEach(() => {
@@ -45,7 +46,12 @@ describe('FakeNativeClient', () => {
     const health = await client.getIntegrationHealth()
 
     expect(health.adapters).toHaveLength(3)
-    expect(['healthy', 'degraded', 'unavailable']).toContain(health.overall)
+    expect(health.adapters.every((entry: ConnectorHealthEntry) => entry.probes.length >= 4)).toBe(
+      true,
+    )
+    expect(['notInstalled', 'waitingFirstEvent', 'actionNeeded']).toContain(
+      health.adapters[0]?.status,
+    )
   })
 
   it('acknowledges local attention without simulating vendor approvals', async () => {

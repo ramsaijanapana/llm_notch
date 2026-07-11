@@ -95,37 +95,7 @@ pub enum RequestedOverlayMode {
     Expanded,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum IntegrationHealthStatus {
-    Healthy,
-    Degraded,
-    Unavailable,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IntegrationHealthEntry {
-    pub source: AgentSource,
-    pub status: IntegrationHealthStatus,
-    pub capabilities: AdapterCapabilities,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IntegrationHealthReport {
-    pub checked_at_ms: i64,
-    pub overall: IntegrationHealthStatus,
-    pub adapters: Vec<IntegrationHealthEntry>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConnectorPreview {
-    pub plan_id: String,
-    pub source: AgentSource,
-    pub summary: String,
-    pub expires_at_ms: i64,
-}
+pub use notch_protocol::{
+    ConnectorApplyError, ConnectorApplyResult, ConnectorHealthEntry, ConnectorHealthReport,
+    ConnectorJournalEntry, ConnectorPlanPreview, PurgeResult, PurgeScope,
+};

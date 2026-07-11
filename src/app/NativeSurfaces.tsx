@@ -6,6 +6,7 @@ import {
   type DashboardTab,
   type IntegrationCardState,
   type IntegrationDiffPreview,
+  type IntegrationHealth,
   IntegrationsPanel,
   type MetricSeriesCoverage,
   type MetricsHistoryBundle,
@@ -25,7 +26,7 @@ import {
   OverlayShell,
 } from '../features/native-overlay'
 import type { AgentSession, AgentSource, AppSnapshot, PublicSettings } from '../native/contracts.ts'
-import type { IntegrationHealthReport, NativeHistoryResponse } from '../native/types.ts'
+import type { ConnectorUserStatus, IntegrationHealthReport, NativeHistoryResponse } from '../native/types.ts'
 import { useNativeState } from '../state/NativeStateProvider.tsx'
 
 const SHORTCUT_LABEL = 'CmdOrCtrl+Shift+Space'
@@ -275,6 +276,23 @@ export function persistedHistoryBundle(
   }
 }
 
+function mapConnectorStatusToDashboardHealth(
+  status: ConnectorUserStatus | undefined,
+): IntegrationHealth {
+  switch (status) {
+    case 'connected':
+      return 'healthy'
+    case 'notFound':
+      return 'unknown'
+    case 'error':
+      return 'offline'
+    case undefined:
+      return 'unknown'
+    default:
+      return 'degraded'
+  }
+}
+
 function templatePath(source: AgentSource): string {
   switch (source) {
     case 'cursor':
@@ -467,12 +485,7 @@ export function NativeDashboardSurface() {
       adapter,
       configured: lastEventAtMs !== undefined,
       lastEventAtMs,
-      health:
-        healthEntry?.status === 'healthy'
-          ? 'healthy'
-          : healthEntry?.status === 'unavailable'
-            ? 'offline'
-            : 'degraded',
+      health: mapConnectorStatusToDashboardHealth(healthEntry?.status),
       previewConfig: `Read-only template: ${templatePath(adapter.source)}`,
     }
   })

@@ -943,14 +943,10 @@ mod tests {
     #[test]
     fn integration_health_persists() {
         let repo = SqliteRepository::in_memory().unwrap();
-        let caps = AdapterCapabilities {
-            source: AgentSource::Cursor,
-            events: true,
-            attention: AttentionCapability::Partial,
-            decision_response: false,
-            context_open: true,
-            process_attribution: AttributionQuality::Shared,
-        };
+        let mut caps = AdapterCapabilities::template(AgentSource::Cursor);
+        caps.attention = AttentionCapability::Partial;
+        caps.context_open = true;
+        caps.process_attribution = AttributionQuality::Shared;
         repo.upsert_integration(&caps, true, Some("ok"), 100)
             .unwrap();
         let loaded = repo.load_integrations().unwrap();

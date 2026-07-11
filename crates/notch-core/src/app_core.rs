@@ -977,16 +977,13 @@ mod tests {
     }
 
     fn register_cursor<R: SessionRepository, S: StreamSink>(inner: &AppCore<ManualClock, R, S>) {
+        let mut capabilities = AdapterCapabilities::template(AgentSource::Cursor);
+        capabilities.attention = AttentionCapability::Partial;
+        capabilities.context_open = true;
+        capabilities.process_attribution = AttributionQuality::Shared;
         inner
             .ingest(IngestCommand::IntegrationHealth(IntegrationHealthCommand {
-                capabilities: AdapterCapabilities {
-                    source: AgentSource::Cursor,
-                    events: true,
-                    attention: AttentionCapability::Partial,
-                    decision_response: false,
-                    context_open: true,
-                    process_attribution: AttributionQuality::Shared,
-                },
+                capabilities,
                 healthy: true,
                 message: None,
                 occurred_at_ms: 0,
@@ -1061,15 +1058,10 @@ mod tests {
         let repo = Arc::new(SqliteRepository::in_memory().unwrap());
         let stream = Arc::new(VecStreamSink::new());
         let core = AppCore::new(ManualClock(0), repo, stream, default_settings()).unwrap();
+        let mut capabilities = AdapterCapabilities::template(AgentSource::Codex);
+        capabilities.events = false;
         core.ingest(IngestCommand::IntegrationHealth(IntegrationHealthCommand {
-            capabilities: AdapterCapabilities {
-                source: AgentSource::Codex,
-                events: false,
-                attention: AttentionCapability::None,
-                decision_response: false,
-                context_open: false,
-                process_attribution: AttributionQuality::Unknown,
-            },
+            capabilities,
             healthy: true,
             message: None,
             occurred_at_ms: 0,
@@ -1226,14 +1218,7 @@ mod tests {
         let stream = Arc::new(VecStreamSink::new());
         let core = AppCore::new(ManualClock(0), repo, stream, default_settings()).unwrap();
         core.ingest(IngestCommand::IntegrationHealth(IntegrationHealthCommand {
-            capabilities: AdapterCapabilities {
-                source: AgentSource::Cursor,
-                events: true,
-                attention: AttentionCapability::None,
-                decision_response: false,
-                context_open: false,
-                process_attribution: AttributionQuality::Unknown,
-            },
+            capabilities: AdapterCapabilities::template(AgentSource::Cursor),
             healthy: true,
             message: None,
             occurred_at_ms: 0,

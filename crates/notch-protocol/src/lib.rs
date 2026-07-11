@@ -6,10 +6,20 @@
 //! version without explicit coordination. Additive changes require a protocol
 //! version bump.
 
+pub mod connector;
 pub mod constants;
+pub mod decision;
+pub mod health;
+pub mod migration;
+pub mod purge;
 pub mod types;
 
+pub use connector::*;
 pub use constants::*;
+pub use decision::*;
+pub use health::*;
+pub use migration::*;
+pub use purge::*;
 pub use types::*;
 
 #[cfg(test)]
@@ -166,6 +176,18 @@ mod tests {
             .insert("progress".into(), json!(0.5));
 
         assert!(serde_json::from_value::<AgentSession>(value).is_err());
+    }
+
+    #[test]
+    fn adapter_capabilities_v2_fields_default_and_round_trip() {
+        let caps = AdapterCapabilities::template(AgentSource::Cursor);
+        let value = serde_json::to_value(&caps).expect("serialize");
+        assert_eq!(value["failOpenHooks"], true);
+        assert_eq!(value["contextOpenTier"], "none");
+
+        let decoded: AdapterCapabilities = serde_json::from_value(value).expect("deserialize");
+        assert_eq!(decoded.source, AgentSource::Cursor);
+        assert!(decoded.fail_open_hooks);
     }
 
     #[test]

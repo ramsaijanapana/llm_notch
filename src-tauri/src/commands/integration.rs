@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use notch_protocol::{AdapterCapabilities, AgentSource};
+use notch_protocol::{
+    AdapterCapabilities, AgentSource, ConnectorHealthEntry, ConnectorHealthReport,
+    ConnectorPlanPreview, ConnectorScope, ConnectorUserStatus, HealthProbeAxis,
+    HealthProbeOutcome, HealthProbeResult, map_probes_to_user_status,
+};
 use tauri::State;
 use uuid::Uuid;
 
 use crate::commands::error::CommandError;
-use crate::commands::types::{
-    ConnectorPreview, IntegrationHealthEntry, IntegrationHealthReport, IntegrationHealthStatus,
-};
 use crate::commands::validation::{validate_agent_source, validate_plan_id};
 use crate::state::{HostState, SystemClock};
 use notch_core::Clock;
@@ -15,42 +16,31 @@ use notch_core::Clock;
 #[tauri::command]
 pub fn integration_health(
     host: State<'_, Arc<HostState>>,
-) -> Result<IntegrationHealthReport, CommandError> {
+) -> Result<ConnectorHealthReport, CommandError> {
     let adapters = host
         .snapshot()
         .adapters
         .into_iter()
         .map(health_entry)
         .collect::<Vec<_>>();
-    let overall = if adapters.is_empty()
-        || adapters
-            .iter()
-            .all(|entry| entry.status == IntegrationHealthStatus::Unavailable)
-    {
-        IntegrationHealthStatus::Unavailable
-    } else if adapters
-        .iter()
-        .all(|entry| entry.status == IntegrationHealthStatus::Healthy)
-    {
-        IntegrationHealthStatus::Healthy
-    } else {
-        IntegrationHealthStatus::Degraded
-    };
-    Ok(IntegrationHealthReport {
+    Ok(ConnectorHealthReport {
         checked_at_ms: SystemClock.now_ms(),
-        overall,
         adapters,
     })
 }
 
 #[tauri::command]
-pub fn preview_connector_change(source: AgentSource) -> Result<ConnectorPreview, CommandError> {
+pub fn preview_connector_change(source: AgentSource) -> Result<ConnectorPlanPreview, CommandError> {
     let source = validate_agent_source(source)?;
-    Ok(ConnectorPreview {
+    Ok(ConnectorPlanPreview {
         plan_id: format!("preview-{}", Uuid::new_v4().simple()),
         source,
+        scope: ConnectorScope::User,
         summary: "Preview only: review the versioned template under integrations/; no file changes were made.".into(),
-        expires_at_ms: SystemClock.now_ms() + 300_000,
+        expires_at_ms: SystemClock.now_ms() + i64::from(notch_protocol::CONNECTOR_PLAN_TTL_MS),
+        files: Vec::new(),
+        external_trust_actions: Vec::new(),
+        backup_display_hint: None,
     })
 }
 
@@ -76,7 +66,7 @@ pub fn remove_connector(source: AgentSource) -> Result<(), CommandError> {
 pub fn connector_health(
     source: AgentSource,
     host: State<'_, Arc<HostState>>,
-) -> Result<IntegrationHealthEntry, CommandError> {
+) -> Result<ConnectorHealthEntry, CommandError> {
     let source = validate_agent_source(source)?;
     host.snapshot()
         .adapters
@@ -86,19 +76,56 @@ pub fn connector_health(
         .ok_or_else(|| CommandError::NotFound("adapter".into()))
 }
 
-fn health_entry(capabilities: AdapterCapabilities) -> IntegrationHealthEntry {
-    let status = if capabilities.events {
-        IntegrationHealthStatus::Degraded
-    } else {
-        IntegrationHealthStatus::Unavailable
-    };
-    IntegrationHealthEntry {
+fn health_entry(capabilities: AdapterCapabilities) -> ConnectorHealthEntry {
+    let probes = template_loaded_probes(&capabilities);
+    let status = map_probes_to_user_status(&probes);
+    ConnectorHealthEntry {
         source: capabilities.source,
         status,
+        probes,
         capabilities,
         detail: Some(
             "Capability template loaded; connector installation and recent-event health are not independently verified."
                 .into(),
         ),
     }
+}
+
+fn template_loaded_probes(capabilities: &AdapterCapabilities) -> Vec<HealthProbeResult> {
+    vec![
+        HealthProbeResult {
+            axis: HealthProbeAxis::Installation,
+            outcome: HealthProbeOutcome::Warn,
+            failure_kind: None,
+            detail: Some("Template loaded; install state not verified".into()),
+        },
+        HealthProbeResult {
+            axis: HealthProbeAxis::Trust,
+            outcome: if capabilities.requires_external_trust {
+                HealthProbeOutcome::Warn
+            } else {
+                HealthProbeOutcome::Ok
+            },
+            failure_kind: None,
+            detail: capabilities.requires_external_trust.then_some(
+                "External trust step may be required (e.g. Codex /hooks review)".into(),
+            ),
+        },
+        HealthProbeResult {
+            axis: HealthProbeAxis::Traffic,
+            outcome: if capabilities.events {
+                HealthProbeOutcome::Warn
+            } else {
+                HealthProbeOutcome::Fail
+            },
+            failure_kind: None,
+            detail: Some("No recent events observed".into()),
+        },
+        HealthProbeResult {
+            axis: HealthProbeAxis::Helper,
+            outcome: HealthProbeOutcome::Ok,
+            failure_kind: None,
+            detail: None,
+        },
+    ]
 }

@@ -731,38 +731,10 @@ impl HostState {
 
 pub fn builtin_adapter_capabilities() -> Vec<AdapterCapabilities> {
     vec![
-        AdapterCapabilities {
-            source: AgentSource::Cursor,
-            events: true,
-            attention: AttentionCapability::None,
-            decision_response: false,
-            context_open: false,
-            process_attribution: AttributionQuality::Unknown,
-        },
-        AdapterCapabilities {
-            source: AgentSource::ClaudeCode,
-            events: true,
-            attention: AttentionCapability::Partial,
-            decision_response: false,
-            context_open: false,
-            process_attribution: AttributionQuality::Unknown,
-        },
-        AdapterCapabilities {
-            source: AgentSource::Codex,
-            events: true,
-            attention: AttentionCapability::None,
-            decision_response: false,
-            context_open: false,
-            process_attribution: AttributionQuality::Unknown,
-        },
-        AdapterCapabilities {
-            source: AgentSource::Generic,
-            events: true,
-            attention: AttentionCapability::Full,
-            decision_response: false,
-            context_open: false,
-            process_attribution: AttributionQuality::Unknown,
-        },
+        AdapterCapabilities::template(AgentSource::Cursor),
+        AdapterCapabilities::template(AgentSource::ClaudeCode),
+        AdapterCapabilities::template(AgentSource::Codex),
+        AdapterCapabilities::template(AgentSource::Generic),
     ]
 }
 

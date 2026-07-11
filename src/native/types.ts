@@ -1,10 +1,24 @@
 import type {
   AdapterCapabilities,
   AppSnapshot,
+  ConnectorHealthReport,
+  ConnectorPlanPreview,
+  ConnectorUserStatus,
+  HealthProbeResult,
   PublicSettings,
   SessionEvent,
   StreamFrame,
 } from './contracts.ts'
+
+export type {
+  ConnectorHealthEntry,
+  ConnectorHealthReport,
+  ConnectorPlanPreview,
+  ConnectorUserStatus,
+  HealthProbeResult,
+} from './contracts.ts'
+
+export { mapProbesToUserStatus } from './contracts.ts'
 
 export type NativeClientMode = 'tauri' | 'preview'
 
@@ -20,27 +34,23 @@ export interface StreamSubscription {
   unsubscribe(): Promise<void>
 }
 
-export type IntegrationHealthStatus = 'healthy' | 'degraded' | 'unavailable'
+/** @deprecated Use ConnectorUserStatus from contracts.ts */
+export type IntegrationHealthStatus = ConnectorUserStatus
 
+/** @deprecated Use ConnectorHealthEntry from contracts.ts */
 export interface IntegrationHealthEntry {
   source: AdapterCapabilities['source']
-  status: IntegrationHealthStatus
+  status: ConnectorUserStatus
+  probes: HealthProbeResult[]
   capabilities: AdapterCapabilities
   detail?: string
 }
 
-export interface IntegrationHealthReport {
-  checkedAtMs: number
-  overall: IntegrationHealthStatus
-  adapters: IntegrationHealthEntry[]
-}
+/** @deprecated Use ConnectorHealthReport from contracts.ts */
+export type IntegrationHealthReport = ConnectorHealthReport
 
-export interface ConnectorPreview {
-  planId: string
-  source: AdapterCapabilities['source']
-  summary: string
-  expiresAtMs: number
-}
+/** @deprecated Use ConnectorPlanPreview from contracts.ts */
+export type ConnectorPreview = ConnectorPlanPreview
 
 export type NativeHistoryRange = '15m' | '1h' | '24h'
 
@@ -115,10 +125,11 @@ export interface NativeClient {
     limit?: number,
   ): Promise<SessionEventPage>
   listDisplays(): Promise<NativeDisplayOption[]>
-  getIntegrationHealth(): Promise<IntegrationHealthReport>
-  previewConnector(source: AdapterCapabilities['source']): Promise<ConnectorPreview>
+  getIntegrationHealth(): Promise<ConnectorHealthReport>
+  previewConnector(source: AdapterCapabilities['source']): Promise<ConnectorPlanPreview>
 }
 
 export interface CreateNativeClientOptions {
   forcePreview?: boolean
 }
+

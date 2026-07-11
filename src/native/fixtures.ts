@@ -27,6 +27,11 @@ export const PREVIEW_ADAPTERS: AdapterCapabilities[] = [
     decisionResponse: false,
     contextOpen: false,
     processAttribution: 'unknown',
+    contextOpenTier: 'none',
+    observeLifecycle: true,
+    observeTools: true,
+    failOpenHooks: true,
+    requiresExternalTrust: false,
   },
   {
     source: 'claudeCode',
@@ -35,6 +40,11 @@ export const PREVIEW_ADAPTERS: AdapterCapabilities[] = [
     decisionResponse: false,
     contextOpen: false,
     processAttribution: 'unknown',
+    contextOpenTier: 'none',
+    observeLifecycle: true,
+    observeTools: true,
+    failOpenHooks: true,
+    requiresExternalTrust: false,
   },
   {
     source: 'codex',
@@ -43,6 +53,11 @@ export const PREVIEW_ADAPTERS: AdapterCapabilities[] = [
     decisionResponse: false,
     contextOpen: false,
     processAttribution: 'unknown',
+    contextOpenTier: 'none',
+    observeLifecycle: true,
+    observeTools: true,
+    failOpenHooks: true,
+    requiresExternalTrust: true,
   },
 ]
 

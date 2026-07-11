@@ -106,6 +106,23 @@ pub enum AttentionCapability {
     None,
 }
 
+/// Granularity of context-open support advertised by an adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub enum ContextOpenTier {
+    None,
+    AppActivate,
+    WindowFocus,
+    ExactPane,
+}
+
+impl Default for ContextOpenTier {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 /// Stable identity for an OS process associated with a session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -249,6 +266,26 @@ pub struct SessionEvent {
     pub tool_name: Option<String>,
 }
 
+/// Observation paths supported by an adapter (Sol capability matrix).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, rename_all = "camelCase")]
+pub struct AdapterObservationPaths {
+    pub lifecycle_events: bool,
+    pub tool_events: bool,
+    pub attention_events: bool,
+}
+
+/// Response paths supported by an adapter (Sol capability matrix).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, rename_all = "camelCase")]
+pub struct AdapterResponsePaths {
+    pub decisions: bool,
+    pub questions: bool,
+    pub context_open_tier: ContextOpenTier,
+}
+
 /// Capability flags advertised by an adapter integration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -260,6 +297,76 @@ pub struct AdapterCapabilities {
     pub decision_response: bool,
     pub context_open: bool,
     pub process_attribution: AttributionQuality,
+    /// Additive v2 field; supersedes coarse `context_open` when non-`none`.
+    #[serde(default)]
+    pub context_open_tier: ContextOpenTier,
+    #[serde(default)]
+    pub observe_lifecycle: bool,
+    #[serde(default)]
+    pub observe_tools: bool,
+    #[serde(default)]
+    pub respond_decisions: bool,
+    #[serde(default)]
+    pub respond_questions: bool,
+    #[serde(default = "default_fail_open_hooks")]
+    pub fail_open_hooks: bool,
+    #[serde(default)]
+    pub requires_external_trust: bool,
+}
+
+fn default_fail_open_hooks() -> bool {
+    true
+}
+
+impl AdapterCapabilities {
+    /// Shipped template defaults aligned with `docs/integrations/capability-matrix.md`.
+    pub fn template(source: AgentSource) -> Self {
+        let (attention, requires_external_trust) = match source {
+            AgentSource::ClaudeCode => (AttentionCapability::Partial, false),
+            AgentSource::Codex => (AttentionCapability::None, true),
+            AgentSource::Generic => (AttentionCapability::Full, false),
+            AgentSource::Cursor | AgentSource::Unknown => (AttentionCapability::None, false),
+        };
+
+        Self {
+            source,
+            events: source != AgentSource::Unknown,
+            attention,
+            decision_response: false,
+            context_open: false,
+            process_attribution: AttributionQuality::Unknown,
+            context_open_tier: ContextOpenTier::None,
+            observe_lifecycle: source != AgentSource::Unknown,
+            observe_tools: source != AgentSource::Unknown,
+            respond_decisions: false,
+            respond_questions: false,
+            fail_open_hooks: true,
+            requires_external_trust,
+        }
+    }
+
+    /// Derives the Sol matrix observation/response split from wire flags.
+    pub fn observation_paths(&self) -> AdapterObservationPaths {
+        AdapterObservationPaths {
+            lifecycle_events: self.observe_lifecycle || self.events,
+            tool_events: self.observe_tools || self.events,
+            attention_events: self.attention != AttentionCapability::None,
+        }
+    }
+
+    pub fn response_paths(&self) -> AdapterResponsePaths {
+        AdapterResponsePaths {
+            decisions: self.respond_decisions || self.decision_response,
+            questions: self.respond_questions,
+            context_open_tier: if self.context_open_tier != ContextOpenTier::None {
+                self.context_open_tier
+            } else if self.context_open {
+                ContextOpenTier::AppActivate
+            } else {
+                ContextOpenTier::None
+            },
+        }
+    }
 }
 
 /// User-visible settings safe to expose to overlay and dashboard surfaces.

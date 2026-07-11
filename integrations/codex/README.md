@@ -1,13 +1,12 @@
 # Codex integration template
 
-**Status:** Beta / capability-detected. **Requires explicit trust.** Not installed automatically.
+**Status:** Stable / enabled by default in current Codex builds. **Requires explicit trust in `/hooks`.** Not installed automatically.
 
 ## Before you enable
 
-1. Confirm your Codex build supports lifecycle hooks (`features.codex_hooks` or equivalent).
-2. Run `codex -c features.codex_hooks=true` (flag name may vary by version).
-3. Open `/hooks` in the Codex CLI and **review + trust** each llm_notch hook definition.
-4. Untrusted hooks are skipped — llm_notch will show the integration as disconnected.
+1. Confirm your Codex build supports lifecycle hooks (`features.hooks`; the legacy `features.codex_hooks` flag is deprecated).
+2. Open `/hooks` in the Codex CLI and **review + trust** each llm_notch hook definition.
+3. Untrusted hooks are skipped — llm_notch will show the integration as `actionNeeded` until trust is complete.
 
 ## Capability honesty (V1)
 

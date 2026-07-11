@@ -72,7 +72,7 @@ The shipped Cursor template has no validated process identity, so attribution is
 }
 ```
 
-**Beta / trust-gated:** Hooks do not run until reviewed in Codex `/hooks`. Feature flag may be required (`features.codex_hooks=true`).
+**Beta / trust-gated:** Hooks do not run until reviewed in Codex `/hooks`. Enable via `features.hooks` (current); `features.codex_hooks` is deprecated.
 
 **PreToolUse limits:** Codex documentation notes not every tool path is interceptable.
 

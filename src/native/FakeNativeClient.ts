@@ -13,9 +13,10 @@ import { resolveNativePreviewScenario } from './previewRouting.ts'
 import { coalesceStreamFrames } from './streamProcessor.ts'
 import type {
   BootstrapResult,
-  ConnectorPreview,
-  IntegrationHealthEntry,
-  IntegrationHealthReport,
+  ConnectorHealthEntry,
+  ConnectorHealthReport,
+  ConnectorPlanPreview,
+  HealthProbeResult,
   NativeClient,
   NativeDisplayOption,
   NativeHistoryRange,
@@ -29,32 +30,39 @@ import type {
 
 const METRIC_TICK_MS = 1_000
 
-function integrationStatusForAdapter(
-  adapter: IntegrationHealthEntry['capabilities'],
-): IntegrationHealthEntry['status'] {
-  if (!adapter.events) {
-    return 'unavailable'
+function previewHealthEntry(
+  capabilities: ConnectorHealthEntry['capabilities'],
+): ConnectorHealthEntry {
+  const probes: HealthProbeResult[] = [
+    {
+      axis: 'installation',
+      outcome: 'warn',
+      detail: 'Preview template loaded; install state not verified',
+    },
+    {
+      axis: 'trust',
+      outcome: capabilities.requiresExternalTrust ? 'warn' : 'ok',
+      ...(capabilities.requiresExternalTrust
+        ? { failureKind: 'trustRequired' as const }
+        : {}),
+    },
+    {
+      axis: 'traffic',
+      outcome: capabilities.events ? 'warn' : 'fail',
+      ...(capabilities.events ? {} : { failureKind: 'noTraffic' as const }),
+    },
+    { axis: 'helper', outcome: 'ok' },
+  ]
+
+  return {
+    source: capabilities.source,
+    status: capabilities.events ? 'waitingFirstEvent' : 'notInstalled',
+    probes,
+    capabilities,
+    detail: capabilities.events
+      ? 'Preview adapter ready; awaiting first event'
+      : 'Preview adapter limited',
   }
-
-  if (adapter.attention === 'none' || adapter.processAttribution === 'unknown') {
-    return 'degraded'
-  }
-
-  return 'healthy'
-}
-
-function summarizeIntegrationHealth(
-  adapters: IntegrationHealthEntry[],
-): IntegrationHealthReport['overall'] {
-  if (adapters.every((entry) => entry.status === 'healthy')) {
-    return 'healthy'
-  }
-
-  if (adapters.some((entry) => entry.status === 'healthy' || entry.status === 'degraded')) {
-    return 'degraded'
-  }
-
-  return 'unavailable'
 }
 
 export class FakeNativeClient implements NativeClient {
@@ -104,7 +112,7 @@ export class FakeNativeClient implements NativeClient {
     onError: StreamErrorHandler,
   ): Promise<StreamSubscription> {
     if (this.subscribed) {
-      throw new NativeClientError('not-available', 'Preview stream is already active')
+      throw new NativeClientError('stream-closed', 'Preview stream already active')
     }
 
     this.subscribed = true
@@ -119,12 +127,6 @@ export class FakeNativeClient implements NativeClient {
       })
     }, METRIC_TICK_MS)
 
-    if (resolveNativePreviewScenario() === 'resync') {
-      queueMicrotask(() => {
-        this.simulateResyncRequired('Preview stream requested resync')
-      })
-    }
-
     return {
       unsubscribe: async () => {
         await this.stopStream()
@@ -132,13 +134,9 @@ export class FakeNativeClient implements NativeClient {
     }
   }
 
-  async openDashboard(): Promise<void> {
-    return
-  }
+  async openDashboard(): Promise<void> {}
 
-  async openSession(_sessionId: string): Promise<void> {
-    return
-  }
+  async openSession(_sessionId: string): Promise<void> {}
 
   async setOverlayMode(mode: OverlayMode): Promise<void> {
     this.overlayMode = mode
@@ -146,19 +144,6 @@ export class FakeNativeClient implements NativeClient {
 
   async acknowledgeLocalAttention(sessionId: string): Promise<void> {
     this.acknowledgedSessions.add(sessionId)
-    const session = createPreviewSnapshot().sessions.find((entry) => entry.id === sessionId)
-    if (!session) {
-      return
-    }
-
-    this.emit({
-      sequence: ++this.sequence,
-      emittedAtMs: Date.now(),
-      payload: {
-        type: 'sessionUpsert',
-        session: { ...session, attention: 'none', status: 'running' },
-      },
-    })
   }
 
   async updateSettings(settings: PublicSettings): Promise<PublicSettings> {
@@ -171,59 +156,35 @@ export class FakeNativeClient implements NativeClient {
     return this.settings
   }
 
-  async purgeHistory(): Promise<void> {
-    return
-  }
+  async purgeHistory(): Promise<void> {}
 
   async getHistory(range: NativeHistoryRange): Promise<NativeHistoryResponse> {
-    const metrics = createPreviewMetricsFrame()
-    const duration = range === '15m' ? 15 * 60_000 : range === '1h' ? 60 * 60_000 : 24 * 60 * 60_000
     const endMs = Date.now()
-    const series = (points: NativeHistoryResponse['host']['points']) => ({
-      points,
-      actualFirstMs: points[0]?.atMs ?? null,
-      actualLastMs: points.at(-1)?.atMs ?? null,
-      totalPoints: points.length,
-      returnedPoints: points.length,
+    const sinceMs =
+      range === '15m'
+        ? endMs - 15 * 60 * 1_000
+        : range === '1h'
+          ? endMs - 60 * 60 * 1_000
+          : endMs - 24 * 60 * 60 * 1_000
+
+    const emptySeries = {
+      points: [],
+      actualFirstMs: null,
+      actualLastMs: null,
+      totalPoints: 0,
+      returnedPoints: 0,
       downsampled: false,
       truncated: false,
-    })
+    }
+
     return {
       range,
-      sinceMs: endMs - duration,
+      sinceMs,
       endMs,
-      host: series([
-        {
-          atMs: metrics.host.atMs,
-          cpuHostPercent: metrics.host.cpuHostPercent,
-          cpuCorePercent: metrics.host.cpuHostPercent,
-          rssBytes: metrics.host.usedMemoryBytes,
-        },
-      ]),
-      aggregate: series([
-        {
-          atMs: metrics.aggregate.atMs,
-          cpuHostPercent: metrics.aggregate.cpuHostPercent,
-          cpuCorePercent: metrics.aggregate.cpuCorePercent,
-          rssBytes: metrics.aggregate.rssBytes,
-        },
-      ]),
-      agents: Object.entries(metrics.agents).map(([sessionId, sample]) => ({
-        sessionId,
-        ...series([
-          {
-            atMs: sample.atMs,
-            cpuHostPercent: sample.cpuHostPercent,
-            cpuCorePercent: sample.cpuCorePercent,
-            rssBytes: sample.rssBytes,
-          },
-        ]),
-      })),
+      host: emptySeries,
+      aggregate: emptySeries,
+      agents: [],
     }
-  }
-
-  async listDisplays(): Promise<NativeDisplayOption[]> {
-    return [{ id: 'preview-primary', label: 'Preview display', primary: true }]
   }
 
   async getSessionEvents(
@@ -231,12 +192,11 @@ export class FakeNativeClient implements NativeClient {
     beforeSequence?: number,
     limit = 50,
   ): Promise<SessionEventPage> {
-    const eligible = PREVIEW_EVENTS.filter(
-      (event) =>
-        event.sessionId === sessionId &&
-        (beforeSequence === undefined || event.sequence < beforeSequence),
-    ).sort((left, right) => right.sequence - left.sequence)
+    const eligible = PREVIEW_EVENTS.filter((event) => event.sessionId === sessionId)
+      .filter((event) => beforeSequence === undefined || event.sequence < beforeSequence)
+      .sort((left, right) => right.sequence - left.sequence)
     const page = eligible.slice(0, limit).reverse()
+
     return {
       sessionId,
       events: page,
@@ -245,30 +205,26 @@ export class FakeNativeClient implements NativeClient {
     }
   }
 
-  async getIntegrationHealth(): Promise<IntegrationHealthReport> {
-    const adapters: IntegrationHealthEntry[] = PREVIEW_ADAPTERS.map((capabilities) => {
-      const status = integrationStatusForAdapter(capabilities)
-      return {
-        source: capabilities.source,
-        status,
-        capabilities,
-        detail: status === 'healthy' ? 'Preview adapter ready' : 'Preview adapter limited',
-      }
-    })
+  async listDisplays(): Promise<NativeDisplayOption[]> {
+    return [{ id: 'preview-primary', label: 'Preview Display', primary: true }]
+  }
 
+  async getIntegrationHealth(): Promise<ConnectorHealthReport> {
     return {
       checkedAtMs: Date.now(),
-      overall: summarizeIntegrationHealth(adapters),
-      adapters,
+      adapters: PREVIEW_ADAPTERS.map((capabilities) => previewHealthEntry(capabilities)),
     }
   }
 
-  async previewConnector(source: ConnectorPreview['source']): Promise<ConnectorPreview> {
+  async previewConnector(source: ConnectorPlanPreview['source']): Promise<ConnectorPlanPreview> {
     return {
       planId: `preview-${source}`,
       source,
+      scope: 'user',
       summary: 'Preview only — no vendor configuration files were changed.',
       expiresAtMs: Date.now() + 300_000,
+      files: [],
+      externalTrustActions: [],
     }
   }
 
@@ -329,11 +285,24 @@ export function createFakeNativeClient(): FakeNativeClient {
   return new FakeNativeClient()
 }
 
-/** Ensures preview clients never masquerade as production hosts. */
-export function assertPreviewClient(client: NativeClient): asserts client is FakeNativeClient {
-  if (client.mode !== 'preview') {
+export function createPreviewNativeClient(): FakeNativeClient {
+  return new FakeNativeClient()
+}
+
+export function isPreviewNativeClient(client: NativeClient): client is FakeNativeClient {
+  return client.mode === 'preview'
+}
+
+export function assertPreviewNativeClient(client: NativeClient): FakeNativeClient {
+  if (!isPreviewNativeClient(client)) {
     throw new NativeClientError('not-available', 'Expected preview native client')
   }
+  return client
+}
+
+/** Ensures preview clients never masquerade as production hosts. */
+export function assertPreviewClient(client: NativeClient): asserts client is FakeNativeClient {
+  assertPreviewNativeClient(client)
 }
 
 export function validatePreviewProtocol(snapshotProtocolVersion: number): void {
