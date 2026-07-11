@@ -1,9 +1,16 @@
 import type {
   AdapterCapabilities,
   AppSnapshot,
+  BackupJournalEntry,
+  ConnectorApplyResult,
   ConnectorHealthReport,
   ConnectorPlanPreview,
+  ConnectorScope,
   ConnectorUserStatus,
+  DecisionRequest,
+  DecisionResponse,
+  DecisionResponseRecord,
+  DetectedConnector,
   HealthProbeResult,
   PublicSettings,
   SessionEvent,
@@ -11,10 +18,15 @@ import type {
 } from './contracts.ts'
 
 export type {
+  BackupJournalEntry,
   ConnectorHealthEntry,
   ConnectorHealthReport,
   ConnectorPlanPreview,
   ConnectorUserStatus,
+  DecisionRequest,
+  DecisionResponse,
+  DecisionResponseRecord,
+  DetectedConnector,
   HealthProbeResult,
 } from './contracts.ts'
 
@@ -126,7 +138,24 @@ export interface NativeClient {
   ): Promise<SessionEventPage>
   listDisplays(): Promise<NativeDisplayOption[]>
   getIntegrationHealth(): Promise<ConnectorHealthReport>
-  previewConnector(source: AdapterCapabilities['source']): Promise<ConnectorPlanPreview>
+  detectConnectors(): Promise<DetectedConnector[]>
+  previewConnector(
+    source: AdapterCapabilities['source'],
+    scope?: ConnectorScope,
+  ): Promise<ConnectorPlanPreview>
+  applyConnectorChange(planId: string): Promise<ConnectorApplyResult>
+  removeConnector(
+    source: AdapterCapabilities['source'],
+    scope?: ConnectorScope,
+  ): Promise<ConnectorApplyResult>
+  repairConnector(
+    source: AdapterCapabilities['source'],
+    scope?: ConnectorScope,
+  ): Promise<ConnectorPlanPreview>
+  rollbackConnector(backupId: string): Promise<ConnectorPlanPreview>
+  listConnectorBackups(): Promise<BackupJournalEntry[]>
+  getPendingDecisions(): Promise<DecisionRequest[]>
+  respondDecision(requestId: string, response: DecisionResponse): Promise<DecisionResponseRecord>
 }
 
 export interface CreateNativeClientOptions {

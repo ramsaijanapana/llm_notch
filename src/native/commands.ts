@@ -17,6 +17,15 @@ export const NATIVE_COMMANDS = {
   purgeHistory: 'purge_history',
   integrationHealth: 'integration_health',
   previewConnector: 'preview_connector_change',
+  detectConnectors: 'detect_connectors',
+  applyConnector: 'apply_connector_change',
+  removeConnector: 'remove_connector',
+  repairConnector: 'repair_connector',
+  rollbackConnector: 'rollback_connector',
+  connectorHealth: 'connector_health',
+  listConnectorBackups: 'list_connector_backups',
+  respondDecision: 'respond_decision',
+  getPendingDecisions: 'get_pending_decisions',
 } as const
 
 export type NativeCommandName = (typeof NATIVE_COMMANDS)[keyof typeof NATIVE_COMMANDS]

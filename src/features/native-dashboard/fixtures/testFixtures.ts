@@ -164,23 +164,21 @@ export const mockDisplays = [
   { id: 'display-external', label: 'External Monitor' },
 ]
 
-export const mockIntegrations: IntegrationCardState[] = mockAdapters.map((adapter) => {
-  const card: IntegrationCardState = {
-    adapter,
-    health: adapter.source === 'generic' ? 'offline' : 'healthy',
-    configured: adapter.source !== 'generic',
-  }
+export const mockIntegrations: IntegrationCardState[] = mockAdapters
+  .filter((adapter) => adapter.source !== 'generic')
+  .map((adapter) => {
+    const card: IntegrationCardState = {
+      adapter,
+      status: adapter.source === 'generic' ? 'notInstalled' : 'waitingFirstEvent',
+      managedEntriesPresent: adapter.source === 'cursor',
+    }
 
-  if (adapter.events) {
-    card.lastEventAtMs = now - 45_000
-  }
+    if (adapter.events) {
+      card.lastEventAtMs = now - 45_000
+    }
 
-  if (adapter.source !== 'generic') {
-    card.previewConfig = `{\n  "source": "${adapter.source}",\n  "enabled": true\n}`
-  }
-
-  return card
-})
+    return card
+  })
 
 export function buildHistory(points = 12): MetricsHistoryBundle {
   const requestedStartMs = now - 24 * 60 * 60_000

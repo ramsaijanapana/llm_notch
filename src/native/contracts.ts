@@ -401,6 +401,15 @@ export interface MigrationRegistry {
   records: MigrationRecord[]
 }
 
+/** Fixed-path detection result from `detect_connectors`. */
+export interface DetectedConnector {
+  source: AgentSource
+  scope: ConnectorScope
+  displayPath: string
+  configPresent: boolean
+  managedEntriesPresent: boolean
+}
+
 /** Maps wire `AttributionQuality.unknown` to user-facing "Not attributed". */
 export function attributionQualityLabel(quality: AttributionQuality): string {
   if (quality === 'unknown') {
