@@ -7,6 +7,7 @@ members = [
     "crates/notch-ipc",
     "crates/notch-hook",
     "crates/notch-connectors",
+    "crates/notch-adapters/cursor",
     "src-tauri",
 ]
 
@@ -83,3 +84,4 @@ notch-core = { path = "crates/notch-core" }
 notch-metrics = { path = "crates/notch-metrics" }
 notch-ipc = { path = "crates/notch-ipc" }
 notch-connectors = { path = "crates/notch-connectors" }
+notch-adapters-cursor = { path = "crates/notch-adapters/cursor" }

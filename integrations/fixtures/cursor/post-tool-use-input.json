@@ -1,10 +1,17 @@
 {
+  "hook_event_name": "postToolUse",
+  "cursor_version": "1.7.2",
+  "conversation_id": "conv-abc123",
+  "generation_id": "gen-002",
+  "model": "composer-2",
+  "workspace_roots": ["/Users/dev/projects/llm_notch"],
+  "session_id": "cursor-session-42",
   "tool_name": "Shell",
   "tool_input": {
     "command": "cargo test -p notch-protocol"
   },
   "tool_output": "running 4 tests\n... ok",
-  "duration_ms": 842,
-  "conversation_id": "conv-abc123",
-  "session_id": "cursor-session-42"
+  "tool_use_id": "tool-use-1",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "duration": 842
 }
