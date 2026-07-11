@@ -7,9 +7,11 @@ export default defineConfig({
   plugins: [react()],
   clearScreen: false,
   server: {
+    // Bind IPv4 explicitly so Tauri's 127.0.0.1:1420 probe succeeds.
+    // `localhost` can resolve to ::1 on macOS and leave tauri waiting forever.
     port: 1420,
-    strictPort: !!process.env.TAURI,
-    host: host || false,
+    strictPort: true,
+    host: host || '127.0.0.1',
     hmr: host
       ? {
           protocol: 'ws',

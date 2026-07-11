@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Implementation plan and orchestration prompt for bringing llm_notch to feature parity with Vibe Island while extending it for Windows, macOS, and resource observability."
+    />
+    <title>llm_notch — Feature Parity Implementation Plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #0b0b09;
+        --panel: #151410;
+        --panel-raised: #1c1a15;
+        --border: #332f26;
+        --text: #f3f0e7;
+        --muted: #aaa395;
+        --amber: #f2a93b;
+        --amber-soft: rgba(242, 169, 59, 0.12);
+        --green: #65ba7d;
+        --max-width: 1120px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background:
+          linear-gradient(rgba(42, 40, 32, 0.32) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(42, 40, 32, 0.32) 1px, transparent 1px),
+          radial-gradient(circle at 50% 0%, rgba(242, 169, 59, 0.08), transparent 32rem),
+          var(--ink);
+        background-size:
+          24px 24px,
+          24px 24px,
+          auto,
+          auto;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        line-height: 1.65;
+      }
+
+      a {
+        color: var(--amber);
+      }
+
+      header,
+      main,
+      footer {
+        width: min(calc(100% - 2rem), var(--max-width));
+        margin-inline: auto;
+      }
+
+      header {
+        padding: 5rem 0 3rem;
+      }
+
+      .eyebrow,
+      .section-index {
+        color: var(--amber);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.75rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.15;
+        text-wrap: balance;
+      }
+
+      h1 {
+        max-width: 14ch;
+        margin: 0.75rem 0 1rem;
+        font-size: clamp(2.75rem, 7vw, 5rem);
+        letter-spacing: -0.055em;
+      }
+
+      h2 {
+        margin: 0 0 1rem;
+        font-size: clamp(1.75rem, 4vw, 2.5rem);
+        letter-spacing: -0.03em;
+      }
+
+      h3 {
+        margin: 0 0 0.5rem;
+        font-size: 1rem;
+      }
+
+      p {
+        color: var(--muted);
+      }
+
+      .lead {
+        max-width: 65ch;
+        font-size: 1.08rem;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        margin-top: 1.5rem;
+      }
+
+      .tag {
+        border: 1px solid var(--border);
+        padding: 0.35rem 0.65rem;
+        color: var(--muted);
+        background: rgba(21, 20, 16, 0.85);
+        font: 0.75rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+
+      section {
+        margin-bottom: 1rem;
+        border: 1px solid var(--border);
+        padding: clamp(1.25rem, 4vw, 2.25rem);
+        background: rgba(21, 20, 16, 0.92);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
+      }
+
+      .steps,
+      .agents,
+      .criteria {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        padding: 0;
+        list-style: none;
+      }
+
+      .steps li,
+      .agents li,
+      .criteria li {
+        border-left: 2px solid var(--amber);
+        padding: 0.85rem 1rem;
+        color: var(--muted);
+        background: var(--panel-raised);
+      }
+
+      .steps strong,
+      .agents strong,
+      .criteria strong {
+        display: block;
+        margin-bottom: 0.25rem;
+        color: var(--text);
+      }
+
+      .prompt-wrap {
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .prompt-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel-raised);
+      }
+
+      .prompt-heading h2 {
+        margin: 0;
+        font-size: 1.25rem;
+      }
+
+      .copy-note {
+        color: var(--amber);
+        font: 0.72rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      pre {
+        max-height: 75vh;
+        margin: 0;
+        padding: 1.5rem;
+        overflow: auto;
+        color: #e9e3d5;
+        background: #0d0d0b;
+        font: 0.82rem/1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        tab-size: 2;
+      }
+
+      footer {
+        padding: 2rem 0 4rem;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      @media (max-width: 720px) {
+        header {
+          padding-top: 3rem;
+        }
+
+        .steps,
+        .agents,
+        .criteria {
+          grid-template-columns: 1fr;
+        }
+
+        section {
+          padding: 1.2rem;
+        }
+      }
+
+      @media print {
+        :root {
+          color-scheme: light;
+        }
+
+        body {
+          color: #171612;
+          background: white;
+        }
+
+        section {
+          break-inside: avoid;
+          color: #171612;
+          background: white;
+          box-shadow: none;
+        }
+
+        p,
+        .steps li,
+        .agents li,
+        .criteria li,
+        footer {
+          color: #454139;
+        }
+
+        pre {
+          max-height: none;
+          color: #171612;
+          background: #f5f2eb;
+          white-space: pre-wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="eyebrow">llm_notch · Product and execution specification</div>
+      <h1>Feature parity, then beyond.</h1>
+      <p class="lead">
+        A staged implementation plan and reusable orchestration prompt for bringing
+        <strong>llm_notch</strong> to publicly observable Vibe Island parity while extending it
+        with native Windows support, resource observability, open integrations, and stronger
+        diagnostics.
+      </p>
+      <div class="meta" aria-label="Document metadata">
+        <span class="tag">GPT-5.6 Sol · architecture and review</span>
+        <span class="tag">Claude Fable · product and design</span>
+        <span class="tag">Composer 2.5 Fast · up to 10 executors</span>
+        <span class="tag">Local-first</span>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <div class="section-index">01 · Discovery</div>
+        <h2>Establish verified parity</h2>
+        <p>
+          GPT-5.6 Sol and Claude Fable independently audit the existing llm_notch
+          implementation, publicly documented Vibe Island behavior, current Cursor/Claude
+          Code/Codex hook APIs, and native platform restrictions. Their parity matrix,
+          architecture, UX, and acceptance criteria must be reconciled before implementation.
+        </p>
+      </section>
+
+      <section>
+        <div class="section-index">02 · Integrations</div>
+        <h2>Zero-manual-configuration connector manager</h2>
+        <ul class="steps">
+          <li><strong>Detect</strong>Find installed agents and user/project configuration paths.</li>
+          <li><strong>Preview</strong>Show a human-reviewable diff before any modification.</li>
+          <li><strong>Protect</strong>Back up, lock, hash-check, and atomically merge configuration.</li>
+          <li><strong>Preserve</strong>Keep every unrelated existing hook and configuration entry.</li>
+          <li><strong>Connect</strong>Use the bundled helper’s absolute, signed path.</li>
+          <li><strong>Recover</strong>Support health checks, repair, disable, and exact rollback.</li>
+          <li><strong>Defend</strong>Reject path escapes, unsafe symlinks, and concurrent changes.</li>
+          <li><strong>Simplify</strong>Require one onboarding confirmation, not terminal commands.</li>
+        </ul>
+      </section>
+
+      <section>
+        <div class="section-index">03 · Adapters</div>
+        <h2>Agent-specific vertical slices</h2>
+        <p>
+          Build and test adapters for Cursor, Claude Code, Codex, and the open generic protocol.
+          Each adapter declares version-specific capabilities for lifecycle events, permissions,
+          questions, plan review, context jumping, process attribution, and usage information.
+          Unsupported controls are absent rather than simulated.
+        </p>
+      </section>
+
+      <section>
+        <div class="section-index">04 · Parity</div>
+        <h2>Interaction and workflow parity</h2>
+        <ul class="criteria">
+          <li><strong>Live sessions</strong>Reliable lifecycle, tool, completion, and failure events.</li>
+          <li><strong>Decisions</strong>Approve/reject only when an official acknowledged path exists.</li>
+          <li><strong>Questions</strong>Answer agent prompts through capability-gated adapters.</li>
+          <li><strong>Plans</strong>Accessible Markdown plan review and feedback.</li>
+          <li><strong>Context</strong>Jump precisely to the originating editor or terminal session.</li>
+          <li><strong>Alerts</strong>Native sound and notification behavior without stealing focus.</li>
+          <li><strong>Usage</strong>Provider quota and usage where reliable local sources exist.</li>
+          <li><strong>Health</strong>Detect broken integrations and offer reviewed repair.</li>
+        </ul>
+      </section>
+
+      <section>
+        <div class="section-index">05 · Differentiation</div>
+        <h2>Better than parity</h2>
+        <ul class="criteria">
+          <li><strong>Cross-platform</strong>Native Windows and macOS overlays and dashboards.</li>
+          <li><strong>Resource attribution</strong>CPU, RSS, runtime, process count, and I/O by agent.</li>
+          <li><strong>History</strong>Timestamp-accurate trends, bounded retention, and alerts.</li>
+          <li><strong>Open protocol</strong>A documented, local, versioned integration SDK.</li>
+          <li><strong>Capability truth</strong>Exact/shared/heuristic/unavailable quality labels.</li>
+          <li><strong>Privacy</strong>Local audit data, purge controls, and no cloud dependency.</li>
+          <li><strong>Displays</strong>Multi-monitor placement and platform-appropriate behavior.</li>
+          <li><strong>Diagnostics</strong>Connection health, repair, rollback, and transparent errors.</li>
+        </ul>
+      </section>
+
+      <section>
+        <div class="section-index">06 · Execution</div>
+        <h2>Ten-agent execution model</h2>
+        <ol class="agents">
+          <li><strong>1 · Connector manager</strong>Detection, preview, backup, merge, repair, disable, rollback.</li>
+          <li><strong>2 · Cursor adapter</strong>Hooks, normalization, capability/version and health checks.</li>
+          <li><strong>3 · Claude Code adapter</strong>Lifecycle, permissions, plans/questions, and health.</li>
+          <li><strong>4 · Codex + generic</strong>Current hooks, legacy fallback, and open SDK.</li>
+          <li><strong>5 · Decision broker</strong>Acknowledged decisions, answers, expiry, and failure.</li>
+          <li><strong>6 · Context navigation</strong>Safe editor/terminal activation on each platform.</li>
+          <li><strong>7 · Native UX</strong>Onboarding, reviewed diffs, progress, repair, and accessibility.</li>
+          <li><strong>8 · Observability</strong>Usage, sounds, alerts, metrics, and history.</li>
+          <li><strong>9 · Release engineering</strong>Updater, signing, installers, and CI matrices.</li>
+          <li><strong>10 · Integration + QA</strong>Resolve interface drift, test, harden, and release.</li>
+        </ol>
+        <p>
+          Agents 1–4 establish and freeze contracts first. Agents 5–9 execute against those
+          contracts. Agent 10 runs only after all implementation branches are ready. No concurrent
+          ownership of root manifests or shared contracts is allowed.
+        </p>
+      </section>
+
+      <section>
+        <div class="section-index">07 · Release gate</div>
+        <h2>Definition of done</h2>
+        <ul class="criteria">
+          <li><strong>One-click setup</strong>A fresh install connects supported agents after one reviewed confirmation.</li>
+          <li><strong>Latency</strong>A new Cursor session appears within 500 ms of an accepted event.</li>
+          <li><strong>Safety</strong>Existing hooks remain intact and repeated installs are idempotent.</li>
+          <li><strong>Recovery</strong>Disable and rollback restore the exact previous configuration.</li>
+          <li><strong>Truthful actions</strong>Decisions resolve only after vendor acknowledgement.</li>
+          <li><strong>Browser gate</strong>Chromium and WebKit Playwright/axe suites pass.</li>
+          <li><strong>Native gate</strong>macOS and Windows native integration tests pass.</li>
+          <li><strong>Release gate</strong>Signed/notarized macOS and signed Windows packages are verified.</li>
+          <li><strong>Review gate</strong>No P0/P1 finding remains from either reviewer.</li>
+        </ul>
+      </section>
+
+      <section class="prompt-wrap">
+        <div class="prompt-heading">
+          <h2>Copy-paste orchestration prompt</h2>
+          <span class="copy-note">Select and copy the block below</span>
+        </div>
+        <pre><code>You are the lead orchestrator for improving llm_notch.
+
+Repository:
+https://github.com/ramsaijanapana/llm_notch
+
+Local workspace:
+/Users/ramsaij/Documents/Folder/code/llm_notch
+
+GOAL
+
+Bring llm_notch to publicly observable feature parity with Vibe Island while making it better through:
+
+- Native Windows and macOS support
+- Zero-manual-configuration agent integrations
+- Real host and per-agent resource metrics
+- An open local integration protocol
+- Better integration health, repair, history, privacy, and diagnostics
+
+Do not copy Vibe Island branding, text, assets, or proprietary implementation. Use only publicly observable behavior and official vendor documentation.
+
+CURRENT STATE
+
+llm_notch is a Tauri 2 application with:
+
+- Native overlay and dashboard windows
+- Rust core and SQLite persistence
+- Authenticated local IPC and bundled hook helper
+- Host/per-agent CPU, RSS, runtime, process, and I/O metrics
+- Cursor, Claude Code, Codex, and generic hook templates
+- Native renderer and Playwright test mode
+
+The major parity gap is integration installation. Hooks currently require manual installation, and connector Apply/Remove operations are deliberately disabled.
+
+MODEL ROUTING
+
+Use:
+
+- GPT-5.6 Sol for systems architecture, security, protocol design, orchestration, integration decisions, and technical review.
+- Claude Fable for product design, onboarding, interaction design, accessibility, native UX, copy, and visual review.
+- Up to 10 Composer 2.5 Fast subagents for implementation and execution.
+
+PLANNING GATE
+
+Before editing:
+
+1. Launch GPT-5.6 Sol and Claude Fable independently.
+2. Have both inspect the repository and current official Cursor, Claude Code, Codex, Tauri, macOS, and Windows documentation.
+3. Produce:
+   - A verified parity matrix
+   - Product and UX specification
+   - Systems and security architecture
+   - Adapter capability matrix
+   - File ownership and execution plan
+   - Acceptance tests
+4. Exchange critiques between both planners.
+5. Do not begin execution until both state:
+   CONSENSUS APPROVED
+
+NON-NEGOTIABLE REQUIREMENTS
+
+Zero-config onboarding:
+- Detect installed Cursor, Claude Code, and Codex configurations.
+- Present one explicit “Connect agents” confirmation.
+- Show a diff before modifications.
+- Preserve unrelated hooks.
+- Back up existing configuration.
+- Use atomic writes and file locking.
+- Detect concurrent changes.
+- Reject symlinks and path escapes.
+- Support install, health check, repair, disable, and exact rollback.
+- Use the bundled helper’s absolute path.
+- Never require users to manually edit JSON or configure environment variables.
+
+Adapter behavior:
+- Use official hook APIs and retrieve current documentation.
+- Detect vendor/version capabilities.
+- Sessions must appear within 500 ms of accepted events.
+- Support lifecycle, permission, question, plan, completion, and failure events where available.
+- Only show approve/deny/answer controls when the vendor version supports a verified response path.
+- Never simulate success.
+- Preserve fail-open behavior so telemetry cannot block an agent.
+- Redact raw prompts, command bodies, tool output, secrets, and credentials by default.
+
+Native behavior:
+- Keep separate non-activating overlay and focusable dashboard windows.
+- Preserve foreground application focus.
+- Support tray, global shortcut, startup, multi-monitor, scaling, and reduced motion.
+- macOS should use the strongest reliable NSPanel/AppKit implementation.
+- Windows should use a topmost no-activate tool window with correct DPI behavior.
+- Do not claim unsupported fullscreen behavior.
+
+Better-than-parity:
+- Host and per-agent process-tree CPU, memory, runtime, process count, and I/O.
+- Timestamp-accurate 15m/1h/24h history.
+- Resource alerts without focus stealing.
+- Integration health and repair diagnostics.
+- Open, versioned generic event protocol.
+- Honest attribution quality: exact/shared/heuristic/unavailable.
+- Local-only operation with no cloud dependency.
+- Privacy controls, data purge, bounded persistence, and audit history.
+
+EXECUTION MODEL
+
+Use at most 10 Composer 2.5 Fast subagents with isolated ownership:
+
+1. Connector manager:
+   Detection, preview plans, safe merges, backups, atomic writes, repair, disable, rollback.
+
+2. Cursor adapter:
+   User/project hooks, lifecycle normalization, health verification, version capabilities.
+
+3. Claude Code adapter:
+   Hooks, permissions, lifecycle, plans/questions, health verification.
+
+4. Codex and generic adapters:
+   Current hooks, legacy fallback, generic SDK/protocol examples.
+
+5. Decision broker:
+   Capability-gated approval, rejection, question answering, acknowledgement, expiry, failure.
+
+6. Context navigation:
+   Safe editor/terminal jumping and per-platform activation.
+
+7. Native onboarding and integration UI:
+   Detection, reviewed diff, progress, health, repair, rollback, accessibility.
+
+8. Observability:
+   Usage/quota data, sounds, notifications, resource alerts, history improvements.
+
+9. Platform and release:
+   macOS/Windows window behavior, updater, signing, notarization, installers, CI.
+
+10. Integration and QA:
+   Merge all work, resolve interface drift, run full tests, fix failures, and prepare release.
+
+Do not run agents with overlapping manifest/shared-contract ownership concurrently.
+Freeze shared contracts before parallel implementation.
+Use worktrees or strict file ownership where appropriate.
+
+TEST REQUIREMENTS
+
+Automated:
+- Config merge/idempotency tests
+- Existing-hook preservation tests
+- Backup and rollback tests
+- Concurrent modification tests
+- Symlink/path traversal tests
+- Vendor fixture and version tests
+- Decision acknowledgement/timeout tests
+- IPC authentication/rate/size/spool tests
+- Metrics attribution and retention tests
+- Playwright native-preview tests with axe
+- macOS native smoke tests
+- Windows native tests in a Windows CI runner
+- Clean-machine installer tests
+
+End-to-end scenarios:
+1. Fresh app launch detects Cursor.
+2. User confirms integration once.
+3. Existing Cursor hooks remain intact.
+4. A new Cursor agent session appears within 500 ms.
+5. Tool events update the overlay.
+6. A supported permission request appears and receives an acknowledged response.
+7. Context jump opens the correct editor/session.
+8. Repair restores a deliberately broken hook.
+9. Disable removes only llm_notch entries.
+10. Rollback exactly restores the backup.
+
+QUALITY GATES
+
+Require:
+- Rust format/check/test
+- TypeScript typecheck and lint
+- All frontend unit tests
+- Chromium and WebKit Playwright tests
+- Windows CI native build/test
+- macOS signed/notarized package validation
+- Windows signed installer validation
+- No external runtime requests
+- No background processes after tests
+- No secrets or generated build artifacts committed
+
+FINAL REVIEW
+
+After implementation:
+
+1. Claude Fable reviews native UX, onboarding, accessibility, copy, and parity.
+2. GPT-5.6 Sol reviews security, persistence, IPC, adapters, platform code, tests, and release evidence.
+3. Fix every P0/P1 finding.
+4. Repeat reviews until both state:
+   NATIVE UX APPROVED
+   NATIVE TECHNICAL APPROVED
+
+Do not push or publish a release until every required gate passes.
+
+Return:
+- Parity matrix
+- Architecture summary
+- Implemented features
+- Test evidence
+- Remaining platform/vendor limitations
+- Release artifact locations
+- Git commit and PR URL</code></pre>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        llm_notch implementation blueprint · Generated July 2026 · This document describes a
+        target plan, not a claim that every listed capability is already shipped.
+      </p>
+    </footer>
+  </body>
+</html>
