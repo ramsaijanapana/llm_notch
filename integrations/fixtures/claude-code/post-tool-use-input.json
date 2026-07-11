@@ -1,0 +1,14 @@
+{
+  "session_id": "claude-thread-9f2a",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/Users/dev/projects/llm_notch/src/main.rs",
+    "content": "secret content"
+  },
+  "tool_response": {
+    "filePath": "/Users/dev/projects/llm_notch/src/main.rs",
+    "success": true
+  }
+}
