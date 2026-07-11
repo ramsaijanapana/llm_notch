@@ -1,0 +1,16 @@
+{
+  "protocolVersion": 1,
+  "requestId": "00000000-0000-4000-8000-000000000001",
+  "source": "generic",
+  "occurredAtMs": 1700000000000,
+  "command": {
+    "type": "sessionStart",
+    "externalSessionId": "generic-cli-7",
+    "label": "Refactor auth module",
+    "workspaceLabel": "llm_notch",
+    "processRoot": {
+      "pid": 4242,
+      "startedAtMs": 1700000000000
+    }
+  }
+}

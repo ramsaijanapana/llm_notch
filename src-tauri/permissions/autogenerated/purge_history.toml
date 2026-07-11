@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-purge-history"
+description = "Enables the purge_history command without any pre-configured scope."
+commands.allow = ["purge_history"]
+
+[[permission]]
+identifier = "deny-purge-history"
+description = "Denies the purge_history command without any pre-configured scope."
+commands.deny = ["purge_history"]

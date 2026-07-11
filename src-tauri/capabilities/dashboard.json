@@ -1,0 +1,28 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "dashboard",
+  "description": "Dashboard window — scoped llm_notch state, settings, history, and connector commands",
+  "windows": ["dashboard"],
+  "permissions": [
+    "allow-bootstrap",
+    "allow-subscribe-stream",
+    "allow-unsubscribe-stream",
+    "allow-get-history",
+    "allow-get-session-events",
+    "allow-open-dashboard",
+    "allow-open-session",
+    "allow-set-overlay-mode",
+    "allow-acknowledge-attention",
+    "allow-get-settings",
+    "allow-list-displays",
+    "allow-update-settings",
+    "allow-purge-history",
+    "allow-set-startup-enabled",
+    "allow-set-global-shortcut",
+    "allow-integration-health",
+    "allow-preview-connector-change",
+    "allow-apply-connector-change",
+    "allow-remove-connector",
+    "allow-connector-health"
+  ]
+}

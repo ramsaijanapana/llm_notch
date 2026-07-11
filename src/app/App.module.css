@@ -1,0 +1,102 @@
+.shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  overflow-x: clip;
+  isolation: isolate;
+}
+
+:global(html) {
+  scroll-padding-top: 5rem;
+}
+
+.skipLink:focus,
+.skipLink:active {
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 200;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel-raised);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+
+.main {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  background-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgb(11 11 9 / 35%) 18%,
+    rgb(11 11 9 / 72%) 42%,
+    rgb(11 11 9 / 88%) 100%
+  );
+  background-attachment: local;
+}
+
+.main:focus {
+  outline: none;
+}
+
+.shell::before,
+.shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.shell::before {
+  background:
+    radial-gradient(ellipse 85% 55% at 50% -12%, var(--color-amber-glow), transparent 72%),
+    radial-gradient(ellipse 45% 35% at 92% 42%, rgb(242 169 59 / 5%), transparent 68%),
+    radial-gradient(ellipse 35% 30% at 8% 68%, rgb(107 163 212 / 4%), transparent 70%);
+  opacity: 0.9;
+}
+
+.shell::after {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: min(72vw, 52rem);
+  height: min(72vh, 42rem);
+  transform: translate(-50%, -50%);
+  background:
+    linear-gradient(var(--color-border-subtle), var(--color-border-subtle)) center / 1px 100%
+    no-repeat,
+    linear-gradient(var(--color-border-subtle), var(--color-border-subtle)) center / 100% 1px
+    no-repeat;
+  opacity: 0.12;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .shell::before {
+    animation: ambientGlow 14s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes ambientGlow {
+  from {
+    opacity: 0.75;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell::before {
+    animation: none;
+    opacity: 0.85;
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "session_id": "claude-thread-9f2a",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "npm run build"
+  },
+  "permission_mode": "ask"
+}

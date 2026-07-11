@@ -1,0 +1,13 @@
+# Legacy notify fallback — DEPRECATED
+# Use only when lifecycle hooks (hooks.json.template) are unavailable.
+# Codex is deprecating `notify` in favor of the hooks engine.
+#
+# Place in Codex config.toml (user or project .codex/config.toml):
+#
+#   notify = ["sh", "/absolute/path/to/integrations/wrappers/llm-notch-hook-wrapper.sh", "--source", "codex", "--vendor-event", "notify"]
+#
+# Windows example:
+#   notify = ["pwsh", "-NoProfile", "-File", "C:\\path\\to\\integrations\\wrappers\\llm-notch-hook-wrapper.ps1", "-Source", "codex", "-VendorEvent", "notify"]
+#
+# Capability: completion-only signal after an agent turn. No tool-level events,
+# no session start, no permission observation. attention=none, events=false.

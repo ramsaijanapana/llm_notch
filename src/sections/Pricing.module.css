@@ -1,0 +1,39 @@
+.container {
+  width: min(100% - var(--space-8), var(--container-narrow));
+  margin-inline: auto;
+}
+
+.card {
+  padding: var(--space-10) var(--space-8);
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+}
+
+.note {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-align: center;
+  color: var(--color-text-faint);
+  max-width: none;
+  margin-bottom: var(--space-3);
+}
+
+.disclosure {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: center;
+  color: var(--color-text-muted);
+  max-width: none;
+  margin-bottom: var(--space-8);
+}
+
+.cta {
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: var(--space-8) var(--space-5);
+  }
+}

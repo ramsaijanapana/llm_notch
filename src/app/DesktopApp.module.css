@@ -1,0 +1,67 @@
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-ink);
+  color: var(--color-text);
+}
+
+.shell[data-surface="overlay"] {
+  min-height: 100%;
+  background: transparent;
+}
+
+.statusRegion {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.previewBanner,
+.stateBanner {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.previewBanner {
+  background: var(--color-warning-bg);
+  color: #7a5208;
+}
+
+.stateBanner {
+  background: var(--color-panel-raised);
+  color: var(--color-text-muted);
+}
+
+.stateBanner[data-tone="error"] {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.stateBanner[data-tone="warning"] {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.stateBanner[data-tone="info"] {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+}
+
+.reducedMotion[data-reduced-motion="true"] *,
+.reducedMotion[data-reduced-motion="true"] *::before,
+.reducedMotion[data-reduced-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}

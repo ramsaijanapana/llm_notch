@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "requestId": "00000000-0000-4000-8000-000000000004",
+  "source": "codex",
+  "occurredAtMs": 1700000000150,
+  "command": {
+    "type": "attention",
+    "externalSessionId": "codex-thread-abc",
+    "attention": "permission",
+    "summary": "Permission dialog observed (notify-only)"
+  }
+}

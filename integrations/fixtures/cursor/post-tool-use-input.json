@@ -1,0 +1,10 @@
+{
+  "tool_name": "Shell",
+  "tool_input": {
+    "command": "cargo test -p notch-protocol"
+  },
+  "tool_output": "running 4 tests\n... ok",
+  "duration_ms": 842,
+  "conversation_id": "conv-abc123",
+  "session_id": "cursor-session-42"
+}

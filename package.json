@@ -1,0 +1,44 @@
+{
+  "name": "llm_notch",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit",
+    "lint": "biome check .",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:e2e": "playwright test",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "native:prepare-helper": "node scripts/prepare-native-helper.mjs",
+    "native:dev": "npm run native:prepare-helper -- --debug && tauri dev",
+    "native:build": "tauri build",
+    "native:check": "cargo check --workspace && tauri build --no-bundle"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "lucide-react": "^0.577.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@axe-core/playwright": "^4.11.1",
+    "@biomejs/biome": "^2.4.6",
+    "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "jsdom": "^28.1.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1",
+    "vitest": "^4.0.18"
+  }
+}

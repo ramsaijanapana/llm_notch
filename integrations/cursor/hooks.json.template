@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "_comment": "TEMPLATE ONLY — not installed automatically. Review diff before applying. Paths assume project hooks (cwd = repo root). For user hooks, rewrite paths relative to ~/.cursor/.",
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event sessionStart",
+        "timeout": 2
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event preToolUse",
+        "timeout": 2
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event postToolUse",
+        "timeout": 2
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event postToolUseFailure",
+        "timeout": 2
+      }
+    ],
+    "stop": [
+      {
+        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event stop",
+        "timeout": 2
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source cursor --vendor-event sessionEnd",
+        "timeout": 2
+      }
+    ]
+  }
+}

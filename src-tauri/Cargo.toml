@@ -1,0 +1,43 @@
+[package]
+name = "llm-notch-desktop"
+description = "llm_notch native desktop host (Tauri 2)"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "llm_notch_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+notch-protocol.workspace = true
+notch-core.workspace = true
+notch-metrics.workspace = true
+notch-ipc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+parking_lot.workspace = true
+tauri = { workspace = true, features = ["macos-private-api"] }
+tauri-plugin-single-instance.workspace = true
+tauri-plugin-global-shortcut.workspace = true
+tauri-plugin-autostart.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows.workspace = true

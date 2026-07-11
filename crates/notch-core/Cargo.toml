@@ -1,0 +1,27 @@
+[package]
+name = "notch-core"
+description = "Application core interfaces and orchestration shell for llm_notch"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+notch-protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[target.'cfg(not(windows))'.dependencies]
+rusqlite = { workspace = true, features = ["bundled"] }
+
+[target.'cfg(windows)'.dependencies]
+rusqlite = { workspace = true, features = ["bundled-windows"] }
+
+[dev-dependencies]
+tempfile.workspace = true

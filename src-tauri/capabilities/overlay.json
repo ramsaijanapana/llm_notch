@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "Overlay window — bootstrap, live stream, local acknowledgement, and window actions only",
+  "windows": ["overlay"],
+  "permissions": [
+    "allow-bootstrap",
+    "allow-subscribe-stream",
+    "allow-unsubscribe-stream",
+    "allow-open-dashboard",
+    "allow-acknowledge-attention",
+    "allow-set-overlay-mode"
+  ]
+}

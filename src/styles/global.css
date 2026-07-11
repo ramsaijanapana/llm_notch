@@ -1,0 +1,245 @@
+@import "./tokens.css";
+@import "./reset.css";
+
+/* Coordinate-grid background */
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-normal);
+  color: var(--color-text);
+  background-color: var(--color-ink);
+  background-image:
+    linear-gradient(var(--color-border-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-border-subtle) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: center top;
+}
+
+html[data-native-surface="overlay"],
+html[data-native-surface="overlay"] body,
+html[data-native-surface="overlay"] #root {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+  background-image: none;
+}
+
+html[data-native-surface="dashboard"],
+html[data-native-surface="dashboard"] body,
+html[data-native-surface="dashboard"] #root {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Reduced motion baseline */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Focus styling */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+/* Typography foundations */
+h1,
+h2,
+h3,
+h4 {
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+h1 {
+  font-size: var(--text-4xl);
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: var(--text-2xl);
+}
+
+h3 {
+  font-size: var(--text-xl);
+}
+
+p {
+  color: var(--color-text-muted);
+  max-width: 65ch;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+code {
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
+  color: var(--color-amber);
+}
+
+a {
+  color: var(--color-amber);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+a:hover {
+  color: var(--color-text);
+}
+
+/* Layout containers */
+.container {
+  width: min(100% - var(--space-8), var(--container-max));
+  margin-inline: auto;
+}
+
+.container--narrow {
+  width: min(100% - var(--space-8), var(--container-narrow));
+  margin-inline: auto;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.stack--lg {
+  gap: var(--space-8);
+}
+
+/* Screen-reader utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sr-only-focusable:focus,
+.sr-only-focusable:active {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+/* Semantic status utilities */
+.status-success {
+  color: var(--color-success);
+}
+
+.status-warning {
+  color: var(--color-warning);
+}
+
+.status-error {
+  color: var(--color-error);
+}
+
+.status-info {
+  color: var(--color-info);
+}
+
+/* App shell — generic top-edge console (not macOS) */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.console-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--console-height);
+  padding-inline: var(--space-4);
+  background: var(--color-panel);
+  border-bottom: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.console-bar__indicator {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-amber);
+  box-shadow: 0 0 6px var(--color-amber-glow);
+  flex-shrink: 0;
+}
+
+.console-bar__label {
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+
+.app-main {
+  flex: 1;
+  padding-block: var(--space-12);
+}
+
+.placeholder {
+  padding-block: var(--space-8);
+}
+
+.placeholder__lead {
+  font-size: var(--text-lg);
+  margin-top: var(--space-4);
+}
+
+.placeholder__note {
+  margin-top: var(--space-6);
+  font-size: var(--text-sm);
+  color: var(--color-text-faint);
+}
+
+/* Responsive foundations */
+@media (max-width: 640px) {
+  .app-main {
+    padding-block: var(--space-8);
+  }
+
+  .console-bar {
+    padding-inline: var(--space-3);
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    padding-block: var(--space-16);
+  }
+}

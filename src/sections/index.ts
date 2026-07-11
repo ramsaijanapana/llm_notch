@@ -1,0 +1,7 @@
+export { Capabilities } from './Capabilities'
+export { FAQ } from './FAQ'
+export { FinalCta } from './FinalCta'
+export { Hero } from './Hero'
+export { LocalFirst } from './LocalFirst'
+export { Pricing } from './Pricing'
+export { Workflow } from './Workflow'

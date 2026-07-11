@@ -1,0 +1,22 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+  width: min(100% - var(--space-8), var(--container-narrow));
+  margin-inline: auto;
+  padding: var(--space-10) var(--space-6);
+  text-align: center;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+}
+
+.title {
+  max-width: 20ch;
+}
+
+.description {
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  max-width: 48ch;
+}

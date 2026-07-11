@@ -1,0 +1,87 @@
+{
+  "_comment": "TEMPLATE FRAGMENT — merge into .claude/settings.json or ~/.claude/settings.json. Observation-only V1: hooks never return permissionDecision or block.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source claudeCode --vendor-event SessionStart",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source claudeCode --vendor-event PreToolUse",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source claudeCode --vendor-event PostToolUse",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source claudeCode --vendor-event PostToolUseFailure",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source claudeCode --vendor-event PermissionRequest",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source claudeCode --vendor-event Stop",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source claudeCode --vendor-event SessionEnd",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

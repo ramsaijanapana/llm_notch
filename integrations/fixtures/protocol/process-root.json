@@ -1,0 +1,9 @@
+{
+  "source": "generic",
+  "event": "update",
+  "externalSessionId": "generic-cli-7",
+  "pid": 4242,
+  "processStartedAtMs": 1700000000000,
+  "occurredAtMs": 1700000000200,
+  "status": "running"
+}

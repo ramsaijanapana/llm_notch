@@ -1,0 +1,9 @@
+{
+  "tool_name": "Shell",
+  "tool_input": {
+    "command": "cargo test -p notch-protocol",
+    "description": "Run protocol crate tests"
+  },
+  "conversation_id": "conv-abc123",
+  "session_id": "cursor-session-42"
+}

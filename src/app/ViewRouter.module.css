@@ -1,0 +1,63 @@
+.viewport {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewport[data-surface="overlay"] {
+  min-height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+.viewport[data-surface="dashboard"] {
+  height: 100vh;
+  min-height: 520px;
+}
+
+.placeholder {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--space-8);
+  text-align: center;
+  gap: var(--space-3);
+}
+
+.placeholderTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.placeholderCopy {
+  max-width: 32rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+}
+
+.loading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-amber);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.reducedMotion .spinner {
+  animation: none;
+  border-top-color: var(--color-amber);
+}

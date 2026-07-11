@@ -1,0 +1,83 @@
+/**
+ * Design tokens for llm_notch.
+ * Amber-on-graphite identity with semantic status colors.
+ */
+:root {
+  /* Core palette */
+  --color-ink: #0b0b09;
+  --color-panel: #151410;
+  --color-panel-raised: #1c1a15;
+  --color-border: #2a2820;
+  --color-border-subtle: #1f1d18;
+
+  --color-text: #f3f0e7;
+  --color-text-muted: #a39d90;
+  --color-text-faint: #918b80;
+  --color-text-decorative: #918b80;
+
+  --color-amber: #f2a93b;
+  --color-amber-dim: #c4882f;
+  --color-amber-glow: rgb(242 169 59 / 18%);
+
+  /* Semantic status */
+  --color-success: #5cb87a;
+  --color-success-bg: rgb(92 184 122 / 12%);
+  --color-warning: #e8b84a;
+  --color-warning-bg: rgb(232 184 74 / 12%);
+  --color-error: #e06b6b;
+  --color-error-bg: rgb(224 107 107 / 12%);
+  --color-info: #6ba3d4;
+  --color-info-bg: rgb(107 163 212 / 12%);
+
+  /* Typography */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: clamp(1.75rem, 4vw, 2.5rem);
+  --text-4xl: clamp(2rem, 5vw, 3rem);
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.7;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  /* Layout */
+  --container-max: 72rem;
+  --container-narrow: 42rem;
+  --console-height: 2.75rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* Focus */
+  --focus-ring: 0 0 0 2px var(--color-ink), 0 0 0 4px var(--color-amber);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}

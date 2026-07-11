@@ -1,0 +1,34 @@
+[package]
+name = "notch-metrics"
+description = "Host and process metric collection for llm_notch"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+notch-protocol.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+sysinfo.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+parking_lot.workspace = true
+
+[features]
+default = []
+# Optional bridge for `notch_core::MetricsSource` once `notch-core` compiles.
+core = ["dep:notch-core", "dep:async-trait"]
+
+[dependencies.notch-core]
+workspace = true
+optional = true
+
+[dependencies.async-trait]
+workspace = true
+optional = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-connector-health"
+description = "Enables the connector_health command without any pre-configured scope."
+commands.allow = ["connector_health"]
+
+[[permission]]
+identifier = "deny-connector-health"
+description = "Denies the connector_health command without any pre-configured scope."
+commands.deny = ["connector_health"]

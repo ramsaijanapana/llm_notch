@@ -1,0 +1,3 @@
+# Generated target-specific sidecars (run npm run native:prepare-helper)
+binaries/llm-notch-hook-*
+binaries/notch-hook-*

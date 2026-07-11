@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "requestId": "00000000-0000-4000-8000-000000000005",
+  "source": "cursor",
+  "occurredAtMs": 1700000001200,
+  "command": {
+    "type": "sessionEnd",
+    "externalSessionId": "cursor-session-42",
+    "status": "completed",
+    "summary": "Session ended normally"
+  }
+}

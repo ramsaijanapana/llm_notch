@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "requestId": "00000000-0000-4000-8000-000000000003",
+  "source": "claudeCode",
+  "occurredAtMs": 1700000000100,
+  "command": {
+    "type": "sessionEvent",
+    "externalSessionId": "claude-thread-9f2a",
+    "kind": "tool",
+    "level": "warning",
+    "summary": "Tool requested elevated permission",
+    "toolName": "Bash"
+  }
+}

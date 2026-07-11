@@ -1,0 +1,65 @@
+{
+  "_comment": "TEMPLATE ONLY — beta lifecycle hooks. Requires explicit user trust via Codex /hooks. Enable with: codex -c features.codex_hooks=true",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event SessionStart",
+            "statusMessage": "llm_notch: session observe",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event PreToolUse",
+            "statusMessage": "llm_notch: tool observe",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event PostToolUse",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event UserPromptSubmit",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event Stop",
+            "statusMessage": "llm_notch: turn observe",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

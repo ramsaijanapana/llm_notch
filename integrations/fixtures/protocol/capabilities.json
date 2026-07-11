@@ -1,0 +1,17 @@
+{
+  "protocolVersion": 1,
+  "requestId": "00000000-0000-4000-8000-000000000007",
+  "source": "cursor",
+  "occurredAtMs": 1700000000000,
+  "command": {
+    "type": "integrationHealth",
+    "capabilities": {
+      "source": "cursor",
+      "events": true,
+      "attention": "none",
+      "decisionResponse": false,
+      "contextOpen": false,
+      "processAttribution": "unknown"
+    }
+  }
+}

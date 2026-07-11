@@ -1,0 +1,7 @@
+{
+  "session_id": "cursor-session-42",
+  "workspace_roots": ["/Users/dev/projects/llm_notch"],
+  "conversation_id": "conv-abc123",
+  "is_background_agent": false,
+  "model": "composer-2"
+}
