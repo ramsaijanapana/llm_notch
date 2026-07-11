@@ -1,10 +1,9 @@
 {
   "session_id": "claude-thread-9f2a",
   "cwd": "/Users/dev/projects/llm_notch",
-  "hook_event_name": "PermissionRequest",
+  "hook_event_name": "PreToolUse",
   "tool_name": "Bash",
   "tool_input": {
-    "command": "npm run build"
-  },
-  "permission_mode": "default"
+    "command": "git status"
+  }
 }
