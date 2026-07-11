@@ -1,5 +1,6 @@
 export { DashboardShell } from './components/DashboardShell'
 export { DashboardTabs } from './components/DashboardTabs'
+export { DecisionSurface } from './components/decisions/DecisionSurface'
 export { IntegrationsPanel } from './components/integrations/IntegrationsPanel'
 export { MetricsPanel } from './components/metrics/MetricsPanel'
 export { OnboardingFlow } from './components/OnboardingFlow'
@@ -13,28 +14,27 @@ export { SparklineChart } from './components/shared/SparklineChart'
 export { useDashboardShortcuts, useRovingTablist } from './hooks/useDashboardShortcuts'
 export type {
   AgentMetricHistory,
+  ApplyProgressEntry,
   AutostartChangeHandler,
+  ConnectFileSelection,
   DashboardLoadState,
   DashboardShellProps,
   DashboardTab,
+  DecisionSurfaceProps,
   DisplayChangeHandler,
   DisplayOption,
   HistoryRangeChangeHandler,
   IntegrationActionHandler,
   IntegrationCardState,
-  IntegrationDiffPreview,
-  IntegrationHealth,
-  IntegrationsPanelProps,
   MetricHistoryPoint,
   MetricSeriesCoverage,
   MetricsHistoryBundle,
   MetricsHistoryRange,
   MetricsPanelProps,
   OnboardingFlowProps,
-  OnboardingIntegrationChangeHandler,
-  OnboardingIntegrationChoice,
   OnboardingStep,
   OpenContextHandler,
+  PendingPlanReview,
   PurgeHistoryHandler,
   SessionSelectHandler,
   SessionsPanelProps,
@@ -57,6 +57,13 @@ export {
   isModifierPressed,
   metricAvailabilityLabel,
 } from './utils/formatters'
+
+export {
+  connectorStatusGuidance,
+  connectorStatusLabel,
+  decisionDeliveryLabel,
+  DOCUMENTED_CONNECTOR_PATHS,
+} from './utils/integrationLabels'
 
 export {
   activeSessions,

@@ -1,6 +1,20 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { NATIVE_COMMANDS } from './commands.ts'
-import type { AppSnapshot, PublicSettings, SessionEvent, StreamFrame } from './contracts.ts'
+import type {
+  AdapterCapabilities,
+  AppSnapshot,
+  BackupJournalEntry,
+  ConnectorApplyResult,
+  ConnectorPlanPreview,
+  ConnectorScope,
+  DecisionRequest,
+  DecisionResponse,
+  DecisionResponseRecord,
+  DetectedConnector,
+  PublicSettings,
+  SessionEvent,
+  StreamFrame,
+} from './contracts.ts'
 import { PROTOCOL_VERSION } from './contracts.ts'
 import { NativeClientError } from './errors.ts'
 import type {
@@ -178,11 +192,90 @@ export class TauriNativeClient implements NativeClient {
     }
   }
 
-  async previewConnector(source: ConnectorPreview['source']): Promise<ConnectorPreview> {
+  async previewConnector(
+    source: ConnectorPreview['source'],
+    scope: ConnectorScope = 'user',
+  ): Promise<ConnectorPreview> {
     try {
-      return await invoke<ConnectorPreview>(NATIVE_COMMANDS.previewConnector, { source })
+      return await invoke<ConnectorPreview>(NATIVE_COMMANDS.previewConnector, { source, scope })
     } catch (error) {
       throw toNativeError(error, 'Failed to preview connector template')
+    }
+  }
+
+  async detectConnectors(): Promise<DetectedConnector[]> {
+    try {
+      return await invoke<DetectedConnector[]>(NATIVE_COMMANDS.detectConnectors)
+    } catch (error) {
+      throw toNativeError(error, 'Failed to detect connectors')
+    }
+  }
+
+  async applyConnectorChange(planId: string): Promise<ConnectorApplyResult> {
+    try {
+      return await invoke<ConnectorApplyResult>(NATIVE_COMMANDS.applyConnector, { planId })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to apply connector change')
+    }
+  }
+
+  async removeConnector(
+    source: AdapterCapabilities['source'],
+    scope: ConnectorScope = 'user',
+  ): Promise<ConnectorApplyResult> {
+    try {
+      return await invoke<ConnectorApplyResult>(NATIVE_COMMANDS.removeConnector, { source, scope })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to remove connector')
+    }
+  }
+
+  async repairConnector(
+    source: AdapterCapabilities['source'],
+    scope: ConnectorScope = 'user',
+  ): Promise<ConnectorPlanPreview> {
+    try {
+      return await invoke<ConnectorPlanPreview>(NATIVE_COMMANDS.repairConnector, { source, scope })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to preview connector repair')
+    }
+  }
+
+  async rollbackConnector(backupId: string): Promise<ConnectorPlanPreview> {
+    try {
+      return await invoke<ConnectorPlanPreview>(NATIVE_COMMANDS.rollbackConnector, { backupId })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to preview connector rollback')
+    }
+  }
+
+  async listConnectorBackups(): Promise<BackupJournalEntry[]> {
+    try {
+      return await invoke<BackupJournalEntry[]>(NATIVE_COMMANDS.listConnectorBackups)
+    } catch (error) {
+      throw toNativeError(error, 'Failed to list connector backups')
+    }
+  }
+
+  async getPendingDecisions(): Promise<DecisionRequest[]> {
+    try {
+      return await invoke<DecisionRequest[]>(NATIVE_COMMANDS.getPendingDecisions)
+    } catch (error) {
+      throw toNativeError(error, 'Failed to load pending decisions')
+    }
+  }
+
+  async respondDecision(
+    requestId: string,
+    response: DecisionResponse,
+  ): Promise<DecisionResponseRecord> {
+    try {
+      return await invoke<DecisionResponseRecord>(NATIVE_COMMANDS.respondDecision, {
+        requestId,
+        response,
+      })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to submit decision response')
     }
   }
 

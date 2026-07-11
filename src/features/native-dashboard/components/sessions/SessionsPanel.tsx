@@ -17,8 +17,13 @@ export function SessionsPanel({
   selectedSessionId,
   events,
   adapters,
+  pendingDecision,
+  decisionRecord,
   onSelectSession,
   onOpenContext,
+  onDecisionAllow,
+  onDecisionDeny,
+  onDecisionAnswer,
   loadState = 'ready',
   emptyMessage = 'No agent sessions yet. Start an integration to see live sessions here.',
 }: SessionsPanelProps) {
@@ -61,7 +66,16 @@ export function SessionsPanel({
       </div>
 
       <div className={styles.panelGrid}>
-        <SessionDetail session={selected} adapters={adapters} onOpenContext={onOpenContext} />
+        <SessionDetail
+          session={selected}
+          adapters={adapters}
+          pendingDecision={pendingDecision}
+          decisionRecord={decisionRecord}
+          onOpenContext={onOpenContext}
+          onDecisionAllow={onDecisionAllow}
+          onDecisionDeny={onDecisionDeny}
+          onDecisionAnswer={onDecisionAnswer}
+        />
         <SessionEventStream events={sessionEvents} />
       </div>
     </div>

@@ -4,6 +4,18 @@ import type {
   AgentAggregate,
   AgentSession,
   AgentSource,
+  BackupJournalEntry,
+  ConnectorApplyResult,
+  ConnectorFileApplyResult,
+  ConnectorFilePreview,
+  ConnectorPlanPreview,
+  ConnectorScope,
+  ConnectorUserStatus,
+  DecisionDeliveryState,
+  DecisionKind,
+  DecisionRequest,
+  DecisionResponseRecord,
+  DetectedConnector,
   HostMetricSample,
   MetricSample,
   PublicSettings,
@@ -17,11 +29,17 @@ export type DashboardLoadState = 'loading' | 'ready' | 'error' | 'empty'
 
 export type MetricsHistoryRange = '15m' | '1h' | '24h'
 
-export type OnboardingStep = 0 | 1 | 2
-
-export type IntegrationHealth = 'healthy' | 'degraded' | 'offline' | 'unknown'
+export type OnboardingStep = 0 | 1 | 2 | 3 | 4
 
 export type OnboardingIntegrationChoice = AgentSource | 'none'
+
+export type ApplyProgressPhase = 'backingUp' | 'writing' | 'verifying' | 'done' | 'failed'
+
+export interface ApplyProgressEntry {
+  displayPath: string
+  phase: ApplyProgressPhase
+  message?: string | undefined
+}
 
 export interface DisplayOption {
   id: string
@@ -67,17 +85,21 @@ export interface MetricsHistoryBundle {
 
 export interface IntegrationCardState {
   adapter: AdapterCapabilities
-  health: IntegrationHealth
+  status: ConnectorUserStatus
+  statusDetail?: string | undefined
   lastEventAtMs?: number | undefined
-  configured: boolean
-  previewConfig?: string | undefined
+  managedEntriesPresent: boolean
 }
 
-export interface IntegrationDiffPreview {
+export interface ConnectFileSelection {
   source: AgentSource
-  summary: string
-  before: string
-  after: string
+  displayPath: string
+  selected: boolean
+}
+
+export interface PendingPlanReview {
+  plan: ConnectorPlanPreview
+  selectedFilePaths: string[]
 }
 
 export type TabChangeHandler = (tab: DashboardTab) => void
@@ -114,8 +136,20 @@ export interface OnboardingFlowProps {
   fullscreenPreferenceSupported?: boolean | undefined
   onDisplayChange: DisplayChangeHandler
   integrationOptions: AgentSource[]
-  selectedIntegration: OnboardingIntegrationChoice
-  onIntegrationChange: OnboardingIntegrationChangeHandler
+  detectedConnectors: DetectedConnector[]
+  detectLoadState?: 'idle' | 'loading' | 'ready' | 'error' | undefined
+  detectError?: string | undefined
+  onGetStarted: () => void
+  connectSelections: ConnectFileSelection[]
+  onConnectSelectionChange: (selections: ConnectFileSelection[]) => void
+  connectScope: ConnectorScope
+  onConnectScopeChange: (scope: ConnectorScope) => void
+  pendingPlan?: PendingPlanReview | undefined
+  applyProgress?: ApplyProgressEntry[] | undefined
+  applyResult?: ConnectorApplyResult | undefined
+  onPreviewConnect: () => void
+  onConfirmApply: () => void
+  onSkipConnect: () => void
   shortcutLabel: string
   autostartEnabled: boolean
   onAutostartChange: AutostartChangeHandler
@@ -131,8 +165,13 @@ export interface SessionsPanelProps {
   selectedSessionId?: string | undefined
   events: SessionEvent[]
   adapters: AdapterCapabilities[]
+  pendingDecision?: DecisionRequest | undefined
+  decisionRecord?: DecisionResponseRecord | undefined
   onSelectSession: SessionSelectHandler
   onOpenContext?: OpenContextHandler | undefined
+  onDecisionAllow?: (() => void) | undefined
+  onDecisionDeny?: (() => void) | undefined
+  onDecisionAnswer?: ((text: string) => void) | undefined
   loadState?: DashboardLoadState | undefined
   emptyMessage?: string | undefined
 }
@@ -153,14 +192,27 @@ export interface MetricsPanelProps {
 
 export interface IntegrationsPanelProps {
   integrations: IntegrationCardState[]
-  pendingDiff?: IntegrationDiffPreview | undefined
+  backups: BackupJournalEntry[]
+  pendingPlan?: PendingPlanReview | undefined
+  applyProgress?: ApplyProgressEntry[] | undefined
+  applyResult?: ConnectorApplyResult | undefined
   writeActionsAvailable?: boolean | undefined
-  onPreview: IntegrationActionHandler
-  onApply: IntegrationActionHandler
-  onRemove: IntegrationActionHandler
-  onConfirmDiff: () => void
-  onCancelDiff: () => void
+  onConnect: IntegrationActionHandler
+  onRepair: IntegrationActionHandler
+  onDisable: IntegrationActionHandler
+  onConfirmPlan: () => void
+  onCancelPlan: () => void
+  onRestoreBackup: (backupId: string) => void
   loadState?: DashboardLoadState | undefined
+}
+
+export interface DecisionSurfaceProps {
+  request: DecisionRequest
+  adapter: AdapterCapabilities | undefined
+  deliveryRecord?: DecisionResponseRecord | undefined
+  onAllow?: (() => void) | undefined
+  onDeny?: (() => void) | undefined
+  onAnswer?: ((text: string) => void) | undefined
 }
 
 export interface SettingsPanelProps {
@@ -178,3 +230,5 @@ export interface SettingsPanelProps {
   onPurgeCancel: () => void
   loadState?: DashboardLoadState | undefined
 }
+
+export type { ConnectorFileApplyResult, ConnectorFilePreview, DecisionDeliveryState, DecisionKind }

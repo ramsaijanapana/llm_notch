@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   agentLabel,
+  type ApplyProgressEntry,
+  type ConnectFileSelection,
   type DashboardLoadState,
   DashboardShell,
   type DashboardTab,
   type IntegrationCardState,
-  type IntegrationDiffPreview,
-  type IntegrationHealth,
-  IntegrationsPanel,
   type MetricSeriesCoverage,
   type MetricsHistoryBundle,
   type MetricsHistoryRange,
+  IntegrationsPanel,
   MetricsPanel,
-  OnboardingFlow,
-  type OnboardingIntegrationChoice,
   type OnboardingStep,
+  type PendingPlanReview,
   SessionsPanel,
   SettingsPanel,
+  OnboardingFlow,
 } from '../features/native-dashboard'
 import {
   type OverlayConnectionState,
@@ -25,7 +25,17 @@ import {
   type OverlayPlatform,
   OverlayShell,
 } from '../features/native-overlay'
-import type { AgentSession, AgentSource, AppSnapshot, PublicSettings } from '../native/contracts.ts'
+import type {
+  AgentSession,
+  AgentSource,
+  AppSnapshot,
+  ConnectorApplyResult,
+  ConnectorScope,
+  DecisionRequest,
+  DecisionResponseRecord,
+  DetectedConnector,
+  PublicSettings,
+} from '../native/contracts.ts'
 import type { ConnectorUserStatus, IntegrationHealthReport, NativeHistoryResponse } from '../native/types.ts'
 import { useNativeState } from '../state/NativeStateProvider.tsx'
 
@@ -276,36 +286,41 @@ export function persistedHistoryBundle(
   }
 }
 
-function mapConnectorStatusToDashboardHealth(
-  status: ConnectorUserStatus | undefined,
-): IntegrationHealth {
-  switch (status) {
-    case 'connected':
-      return 'healthy'
-    case 'notFound':
-      return 'unknown'
-    case 'error':
-      return 'offline'
-    case undefined:
-      return 'unknown'
-    default:
-      return 'degraded'
+async function runApplyProgress(
+  planId: string,
+  filePaths: string[],
+  apply: (planId: string) => Promise<ConnectorApplyResult>,
+  onProgress: (entries: ApplyProgressEntry[]) => void,
+): Promise<ConnectorApplyResult> {
+  const phases: ApplyProgressEntry['phase'][] = ['backingUp', 'writing', 'verifying', 'done']
+  const progress = filePaths.map((displayPath) => ({
+    displayPath,
+    phase: 'backingUp' as const,
+  }))
+
+  for (const phase of phases) {
+    onProgress(progress.map((entry) => ({ ...entry, phase })))
+    await new Promise((resolve) => setTimeout(resolve, 100))
   }
+
+  const result = await apply(planId)
+  const failedPaths = new Set(
+    result.fileResults.filter((file) => file.outcome === 'failed').map((file) => file.displayPath),
+  )
+  if (failedPaths.size > 0) {
+    onProgress(
+      progress.map((entry) => ({
+        ...entry,
+        phase: failedPaths.has(entry.displayPath) ? 'failed' : 'done',
+        message: failedPaths.has(entry.displayPath) ? 'Apply failed for this file' : undefined,
+      })),
+    )
+  }
+  return result
 }
 
-function templatePath(source: AgentSource): string {
-  switch (source) {
-    case 'cursor':
-      return 'integrations/cursor/hooks.json.template'
-    case 'claudeCode':
-      return 'integrations/claude-code/settings.hooks.template.json'
-    case 'codex':
-      return 'integrations/codex/hooks.json.template'
-    case 'generic':
-      return 'integrations/generic/emit-examples.sh'
-    case 'unknown':
-      return 'No supported template'
-  }
+function defaultConnectorStatus(): ConnectorUserStatus {
+  return 'notInstalled'
 }
 
 export function NativeDashboardSurface() {
@@ -322,13 +337,26 @@ export function NativeDashboardSurface() {
     return emptyHistory(end - 15 * 60_000, end)
   })
   const [health, setHealth] = useState<IntegrationHealthReport | null>(null)
-  const [pendingDiff, setPendingDiff] = useState<IntegrationDiffPreview>()
+  const [backups, setBackups] = useState<import('../native/contracts.ts').BackupJournalEntry[]>([])
+  const [pendingPlan, setPendingPlan] = useState<PendingPlanReview>()
+  const [applyProgress, setApplyProgress] = useState<ApplyProgressEntry[]>()
+  const [applyResult, setApplyResult] = useState<ConnectorApplyResult>()
   const [actionError, setActionError] = useState<string>()
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false)
   const [onboardingOpen, setOnboardingOpen] = useState(() => !readOnboardingComplete())
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>(0)
-  const [onboardingIntegration, setOnboardingIntegration] =
-    useState<OnboardingIntegrationChoice>('none')
+  const [detectedConnectors, setDetectedConnectors] = useState<DetectedConnector[]>([])
+  const [detectLoadState, setDetectLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>(
+    'idle',
+  )
+  const [detectError, setDetectError] = useState<string>()
+  const [connectSelections, setConnectSelections] = useState<ConnectFileSelection[]>([])
+  const [connectScope, setConnectScope] = useState<ConnectorScope>('user')
+  const [pendingDecisions, setPendingDecisions] = useState<DecisionRequest[]>([])
+  const [decisionRecords, setDecisionRecords] = useState<
+    Record<string, DecisionResponseRecord>
+  >({})
+  const writeActionsAvailable = client.mode === 'preview' || client.mode === 'tauri'
 
   useEffect(() => {
     if (!state.metrics) return
@@ -445,6 +473,22 @@ export function NativeDashboardSurface() {
         if (!cancelled)
           setActionError(error instanceof Error ? error.message : 'Health check failed')
       })
+    void client
+      .listConnectorBackups()
+      .then((entries) => {
+        if (!cancelled) setBackups(entries)
+      })
+      .catch(() => {
+        if (!cancelled) setBackups([])
+      })
+    void client
+      .getPendingDecisions()
+      .then((requests) => {
+        if (!cancelled) setPendingDecisions(requests)
+      })
+      .catch(() => {
+        if (!cancelled) setPendingDecisions([])
+      })
     return () => {
       cancelled = true
     }
@@ -472,23 +516,27 @@ export function NativeDashboardSurface() {
       ? 'loading'
       : state.displayStatus
 
-  const integrationCards: IntegrationCardState[] = state.adapters.map((adapter) => {
-    const healthEntry = health?.adapters.find((entry) => entry.source === adapter.source)
-    const lastEventAtMs = sessions
-      .filter((session) => session.source === adapter.source)
-      .reduce<number | undefined>(
-        (latest, session) =>
-          latest === undefined ? session.lastEventAtMs : Math.max(latest, session.lastEventAtMs),
-        undefined,
-      )
-    return {
-      adapter,
-      configured: lastEventAtMs !== undefined,
-      lastEventAtMs,
-      health: mapConnectorStatusToDashboardHealth(healthEntry?.status),
-      previewConfig: `Read-only template: ${templatePath(adapter.source)}`,
-    }
-  })
+  const integrationCards: IntegrationCardState[] = state.adapters
+    .filter((adapter) => adapter.source !== 'unknown' && adapter.source !== 'generic')
+    .map((adapter) => {
+      const healthEntry = health?.adapters.find((entry) => entry.source === adapter.source)
+      const detected = detectedConnectors.find((entry) => entry.source === adapter.source)
+      const lastEventAtMs = sessions
+        .filter((session) => session.source === adapter.source)
+        .reduce<number | undefined>(
+          (latest, session) =>
+            latest === undefined ? session.lastEventAtMs : Math.max(latest, session.lastEventAtMs),
+          undefined,
+        )
+      return {
+        adapter,
+        status: healthEntry?.status ?? defaultConnectorStatus(),
+        statusDetail: healthEntry?.detail,
+        lastEventAtMs,
+        managedEntriesPresent:
+          detected?.managedEntriesPresent ?? healthEntry?.status === 'connected',
+      }
+    })
 
   const updateSettings = (patch: Partial<PublicSettings>) => {
     setActionError(undefined)
@@ -514,22 +562,105 @@ export function NativeDashboardSurface() {
     setOnboardingOpen(false)
   }
 
-  const previewIntegration = (source: AgentSource) => {
+  const refreshBackups = () => {
+    void client
+      .listConnectorBackups()
+      .then(setBackups)
+      .catch(() => setBackups([]))
+  }
+
+  const refreshHealth = () => {
+    void client
+      .getIntegrationHealth()
+      .then(setHealth)
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Health check failed')
+      })
+  }
+
+  const runDetection = () => {
+    setDetectLoadState('loading')
+    setDetectError(undefined)
+    void client
+      .detectConnectors()
+      .then((detected) => {
+        setDetectedConnectors(detected)
+        setConnectSelections(
+          detected.map((entry) => ({
+            source: entry.source,
+            displayPath: entry.displayPath,
+            selected: entry.configPresent,
+          })),
+        )
+        setDetectLoadState('ready')
+      })
+      .catch((error: unknown) => {
+        setDetectLoadState('error')
+        setDetectError(error instanceof Error ? error.message : 'Detection failed')
+      })
+  }
+
+  const previewConnect = (source: AgentSource, scope: ConnectorScope = 'user') => {
     setActionError(undefined)
     void client
-      .previewConnector(source)
-      .then((preview) => {
-        setPendingDiff({
-          source,
-          summary: preview.summary,
-          before: 'No files inspected or changed by llm_notch.',
-          after: `Review manually: ${templatePath(source)}`,
+      .previewConnector(source, scope)
+      .then((plan) => {
+        setPendingPlan({
+          plan,
+          selectedFilePaths: plan.files.map((file) => file.displayPath),
         })
       })
       .catch((error: unknown) => {
         setActionError(error instanceof Error ? error.message : 'Connector preview failed')
       })
   }
+
+  const applyPendingPlan = () => {
+    if (!pendingPlan) return
+    setActionError(undefined)
+    const filePaths = pendingPlan.selectedFilePaths
+    void runApplyProgress(
+      pendingPlan.plan.planId,
+      filePaths,
+      (planId) => client.applyConnectorChange(planId),
+      setApplyProgress,
+    )
+      .then((result) => {
+        setApplyResult(result)
+        setPendingPlan(undefined)
+        refreshBackups()
+        refreshHealth()
+      })
+      .catch((error: unknown) => {
+        setApplyProgress(
+          filePaths.map((displayPath) => ({
+            displayPath,
+            phase: 'failed',
+            message: error instanceof Error ? error.message : 'Apply failed',
+          })),
+        )
+        setActionError(error instanceof Error ? error.message : 'Connector apply failed')
+      })
+  }
+
+  const respondToDecision = (
+    requestId: string,
+    response: import('../native/contracts.ts').DecisionResponse,
+  ) => {
+    void client
+      .respondDecision(requestId, response)
+      .then((record) => {
+        setDecisionRecords((current) => ({ ...current, [requestId]: record }))
+      })
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Decision response failed')
+      })
+  }
+
+  const selectedDecision = pendingDecisions[0]
+  const selectedDecisionRecord = selectedDecision
+    ? decisionRecords[selectedDecision.id]
+    : undefined
 
   const historyRange = state.historyRange as MetricsHistoryRange
   const disabledHistoryRanges: MetricsHistoryRange[] = [
@@ -592,12 +723,29 @@ export function NativeDashboardSurface() {
               selectedSessionId={state.selectedSessionId ?? undefined}
               events={state.events}
               adapters={state.adapters}
+              pendingDecision={selectedDecision}
+              decisionRecord={selectedDecisionRecord}
               onSelectSession={(sessionId) => dispatch({ type: 'SET_SELECTED_SESSION', sessionId })}
               onOpenContext={(sessionId) => {
                 void client.openSession(sessionId).catch((error: unknown) => {
                   setActionError(error instanceof Error ? error.message : 'Context open failed')
                 })
               }}
+              onDecisionAllow={() =>
+                selectedDecision
+                  ? respondToDecision(selectedDecision.id, { type: 'action', action: 'allow' })
+                  : undefined
+              }
+              onDecisionDeny={() =>
+                selectedDecision
+                  ? respondToDecision(selectedDecision.id, { type: 'action', action: 'deny' })
+                  : undefined
+              }
+              onDecisionAnswer={(text) =>
+                selectedDecision
+                  ? respondToDecision(selectedDecision.id, { type: 'answer', text })
+                  : undefined
+              }
               loadState={sessions.length === 0 && loadState === 'ready' ? 'empty' : loadState}
             />
           }
@@ -619,17 +767,54 @@ export function NativeDashboardSurface() {
           integrationsPanel={
             <IntegrationsPanel
               integrations={integrationCards}
-              pendingDiff={pendingDiff}
-              writeActionsAvailable={false}
-              onPreview={previewIntegration}
-              onApply={() =>
-                setActionError('Automatic connector writes are unavailable in this build.')
-              }
-              onRemove={() =>
-                setActionError('Automatic connector removal is unavailable in this build.')
-              }
-              onConfirmDiff={() => setPendingDiff(undefined)}
-              onCancelDiff={() => setPendingDiff(undefined)}
+              backups={backups}
+              pendingPlan={pendingPlan}
+              applyProgress={applyProgress}
+              applyResult={applyResult}
+              writeActionsAvailable={writeActionsAvailable}
+              onConnect={(source) => previewConnect(source, 'user')}
+              onRepair={(source) => {
+                void client
+                  .repairConnector(source, 'user')
+                  .then((plan) =>
+                    setPendingPlan({
+                      plan,
+                      selectedFilePaths: plan.files.map((file) => file.displayPath),
+                    }),
+                  )
+                  .catch((error: unknown) => {
+                    setActionError(
+                      error instanceof Error ? error.message : 'Connector repair preview failed',
+                    )
+                  })
+              }}
+              onDisable={(source) => {
+                void client
+                  .removeConnector(source, 'user')
+                  .then(() => refreshHealth())
+                  .catch((error: unknown) => {
+                    setActionError(
+                      error instanceof Error ? error.message : 'Connector disable failed',
+                    )
+                  })
+              }}
+              onConfirmPlan={applyPendingPlan}
+              onCancelPlan={() => setPendingPlan(undefined)}
+              onRestoreBackup={(backupId) => {
+                void client
+                  .rollbackConnector(backupId)
+                  .then((plan) =>
+                    setPendingPlan({
+                      plan,
+                      selectedFilePaths: plan.files.map((file) => file.displayPath),
+                    }),
+                  )
+                  .catch((error: unknown) => {
+                    setActionError(
+                      error instanceof Error ? error.message : 'Rollback preview failed',
+                    )
+                  })
+              }}
               loadState={loadState}
             />
           }
@@ -694,13 +879,34 @@ export function NativeDashboardSurface() {
         onDisplayChange={updateDisplay}
         integrationOptions={state.adapters
           .map((adapter) => adapter.source)
-          .filter((source) => source !== 'unknown')}
-        selectedIntegration={onboardingIntegration}
-        onIntegrationChange={setOnboardingIntegration}
+          .filter((source) => source !== 'unknown' && source !== 'generic')}
+        detectedConnectors={detectedConnectors}
+        detectLoadState={detectLoadState}
+        detectError={detectError}
+        onGetStarted={runDetection}
+        connectSelections={connectSelections}
+        onConnectSelectionChange={setConnectSelections}
+        connectScope={connectScope}
+        onConnectScopeChange={setConnectScope}
+        pendingPlan={onboardingStep === 3 ? pendingPlan : undefined}
+        applyProgress={onboardingStep === 3 ? applyProgress : undefined}
+        applyResult={onboardingStep === 3 ? applyResult : undefined}
+        onPreviewConnect={() => {
+          const first = connectSelections.find((entry) => entry.selected)
+          if (first) previewConnect(first.source, connectScope)
+          setOnboardingStep(3)
+        }}
+        onConfirmApply={() => {
+          applyPendingPlan()
+        }}
+        onSkipConnect={() => {
+          setPendingPlan(undefined)
+          setOnboardingStep(4)
+        }}
         shortcutLabel={SHORTCUT_LABEL}
         autostartEnabled={settings.autostartEnabled}
         onAutostartChange={(autostartEnabled) => updateSettings({ autostartEnabled })}
-        onNext={() => setOnboardingStep((step) => Math.min(2, step + 1) as OnboardingStep)}
+        onNext={() => setOnboardingStep((step) => Math.min(4, step + 1) as OnboardingStep)}
         onBack={() => setOnboardingStep((step) => Math.max(0, step - 1) as OnboardingStep)}
         onSkip={closeOnboarding}
         onFinish={closeOnboarding}

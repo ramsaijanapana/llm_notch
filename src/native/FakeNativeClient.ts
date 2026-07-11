@@ -1,5 +1,18 @@
 import { NATIVE_COMMANDS } from './commands.ts'
-import type { PublicSettings, StreamFrame } from './contracts.ts'
+import type {
+  AgentSource,
+  BackupJournalEntry,
+  ConnectorApplyResult,
+  ConnectorFileApplyResult,
+  ConnectorPlanPreview,
+  ConnectorScope,
+  DecisionRequest,
+  DecisionResponse,
+  DecisionResponseRecord,
+  DetectedConnector,
+  PublicSettings,
+  StreamFrame,
+} from './contracts.ts'
 import { PROTOCOL_VERSION } from './contracts.ts'
 import { NativeClientError } from './errors.ts'
 import {
@@ -15,7 +28,6 @@ import type {
   BootstrapResult,
   ConnectorHealthEntry,
   ConnectorHealthReport,
-  ConnectorPlanPreview,
   HealthProbeResult,
   NativeClient,
   NativeDisplayOption,
@@ -30,14 +42,38 @@ import type {
 
 const METRIC_TICK_MS = 1_000
 
+const PREVIEW_DETECTED: DetectedConnector[] = [
+  {
+    source: 'cursor',
+    scope: 'user',
+    displayPath: '~/.cursor/hooks.json',
+    configPresent: true,
+    managedEntriesPresent: false,
+  },
+  {
+    source: 'claudeCode',
+    scope: 'user',
+    displayPath: '~/.claude/settings.json',
+    configPresent: true,
+    managedEntriesPresent: false,
+  },
+  {
+    source: 'codex',
+    scope: 'user',
+    displayPath: '~/.codex/hooks.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+  },
+]
+
 function previewHealthEntry(
   capabilities: ConnectorHealthEntry['capabilities'],
 ): ConnectorHealthEntry {
   const probes: HealthProbeResult[] = [
     {
       axis: 'installation',
-      outcome: 'warn',
-      detail: 'Preview template loaded; install state not verified',
+      outcome: capabilities.source === 'codex' ? 'fail' : 'ok',
+      ...(capabilities.source === 'codex' ? { failureKind: 'notInstalled' as const } : {}),
     },
     {
       axis: 'trust',
@@ -54,14 +90,84 @@ function previewHealthEntry(
     { axis: 'helper', outcome: 'ok' },
   ]
 
+  const status =
+    capabilities.source === 'codex'
+      ? 'actionNeeded'
+      : capabilities.events
+        ? 'waitingFirstEvent'
+        : 'notInstalled'
+
   return {
     source: capabilities.source,
-    status: capabilities.events ? 'waitingFirstEvent' : 'notInstalled',
+    status,
     probes,
     capabilities,
-    detail: capabilities.events
-      ? 'Preview adapter ready; awaiting first event'
-      : 'Preview adapter limited',
+    detail:
+      capabilities.source === 'codex'
+        ? 'Run /hooks in Codex and trust llm_notch hook definitions.'
+        : capabilities.events
+          ? 'Preview adapter ready; awaiting first event'
+          : 'Preview adapter limited',
+  }
+}
+
+function previewPlan(
+  source: AgentSource,
+  scope: ConnectorScope,
+  operation: 'install' | 'repair' | 'rollback' = 'install',
+): ConnectorPlanPreview {
+  const files =
+    operation === 'rollback'
+      ? [
+          {
+            displayPath: '~/.cursor/hooks.json',
+            baselineSha256: 'abc123',
+            diffText: '-  "llm_notch": ...\n+  (restored entries)',
+            foreignEntriesPreserved: ['other-hook'],
+            isNewFile: false,
+          },
+        ]
+      : [
+          {
+            displayPath:
+              source === 'cursor'
+                ? '~/.cursor/hooks.json'
+                : source === 'claudeCode'
+                  ? '~/.claude/settings.json'
+                  : '~/.codex/hooks.json',
+            baselineSha256: 'abc123',
+            diffText:
+              operation === 'repair'
+                ? '  hooks: {\n+    "llm_notch": { "command": "/path/to/helper" }\n  }'
+                : '+  "llm_notch": { "command": "/path/to/helper" }\n   "other-hook": preserved',
+            foreignEntriesPreserved: ['other-hook'],
+            isNewFile: source === 'codex',
+          },
+        ]
+
+  return {
+    planId: `preview-${source}-${operation}-${scope}`,
+    source,
+    scope,
+    summary:
+      operation === 'repair'
+        ? `Repair llm_notch entries for ${source}.`
+        : operation === 'rollback'
+          ? 'Restore this file from backup.'
+          : `Connect ${source} using user-scope hooks.`,
+    expiresAtMs: Date.now() + 300_000,
+    files,
+    externalTrustActions:
+      source === 'codex'
+        ? [
+            {
+              kind: 'codexHooksReview',
+              instructions:
+                'Open the Codex CLI, run /hooks, review each llm_notch hook definition, and trust it.',
+            },
+          ]
+        : [],
+    backupDisplayHint: '~/.cursor/hooks.json.bak-20260711',
   }
 }
 
@@ -77,6 +183,20 @@ export class FakeNativeClient implements NativeClient {
   private overlayMode: OverlayMode = 'collapsed'
   private acknowledgedSessions = new Set<string>()
   private bootstrapCount = 0
+  private backups: BackupJournalEntry[] = []
+  private pendingDecisions: DecisionRequest[] = [
+    {
+      id: 'decision-preview-1',
+      sessionId: 'sess-claude-review',
+      source: 'claudeCode',
+      kind: 'approval',
+      summary: 'Allow running: npm test --coverage',
+      hasActionablePayload: false,
+      createdAtMs: Date.now() - 30_000,
+      expiresAtMs: Date.now() + 120_000,
+    },
+  ]
+  private decisionRecords = new Map<string, DecisionResponseRecord>()
 
   async bootstrap(): Promise<BootstrapResult> {
     const scenario = resolveNativePreviewScenario()
@@ -216,16 +336,132 @@ export class FakeNativeClient implements NativeClient {
     }
   }
 
-  async previewConnector(source: ConnectorPlanPreview['source']): Promise<ConnectorPlanPreview> {
-    return {
-      planId: `preview-${source}`,
-      source,
-      scope: 'user',
-      summary: 'Preview only — no vendor configuration files were changed.',
-      expiresAtMs: Date.now() + 300_000,
-      files: [],
-      externalTrustActions: [],
+  async detectConnectors(): Promise<DetectedConnector[]> {
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    return PREVIEW_DETECTED.map((entry) => ({ ...entry }))
+  }
+
+  async previewConnector(
+    source: ConnectorPlanPreview['source'],
+    scope: ConnectorScope = 'user',
+  ): Promise<ConnectorPlanPreview> {
+    return previewPlan(source, scope, 'install')
+  }
+
+  async applyConnectorChange(planId: string): Promise<ConnectorApplyResult> {
+    const source = planId.includes('claudeCode')
+      ? 'claudeCode'
+      : planId.includes('codex')
+        ? 'codex'
+        : 'cursor'
+    const capabilities =
+      PREVIEW_ADAPTERS.find((adapter) => adapter.source === source) ?? PREVIEW_ADAPTERS[0]!
+
+    const fileResults: ConnectorFileApplyResult[] = [
+      {
+        displayPath:
+          source === 'cursor'
+            ? '~/.cursor/hooks.json'
+            : source === 'claudeCode'
+              ? '~/.claude/settings.json'
+              : '~/.codex/hooks.json',
+        outcome: 'applied',
+        backupJournalId: `backup-${source}-1`,
+        appliedHash: 'hash-applied-1',
+      },
+    ]
+
+    if (planId.includes('partial')) {
+      fileResults.push({
+        displayPath: '~/.cursor/hooks.secondary.json',
+        outcome: 'failed',
+        errorCode: 'lockContention',
+        message: 'File locked by another process',
+      })
     }
+
+    for (const result of fileResults) {
+      if (result.backupJournalId) {
+        this.backups.push({
+          id: result.backupJournalId,
+          planId,
+          source,
+          displayPath: result.displayPath,
+          backupDisplayPath: `${result.displayPath}.bak-preview`,
+          contentSha256: 'sha-backup',
+          ...(result.appliedHash ? { appliedHash: result.appliedHash } : {}),
+          operation: 'create',
+          recordedAtMs: Date.now(),
+        })
+      }
+    }
+
+    return { planId, source, fileResults, capabilities }
+  }
+
+  async removeConnector(
+    source: AgentSource,
+    _scope: ConnectorScope = 'user',
+  ): Promise<ConnectorApplyResult> {
+    const capabilities =
+      PREVIEW_ADAPTERS.find((adapter) => adapter.source === source) ?? PREVIEW_ADAPTERS[0]!
+    return {
+      planId: `remove-${source}`,
+      source,
+      fileResults: [
+        {
+          displayPath:
+            source === 'cursor'
+              ? '~/.cursor/hooks.json'
+              : source === 'claudeCode'
+                ? '~/.claude/settings.json'
+                : '~/.codex/hooks.json',
+          outcome: 'applied',
+        },
+      ],
+      capabilities,
+    }
+  }
+
+  async repairConnector(
+    source: AgentSource,
+    scope: ConnectorScope = 'user',
+  ): Promise<ConnectorPlanPreview> {
+    return previewPlan(source, scope, 'repair')
+  }
+
+  async rollbackConnector(backupId: string): Promise<ConnectorPlanPreview> {
+    const backup = this.backups.find((entry) => entry.id === backupId)
+    return previewPlan(backup?.source ?? 'cursor', 'user', 'rollback')
+  }
+
+  async listConnectorBackups(): Promise<BackupJournalEntry[]> {
+    return [...this.backups]
+  }
+
+  async getPendingDecisions(): Promise<DecisionRequest[]> {
+    return this.pendingDecisions.filter((request) => !this.decisionRecords.has(request.id))
+  }
+
+  async respondDecision(
+    requestId: string,
+    response: DecisionResponse,
+  ): Promise<DecisionResponseRecord> {
+    const request = this.pendingDecisions.find((entry) => entry.id === requestId)
+    if (!request) {
+      throw new NativeClientError('not-available', `Unknown decision request: ${requestId}`)
+    }
+    const record: DecisionResponseRecord = {
+      requestId,
+      response,
+      respondedAtMs: Date.now(),
+      deliveryState: request.hasActionablePayload ? 'pending' : 'delivered',
+      ...(request.hasActionablePayload
+        ? { deliveryDetail: 'Awaiting agent hook delivery confirmation.' }
+        : {}),
+    }
+    this.decisionRecords.set(requestId, record)
+    return record
   }
 
   getOverlayModeForTests(): OverlayMode {
@@ -258,7 +494,6 @@ export class FakeNativeClient implements NativeClient {
     this.errorHandler = null
   }
 
-  /** Test helper to simulate backend resync signals without exposing in production UI. */
   simulateResyncRequired(reason: string): void {
     this.errorHandler?.(
       new NativeClientError('resync-required', reason || 'Preview stream requested resync'),
@@ -270,7 +505,6 @@ export class FakeNativeClient implements NativeClient {
     })
   }
 
-  /** Test helper to inject an out-of-order frame. */
   simulateSequenceGap(): void {
     this.sequence += 5
     this.emit({
@@ -300,7 +534,6 @@ export function assertPreviewNativeClient(client: NativeClient): FakeNativeClien
   return client
 }
 
-/** Ensures preview clients never masquerade as production hosts. */
 export function assertPreviewClient(client: NativeClient): asserts client is FakeNativeClient {
   assertPreviewNativeClient(client)
 }
@@ -314,5 +547,4 @@ export function validatePreviewProtocol(snapshotProtocolVersion: number): void {
   }
 }
 
-/** Command map kept for test parity with the Tauri seam. */
 export const PREVIEW_COMMAND_SURFACE = NATIVE_COMMANDS

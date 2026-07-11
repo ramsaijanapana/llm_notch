@@ -41,6 +41,21 @@ describe('FakeNativeClient', () => {
     expect(frames.length).toBe(afterUnsubscribe)
   })
 
+  it('detects connectors and previews apply flow', async () => {
+    const client = createFakeNativeClient()
+    const detected = await client.detectConnectors()
+    expect(detected.length).toBeGreaterThan(0)
+
+    const preview = await client.previewConnector('cursor')
+    expect(preview.files.length).toBeGreaterThan(0)
+
+    const result = await client.applyConnectorChange(preview.planId)
+    expect(result.fileResults.some((file) => file.outcome === 'applied')).toBe(true)
+
+    const backups = await client.listConnectorBackups()
+    expect(backups.length).toBeGreaterThan(0)
+  })
+
   it('reports integration health for preview adapters', async () => {
     const client = createFakeNativeClient()
     const health = await client.getIntegrationHealth()

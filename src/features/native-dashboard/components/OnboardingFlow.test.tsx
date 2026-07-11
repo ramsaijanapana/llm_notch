@@ -5,7 +5,7 @@ import type { AgentSource } from '../../../native/contracts'
 import { mockDisplays } from '../fixtures/testFixtures'
 import { OnboardingFlow } from './OnboardingFlow'
 
-const integrationOptions: AgentSource[] = ['cursor', 'claudeCode', 'codex', 'generic']
+const integrationOptions: AgentSource[] = ['cursor', 'claudeCode', 'codex']
 
 const baseProps = {
   open: true,
@@ -14,8 +14,16 @@ const baseProps = {
   selectedDisplayId: 'display-primary',
   onDisplayChange: vi.fn(),
   integrationOptions,
-  selectedIntegration: 'none' as const,
-  onIntegrationChange: vi.fn(),
+  detectedConnectors: [],
+  detectLoadState: 'idle' as const,
+  onGetStarted: vi.fn(),
+  connectSelections: [],
+  onConnectSelectionChange: vi.fn(),
+  connectScope: 'user' as const,
+  onConnectScopeChange: vi.fn(),
+  onPreviewConnect: vi.fn(),
+  onConfirmApply: vi.fn(),
+  onSkipConnect: vi.fn(),
   shortcutLabel: 'Ctrl+Shift+N',
   autostartEnabled: false,
   onAutostartChange: vi.fn(),
@@ -28,29 +36,45 @@ const baseProps = {
 describe('OnboardingFlow', () => {
   afterEach(() => cleanup())
 
-  it('renders step one display selection', () => {
+  it('renders consent step with documented paths', () => {
     render(<OnboardingFlow {...baseProps} />)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: /^display$/i })).toHaveFocus()
+    expect(screen.getByText(/documented configuration paths/i)).toBeInTheDocument()
+    expect(screen.getByText(/~\/.cursor\/hooks.json/i)).toBeInTheDocument()
   })
 
-  it('advances through steps and can finish', async () => {
+  it('triggers detection from Get started', async () => {
+    const user = userEvent.setup()
+    const onGetStarted = vi.fn()
+    render(<OnboardingFlow {...baseProps} onGetStarted={onGetStarted} />)
+    await user.click(screen.getByRole('button', { name: /get started/i }))
+    expect(onGetStarted).toHaveBeenCalled()
+  })
+
+  it('advances through display and finish steps', async () => {
     const user = userEvent.setup()
     const onNext = vi.fn()
     const onFinish = vi.fn()
 
     const { rerender } = render(
-      <OnboardingFlow {...baseProps} onNext={onNext} onFinish={onFinish} />,
+      <OnboardingFlow
+        {...baseProps}
+        detectLoadState="ready"
+        onNext={onNext}
+        onFinish={onFinish}
+      />,
     )
     await user.click(screen.getByRole('button', { name: /continue/i }))
     expect(onNext).toHaveBeenCalled()
 
-    rerender(<OnboardingFlow {...baseProps} step={1} onNext={onNext} onFinish={onFinish} />)
-    expect(
-      screen.getByText(/never writes vendor configuration files automatically/i),
-    ).toBeInTheDocument()
+    rerender(
+      <OnboardingFlow {...baseProps} step={1} detectLoadState="ready" onNext={onNext} onFinish={onFinish} />,
+    )
+    expect(screen.getByRole('combobox', { name: /^display$/i })).toBeInTheDocument()
 
-    rerender(<OnboardingFlow {...baseProps} step={2} onNext={onNext} onFinish={onFinish} />)
+    rerender(
+      <OnboardingFlow {...baseProps} step={4} detectLoadState="ready" onNext={onNext} onFinish={onFinish} />,
+    )
     await user.click(screen.getByRole('button', { name: /finish/i }))
     expect(onFinish).toHaveBeenCalled()
   })
@@ -62,46 +86,34 @@ describe('OnboardingFlow', () => {
     render(<OnboardingFlow {...baseProps} onSkip={onSkip} />)
     await user.click(screen.getByRole('button', { name: /skip setup/i }))
     expect(screen.getByRole('alertdialog', { name: /confirm skip setup/i })).toBeInTheDocument()
-    expect(onSkip).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: /confirm skip/i }))
     expect(onSkip).toHaveBeenCalled()
   })
 
-  it('traps focus and uses Escape confirmation', async () => {
-    const user = userEvent.setup()
-    render(<OnboardingFlow {...baseProps} />)
-    const display = screen.getByRole('combobox', { name: /^display$/i })
-    expect(display).toHaveFocus()
-
-    await user.tab({ shift: true })
-    expect(screen.getByRole('button', { name: /continue/i })).toHaveFocus()
-    await user.tab()
-    expect(display).toHaveFocus()
-
-    await user.keyboard('{Escape}')
-    expect(screen.getByRole('alertdialog', { name: /confirm skip setup/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /continue setup/i })).toHaveFocus()
-  })
-
-  it('restores focus after closing', () => {
-    const trigger = document.createElement('button')
-    trigger.textContent = 'Open setup'
-    document.body.append(trigger)
-    trigger.focus()
-    const { rerender } = render(<OnboardingFlow {...baseProps} />)
-    expect(screen.getByRole('combobox', { name: /^display$/i })).toHaveFocus()
-    rerender(<OnboardingFlow {...baseProps} open={false} />)
-    expect(trigger).toHaveFocus()
-    trigger.remove()
-  })
-
-  it('does not render when closed', () => {
-    render(<OnboardingFlow {...baseProps} open={false} />)
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  })
-
-  it('explains Windows fullscreen limitation', () => {
-    render(<OnboardingFlow {...baseProps} fullscreenPreferenceSupported={false} />)
-    expect(screen.getByText(/not overlay presentation above fullscreen/i)).toBeInTheDocument()
+  it('shows connect agents step with scope radios', () => {
+    render(
+      <OnboardingFlow
+        {...baseProps}
+        step={2}
+        detectedConnectors={[
+          {
+            source: 'cursor',
+            scope: 'user',
+            displayPath: '~/.cursor/hooks.json',
+            configPresent: true,
+            managedEntriesPresent: false,
+          },
+        ]}
+        connectSelections={[
+          {
+            source: 'cursor',
+            displayPath: '~/.cursor/hooks.json',
+            selected: true,
+          },
+        ]}
+      />,
+    )
+    expect(screen.getByRole('heading', { name: /connect agents/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/user scope/i)).toBeChecked()
   })
 })

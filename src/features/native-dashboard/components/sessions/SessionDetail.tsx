@@ -1,17 +1,33 @@
 import type { AdapterCapabilities, AgentSession } from '../../../../native/contracts'
 import styles from '../../styles/dashboard.module.css'
 import type { OpenContextHandler } from '../../types/contracts'
+import type { DecisionRequest, DecisionResponseRecord } from '../../../../native/contracts'
 import { agentLabel, attentionLabel } from '../../utils/formatters'
 import { findAdapterForSession, isNotifyOnlyAdapter } from '../../utils/sessionHelpers'
+import { DecisionSurface } from '../decisions/DecisionSurface'
 import { MetricStrip } from './MetricStrip'
 
 type SessionDetailProps = {
   session?: AgentSession | undefined
   adapters: AdapterCapabilities[]
+  pendingDecision?: DecisionRequest | undefined
+  decisionRecord?: DecisionResponseRecord | undefined
   onOpenContext?: OpenContextHandler | undefined
+  onDecisionAllow?: (() => void) | undefined
+  onDecisionDeny?: (() => void) | undefined
+  onDecisionAnswer?: ((text: string) => void) | undefined
 }
 
-export function SessionDetail({ session, adapters, onOpenContext }: SessionDetailProps) {
+export function SessionDetail({
+  session,
+  adapters,
+  pendingDecision,
+  decisionRecord,
+  onOpenContext,
+  onDecisionAllow,
+  onDecisionDeny,
+  onDecisionAnswer,
+}: SessionDetailProps) {
   if (!session) {
     return (
       <section className={styles.card} aria-label="Session detail">
@@ -23,6 +39,8 @@ export function SessionDetail({ session, adapters, onOpenContext }: SessionDetai
 
   const adapter = findAdapterForSession(adapters, session)
   const notifyOnly = isNotifyOnlyAdapter(adapter)
+  const showDecision =
+    pendingDecision !== undefined && pendingDecision.sessionId === session.id
 
   return (
     <section className={styles.card} aria-label="Session detail">
@@ -50,7 +68,18 @@ export function SessionDetail({ session, adapters, onOpenContext }: SessionDetai
 
       <MetricStrip metric={session.latestMetric} />
 
-      {session.attention !== 'none' ? (
+      {showDecision ? (
+        <DecisionSurface
+          request={pendingDecision}
+          adapter={adapter}
+          deliveryRecord={decisionRecord}
+          onAllow={onDecisionAllow}
+          onDeny={onDecisionDeny}
+          onAnswer={onDecisionAnswer}
+        />
+      ) : null}
+
+      {session.attention !== 'none' && !showDecision ? (
         <div className={styles.actions}>
           {notifyOnly ? (
             <p className={styles.muted} role="status">
