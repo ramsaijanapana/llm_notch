@@ -1,10 +1,11 @@
 //! Native Tauri 2 host for llm_notch.
 
 mod commands;
+pub mod runtime;
 mod services;
 mod state;
 mod stream;
-mod window;
+pub mod window;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -310,11 +311,14 @@ pub fn run() {
                     signal_app.exit(0);
                 }
             });
+            let helper_path = runtime::helper_path::resolve_helper_path(app.handle());
             let initial_snapshot = host.snapshot();
             info!(
                 protocol_version = notch_protocol::PROTOCOL_VERSION,
                 captured_at_ms = initial_snapshot.captured_at_ms,
                 database = %database_path.display(),
+                helper = %helper_path.display(),
+                helper_exists = helper_path.is_file(),
                 windows = ?app.webview_windows().keys().collect::<Vec<_>>(),
                 "llm_notch desktop host initialized"
             );

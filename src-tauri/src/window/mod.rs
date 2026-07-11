@@ -48,7 +48,8 @@
 //! - **macOS**: AppKit configuration runs on the main thread via [`WebviewWindow::run_on_main_thread`].
 //!   Accessory activation policy is applied when safe; restored when the dashboard opens.
 //! - **Windows**: `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`, `WS_EX_APPWINDOW` cleared,
-//!   `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE)`.
+//!   `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE)`, and `WM_MOUSEACTIVATE → MA_NOACTIVATE`
+//!   via a chained `GWLP_WNDPROC` hook for defense in depth.
 
 use std::sync::Arc;
 

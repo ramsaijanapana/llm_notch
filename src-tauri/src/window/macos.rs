@@ -1,4 +1,18 @@
 //! macOS overlay and dashboard configuration via AppKit.
+//!
+//! # NSPanel vs NSWindow (honest capability report)
+//!
+//! The strongest non-activating overlay path on macOS is a true [`NSPanel`] created at
+//! construction time with `NSWindowStyleMask::NonactivatingPanel`, `becomesKeyOnlyIfNeeded`,
+//! and `NSFloatingWindowLevel`. Tauri 2 constructs webview hosts as [`NSWindow`] instances;
+//! we can apply panel-like style masks and collection behaviors post-creation, but cannot
+//! reliably reclass an existing `NSWindow` into a floating `NSPanel` without private
+//! subclassing that Tauri does not expose.
+//!
+//! [`NSWindowCollectionBehavior::FullScreenAuxiliary`] is requested when
+//! `show_over_fullscreen` is enabled. It improves visibility beside some fullscreen apps but
+//! is **not guaranteed** across Spaces, Stage Manager, or every fullscreen host. Do not claim
+//! guaranteed fullscreen overlay coverage in product copy.
 
 use crate::window::error::{WindowError, WindowResult};
 use crate::window::types::{CapabilityStatus, NotchInsets, OverlayPlatformCapability};
@@ -128,14 +142,14 @@ fn set_activation_policy(policy: NSApplicationActivationPolicy) {
 fn build_overlay_capability() -> OverlayPlatformCapability {
     OverlayPlatformCapability {
         non_activating: CapabilityStatus::Partial {
-            fallback: "existing Tauri NSWindow uses NonactivatingPanel style; true NSPanel requires construction-time subclassing",
+            fallback: "Tauri NSWindow with NonactivatingPanel style; true NSPanel requires construction-time subclassing outside Tauri APIs",
         },
         topmost: CapabilityStatus::Supported,
         all_spaces: CapabilityStatus::Supported,
         taskbar_excluded: CapabilityStatus::Supported,
         notch_insets: CapabilityStatus::Supported,
         activation_policy: CapabilityStatus::Partial {
-            fallback: "dynamic Accessory policy is requested, but AppKit may reject it outside a bundled app",
+            fallback: "Accessory policy is requested when dashboard is hidden; AppKit may reject dynamic changes outside a bundled .app",
         },
     }
 }

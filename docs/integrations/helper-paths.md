@@ -89,6 +89,16 @@ Invoke with:
 pwsh -NoProfile -File "%USERPROFILE%\.cursor\hooks\llm-notch-hook-wrapper.ps1" -Source cursor -VendorEvent sessionStart
 ```
 
+## Bundled sidecar resolution (desktop host)
+
+At startup the Tauri host resolves the helper via `src-tauri/src/runtime/helper_path.rs`:
+
+1. `LLM_NOTCH_HOOK_BIN` when set and the file exists
+2. `app.path().resource_dir()/llm-notch-hook[.exe]` from `externalBin`
+3. `target/debug/llm-notch-hook[.exe]` for local development
+
+The resolved path is logged as `helper` / `helper_exists` in the host initialization line.
+
 ## Runtime descriptor (helper discovers host)
 
 | Platform | Typical path |
