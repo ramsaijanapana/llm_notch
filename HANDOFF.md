@@ -31,3 +31,10 @@ Context:
 Integration:
 
 - `list_connector_backups` (wired in platform/connectors lane)
+
+## Lane 8 observability notes
+
+- Resource alerts via tray/beacon (no focus steal)
+- Scoped purge with `includeBackups` default false
+- IPC ingest calls `ConnectorManager::record_event` for traffic probes
+- `PublicSettings.alertSoundEnabled` (default false)

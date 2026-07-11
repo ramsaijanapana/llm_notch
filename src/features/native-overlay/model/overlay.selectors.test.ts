@@ -42,6 +42,7 @@ describe('overlay.selectors', () => {
   it('derives health beacon tones from connection and attention', () => {
     expect(deriveHealthBeaconTone('live', 0)).toBe('healthy')
     expect(deriveHealthBeaconTone('live', 2)).toBe('attention')
+    expect(deriveHealthBeaconTone('live', 0, 1)).toBe('degraded')
     expect(deriveHealthBeaconTone('warmingUp', 0)).toBe('degraded')
     expect(deriveHealthBeaconTone('ipcError', 0)).toBe('error')
   })

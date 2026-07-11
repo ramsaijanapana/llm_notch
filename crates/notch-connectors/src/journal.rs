@@ -100,6 +100,19 @@ impl Journal {
         })?;
         Ok(())
     }
+
+    pub fn purge_journal(&self, include_backups: bool) -> Result<(u32, u32), ConnectorError> {
+        let mut state = self.state.lock();
+        let applies_removed = state.applies.len() as u32;
+        state.applies.clear();
+        let mut backups_removed = 0_u32;
+        if include_backups {
+            backups_removed = state.backups.len() as u32;
+            state.backups.clear();
+        }
+        self.persist(&state)?;
+        Ok((applies_removed, backups_removed))
+    }
 }
 
 pub fn backup_display_path(display_path: &str, timestamp: &str) -> String {
@@ -123,11 +136,11 @@ pub fn backup_timestamp(now_ms: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use notch_protocol::ConnectorScope;
+    use notch_protocol::{AgentSource, BackupJournalOperation, ConnectorJournalEntry, ConnectorScope};
     use tempfile::TempDir;
 
     #[test]
-    fn round_trips_journal_entries() {
+    fn purge_journal_keeps_backups_by_default() {
         let dir = TempDir::new().expect("tempdir");
         let journal = Journal::open(dir.path()).expect("open");
         let entry = BackupJournalEntry {
@@ -142,6 +155,21 @@ mod tests {
             recorded_at_ms: 1,
         };
         journal.record_backup(entry.clone()).expect("record");
+        journal
+            .record_apply(ConnectorJournalEntry {
+                id: Journal::new_journal_id(),
+                plan_id: "plan-1".into(),
+                source: AgentSource::Cursor,
+                scope: ConnectorScope::User,
+                started_at_ms: 1,
+                completed_at_ms: Some(2),
+                file_results: Vec::new(),
+                rollback_available: true,
+            })
+            .expect("apply");
+        let (applies, backups) = journal.purge_journal(false).expect("purge");
+        assert_eq!(applies, 1);
+        assert_eq!(backups, 0);
         assert_eq!(journal.find_backup(&entry.id), Some(entry));
     }
 }

@@ -1,6 +1,14 @@
 import styles from '../../styles/dashboard.module.css'
+import type { PurgeScope } from '../../../../native/contracts'
 import type { SettingsPanelProps } from '../../types/contracts'
 import { LoadingState } from '../shared/LoadingState'
+
+const DEFAULT_PURGE_SCOPE: PurgeScope = {
+  history: true,
+  sessionEvents: true,
+  connectorJournal: false,
+  includeBackups: false,
+}
 
 const SAMPLING_OPTIONS = [1000, 2000, 5000, 10_000] as const
 const RETENTION_OPTIONS = [1, 6, 24, 72, 168] as const
@@ -15,6 +23,8 @@ export function SettingsPanel({
   onDisplayChange,
   shortcutLabel,
   onSettingsChange,
+  purgeScope = DEFAULT_PURGE_SCOPE,
+  onPurgeScopeChange,
   onPurgeHistory,
   purgeConfirmOpen = false,
   onPurgeConfirm,
@@ -140,6 +150,49 @@ export function SettingsPanel({
           Metrics history is stored locally on this device. Retention controls how long samples are
           kept before automatic purge.
         </p>
+        <label className={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={settings.alertSoundEnabled ?? false}
+            onChange={(event) => onSettingsChange({ alertSoundEnabled: event.target.checked })}
+          />
+          Play alert sound for sustained resource alerts (never activates windows)
+        </label>
+        <fieldset className={`${styles.actions} ${styles.fieldsetReset}`}>
+          <legend className={styles.cardTitle}>Purge scope</legend>
+          <label className={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={purgeScope.history ?? true}
+              onChange={(event) => onPurgeScopeChange?.({ history: event.target.checked })}
+            />
+            Metrics history
+          </label>
+          <label className={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={purgeScope.sessionEvents ?? true}
+              onChange={(event) => onPurgeScopeChange?.({ sessionEvents: event.target.checked })}
+            />
+            Session events
+          </label>
+          <label className={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={purgeScope.connectorJournal ?? false}
+              onChange={(event) => onPurgeScopeChange?.({ connectorJournal: event.target.checked })}
+            />
+            Connector journal
+          </label>
+          <label className={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={purgeScope.includeBackups ?? false}
+              onChange={(event) => onPurgeScopeChange?.({ includeBackups: event.target.checked })}
+            />
+            Include connector backups (explicit opt-in)
+          </label>
+        </fieldset>
         <div className={styles.actions}>
           <button type="button" className={styles.buttonDanger} onClick={onPurgeHistory}>
             Purge history now
@@ -148,7 +201,8 @@ export function SettingsPanel({
         {purgeConfirmOpen ? (
           <div className={styles.confirmDialog} role="alertdialog" aria-label="Confirm purge">
             <p className={styles.muted}>
-              Delete all stored metrics history? This cannot be undone.
+              Delete selected local data using the purge scope above? Connector backups are kept
+              unless you opt in. This cannot be undone.
             </p>
             <div className={styles.actions}>
               <button type="button" className={styles.button} onClick={onPurgeCancel}>

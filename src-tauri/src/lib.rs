@@ -17,7 +17,7 @@ use parking_lot::Mutex;
 use services::global_shortcut::ShortcutHandler;
 use services::tray::TrayActionHandler;
 use services::{
-    AutostartService, BACKGROUND_LAUNCH_ARG, DEFAULT_DASHBOARD_SHORTCUT, GlobalShortcutService,
+    AlertNotifier, AutostartService, BACKGROUND_LAUNCH_ARG, DEFAULT_DASHBOARD_SHORTCUT, GlobalShortcutService,
     SharedTrayService, TrayMenuAction, TrayMenuModel, TrayService,
 };
 use state::{HostState, SystemClock, register_builtin_adapters};
@@ -43,6 +43,7 @@ struct DesktopTrayActions {
     host: Arc<HostState>,
     windows: SharedWindowCoordinator,
     tray: SharedTrayService<Wry>,
+    alert_notifier: Arc<AlertNotifier>,
 }
 
 impl TrayActionHandler for DesktopTrayActions {
@@ -100,9 +101,13 @@ impl DesktopTrayActions {
     }
 
     fn update_tray_model(&self, island_visible: bool) {
-        if let Err(error) =
-            synchronize_tray_model(&self.app, &self.host, &self.tray, island_visible)
-        {
+        if let Err(error) = synchronize_tray_model(
+            &self.app,
+            &self.host,
+            &self.tray,
+            island_visible,
+            &self.alert_notifier,
+        ) {
             warn!(%error, "tray menu update failed");
         }
     }
@@ -113,14 +118,18 @@ pub(crate) fn synchronize_tray_model(
     host: &HostState,
     tray: &SharedTrayService<Wry>,
     island_visible: bool,
+    alert_notifier: &AlertNotifier,
 ) -> Result<(), String> {
     let mut tray = tray
         .lock()
         .map_err(|_| "tray service lock poisoned".to_string())?;
+    let resource_alert =
+        alert_notifier.observe(&host.active_alerts(), host.settings().alert_sound_enabled);
     let model = tray
         .model()
         .clone()
-        .synchronize(host.metrics_paused(), island_visible);
+        .synchronize(host.metrics_paused(), island_visible)
+        .with_resource_alert(resource_alert);
     tray.update_model(app, model)
         .map_err(|error| error.to_string())
 }
@@ -197,11 +206,14 @@ pub fn run() {
             )?);
             register_builtin_adapters(&core).map_err(anyhow::Error::msg)?;
 
-            let host = Arc::new(HostState::new(
+            let alert_notifier = Arc::new(AlertNotifier::new());
+            let host = Arc::new(HostState::with_runtime_dir_and_notifier(
                 Arc::clone(&core),
                 notch_metrics::MetricsEngine::new(),
                 Arc::clone(&stream_hub),
                 Arc::clone(&decision_broker),
+                None,
+                Arc::clone(&alert_notifier),
             ));
             let windows = Arc::new(Mutex::new(WindowCoordinator::new(app.handle().clone())));
             app.manage(Arc::clone(&host));
@@ -278,6 +290,7 @@ pub fn run() {
                     host: Arc::clone(&host),
                     windows: Arc::clone(&windows),
                     tray: Arc::clone(&tray),
+                    alert_notifier: Arc::clone(&alert_notifier),
                 });
                 let tray_model = TrayMenuModel {
                     island_visible: app
@@ -303,6 +316,7 @@ pub fn run() {
                 warn!("system tray unavailable because no application icon was generated");
             }
             app.manage(Arc::clone(&tray));
+            host.attach_tray_hooks(app.handle().clone(), Arc::clone(&tray));
 
             if let Err(error) =
                 AutostartService::sync_with_settings(app.handle(), host.settings().autostart_enabled)
@@ -349,6 +363,7 @@ pub fn run() {
                             &host,
                             &tray,
                             false,
+                            &host.alert_notifier(),
                         ) {
                             warn!(%error, "tray menu update after overlay close failed");
                         }
@@ -400,6 +415,7 @@ fn default_settings() -> PublicSettings {
         selected_display: None,
         show_over_fullscreen: false,
         history_retention_hours: 24,
+        alert_sound_enabled: false,
     }
 }
 

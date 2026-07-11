@@ -369,6 +369,29 @@ impl AdapterCapabilities {
     }
 }
 
+/// Non-attention host resource alert surfaced to overlay and tray (never focus-steals).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, rename_all = "camelCase")]
+pub struct ResourceAlert {
+    pub kind: ResourceAlertKind,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub session_id: Option<String>,
+    #[ts(type = "number")]
+    pub raised_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub enum ResourceAlertKind {
+    CpuWarn,
+    CpuCritical,
+    MemoryHigh,
+}
+
 /// User-visible settings safe to expose to overlay and dashboard surfaces.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -384,6 +407,9 @@ pub struct PublicSettings {
     pub selected_display: Option<String>,
     pub show_over_fullscreen: bool,
     pub history_retention_hours: u32,
+    /// Optional alert sound; off by default and never activates windows.
+    #[serde(default)]
+    pub alert_sound_enabled: bool,
 }
 
 /// One live metrics update delivered to renderer subscribers.
@@ -413,6 +439,8 @@ pub struct AppSnapshot {
     pub sessions: Vec<AgentSession>,
     pub settings: PublicSettings,
     pub adapters: Vec<AdapterCapabilities>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resource_alerts: Vec<ResourceAlert>,
 }
 
 /// Individual stream payload variants.

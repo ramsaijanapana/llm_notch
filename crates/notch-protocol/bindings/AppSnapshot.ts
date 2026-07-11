@@ -5,7 +5,9 @@ import type { AgentSession } from "./AgentSession";
 import type { HostMetricSample } from "./HostMetricSample";
 import type { PublicSettings } from "./PublicSettings";
 
+import type { ResourceAlert } from "./ResourceAlert";
+
 /**
  * Point-in-time host snapshot delivered to renderers.
  */
-export type AppSnapshot = { protocolVersion: number, capturedAtMs: number, host?: HostMetricSample, aggregate?: AgentAggregate, sessions: Array<AgentSession>, settings: PublicSettings, adapters: Array<AdapterCapabilities>, };
+export type AppSnapshot = { protocolVersion: number, capturedAtMs: number, host?: HostMetricSample, aggregate?: AgentAggregate, sessions: Array<AgentSession>, settings: PublicSettings, adapters: Array<AdapterCapabilities>, resourceAlerts: Array<ResourceAlert>, };

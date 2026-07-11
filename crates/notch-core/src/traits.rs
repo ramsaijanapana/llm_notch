@@ -67,6 +67,8 @@ pub trait SessionRepository: Send + Sync {
 
     fn purge_metric_history(&self) -> CoreResult<u64>;
 
+    fn purge_session_events(&self) -> CoreResult<u64>;
+
     fn store_idempotency_key(&self, key: &str, created_at_ms: i64) -> CoreResult<bool>;
 
     fn prune(&self, now_ms: i64, metric_retention_ms: i64) -> CoreResult<PurgeReport>;
@@ -144,6 +146,10 @@ impl SessionRepository for SqliteRepository {
 
     fn purge_metric_history(&self) -> CoreResult<u64> {
         SqliteRepository::purge_metric_history(self)
+    }
+
+    fn purge_session_events(&self) -> CoreResult<u64> {
+        SqliteRepository::purge_session_events(self)
     }
 
     fn load_persisted_metric_history(

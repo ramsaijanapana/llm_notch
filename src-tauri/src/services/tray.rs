@@ -73,6 +73,9 @@ pub struct TrayMenuModel {
     pub status_text: String,
     /// Pending/health indicator line shown above actionable items.
     pub indicator_text: String,
+    /// Active host resource alert line, if any (never steals focus).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_alert_text: Option<String>,
     pub metrics_paused: bool,
     pub island_visible: bool,
 }
@@ -83,6 +86,7 @@ impl Default for TrayMenuModel {
             icon_state: TrayIconState::Idle,
             status_text: "llm_notch".into(),
             indicator_text: "Healthy".into(),
+            resource_alert_text: None,
             metrics_paused: false,
             island_visible: false,
         }
@@ -100,9 +104,16 @@ impl TrayMenuModel {
         };
         self.indicator_text = if metrics_paused {
             "Metrics paused".into()
+        } else if self.resource_alert_text.is_some() {
+            self.resource_alert_text.clone().unwrap_or_default()
         } else {
             "Healthy".into()
         };
+        self
+    }
+
+    pub fn with_resource_alert(mut self, message: Option<String>) -> Self {
+        self.resource_alert_text = message;
         self
     }
 }
@@ -208,7 +219,11 @@ impl<R: Runtime> TrayService<R> {
     }
 
     fn apply_model_to_tray(tray: &TrayIcon<R>, model: &TrayMenuModel) -> Result<(), TrayError> {
-        let tooltip = format!("{}\n{}", model.status_text, model.indicator_text);
+        let tooltip = if let Some(alert) = &model.resource_alert_text {
+            format!("{}\n{}", model.status_text, alert)
+        } else {
+            format!("{}\n{}", model.status_text, model.indicator_text)
+        };
         tray.set_tooltip(Some(tooltip))
             .map_err(|e| TrayError::Registration(e.to_string()))
     }

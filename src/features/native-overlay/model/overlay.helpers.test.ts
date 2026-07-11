@@ -24,7 +24,7 @@ describe('overlay.helpers', () => {
     expect(formatAttributionQuality('exact')).toBe('Exact')
     expect(formatAttributionQuality('shared')).toBe('Shared')
     expect(formatAttributionQuality('heuristic')).toBe('Heuristic')
-    expect(formatAttributionQuality('unknown')).toBe('Unavailable')
+    expect(formatAttributionQuality('unknown')).toBe('Not attributed')
   })
 
   it('labels Windows all I/O quality as All I/O', () => {

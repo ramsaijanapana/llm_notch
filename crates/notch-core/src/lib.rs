@@ -13,7 +13,7 @@ mod registry;
 mod stream;
 mod traits;
 
-pub use alerts::{ActiveAlert, AlertEvaluator, AlertKind};
+pub use alerts::{ActiveAlert, AlertEvaluator, AlertKind, resource_alerts_from_active};
 pub use app_core::{AppCore, SnapshotWithSequence};
 pub use constants::*;
 pub use domain::*;

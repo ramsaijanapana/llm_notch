@@ -229,3 +229,22 @@ pub fn detect_connectors(app: AppHandle) -> Result<Vec<notch_connectors::Detecte
     let manager = manager(&app)?;
     manager.lock().detect_all().map_err(map_connector_error)
 }
+
+/// Records IPC ingest traffic for connector health probes (Lane 8 hook).
+pub fn record_connector_traffic(source: AgentSource, at_ms: i64) {
+    if let Some(shared) = MANAGER.get() {
+        shared.lock().record_event(source, at_ms);
+    }
+}
+
+/// Purges connector journal entries; backups require explicit opt-in.
+pub fn purge_connector_data(
+    app: &AppHandle,
+    include_backups: bool,
+) -> Result<(u32, u32), CommandError> {
+    let manager = manager(app)?;
+    manager
+        .lock()
+        .purge_journal(include_backups)
+        .map_err(map_connector_error)
+}

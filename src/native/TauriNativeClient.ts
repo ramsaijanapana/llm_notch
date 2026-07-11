@@ -148,8 +148,8 @@ export class TauriNativeClient implements NativeClient {
     }
   }
 
-  async purgeHistory(): Promise<void> {
-    await this.invokeVoid(NATIVE_COMMANDS.purgeHistory)
+  async purgeHistory(scope?: import('./contracts.ts').PurgeScope): Promise<void> {
+    await this.invokeVoid(NATIVE_COMMANDS.purgeHistory, { scope })
   }
 
   async getHistory(range: NativeHistoryRange): Promise<NativeHistoryResponse> {

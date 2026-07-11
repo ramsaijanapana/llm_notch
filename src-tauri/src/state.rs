@@ -22,11 +22,14 @@ use notch_protocol::{
     STREAM_HEARTBEAT_INTERVAL_MS, SessionEventKind, SessionStatus,
 };
 use parking_lot::Mutex;
+use tauri::{AppHandle, Wry};
 use tauri::async_runtime::JoinHandle;
+use crate::services::SharedTrayService;
 use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
 use crate::stream::StreamHub;
+use crate::services::AlertNotifier;
 
 pub type DesktopCore = AppCore<SystemClock, SqliteRepository, StreamHub>;
 
@@ -49,6 +52,8 @@ pub struct HostState {
     shutting_down: AtomicBool,
     shutdown_tx: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
+    alert_notifier: Arc<AlertNotifier>,
+    tray_hooks: Mutex<Option<(AppHandle, SharedTrayService<Wry>)>>,
 }
 
 /// Production wall-clock implementation.
@@ -71,12 +76,47 @@ impl HostState {
         Self::with_runtime_dir(core, metrics, stream_hub, decision_broker, None)
     }
 
+    pub fn with_alert_notifier(
+        core: Arc<DesktopCore>,
+        metrics: MetricsEngine,
+        stream_hub: Arc<StreamHub>,
+        decision_broker: Arc<DecisionBroker>,
+        alert_notifier: Arc<AlertNotifier>,
+    ) -> Self {
+        Self::with_runtime_dir_and_notifier(
+            core,
+            metrics,
+            stream_hub,
+            decision_broker,
+            None,
+            alert_notifier,
+        )
+    }
+
     pub fn with_runtime_dir(
         core: Arc<DesktopCore>,
         metrics: MetricsEngine,
         stream_hub: Arc<StreamHub>,
         decision_broker: Arc<DecisionBroker>,
         ipc_runtime_dir: Option<PathBuf>,
+    ) -> Self {
+        Self::with_runtime_dir_and_notifier(
+            core,
+            metrics,
+            stream_hub,
+            decision_broker,
+            ipc_runtime_dir,
+            Arc::new(AlertNotifier::new()),
+        )
+    }
+
+    pub fn with_runtime_dir_and_notifier(
+        core: Arc<DesktopCore>,
+        metrics: MetricsEngine,
+        stream_hub: Arc<StreamHub>,
+        decision_broker: Arc<DecisionBroker>,
+        ipc_runtime_dir: Option<PathBuf>,
+        alert_notifier: Arc<AlertNotifier>,
     ) -> Self {
         let (shutdown_tx, _) = watch::channel(false);
         let state = Self {
@@ -90,6 +130,8 @@ impl HostState {
             shutting_down: AtomicBool::new(false),
             shutdown_tx,
             tasks: Mutex::new(Vec::new()),
+            alert_notifier,
+            tray_hooks: Mutex::new(None),
         };
         if let Err(error) = state.reconcile_metric_roots() {
             warn!(%error, "failed to reconcile restored process roots");
@@ -163,6 +205,65 @@ impl HostState {
         self.core
             .purge_metric_history()
             .map_err(|error| error.to_string())
+    }
+
+    pub fn purge_scoped(
+        &self,
+        scope: notch_protocol::PurgeScope,
+        app: &AppHandle,
+    ) -> Result<notch_protocol::PurgeResult, String> {
+        let mut result = self
+            .core
+            .purge_scoped(scope.clone())
+            .map_err(|error| error.to_string())?;
+        if scope.history {
+            self.metrics.clear_history();
+        }
+        if scope.connector_journal {
+            let (_applies, backups) = crate::commands::integration::purge_connector_data(
+                app,
+                scope.include_backups,
+            )
+            .map_err(|error| error.to_string())?;
+            result.backups_removed = u64::from(backups);
+        }
+        Ok(result)
+    }
+
+    pub fn active_alerts(&self) -> Vec<notch_core::ActiveAlert> {
+        self.core.active_alerts()
+    }
+
+    pub fn alert_notifier(&self) -> Arc<AlertNotifier> {
+        Arc::clone(&self.alert_notifier)
+    }
+
+    pub fn attach_tray_hooks(&self, app: AppHandle, tray: SharedTrayService<Wry>) {
+        *self.tray_hooks.lock() = Some((app, tray));
+    }
+
+    pub fn sync_presentation(&self) {
+        let hooks = self.tray_hooks.lock().clone();
+        let Some((app, tray)) = hooks else {
+            return;
+        };
+        self.sync_presentation_with(&app, &tray);
+    }
+
+    pub fn sync_presentation_with(&self, app: &AppHandle, tray: &SharedTrayService<Wry>) {
+        let island_visible = app
+            .get_webview_window("overlay")
+            .and_then(|window| window.is_visible().ok())
+            .unwrap_or(false);
+        if let Err(error) = crate::synchronize_tray_model(
+            app,
+            self,
+            tray,
+            island_visible,
+            &self.alert_notifier,
+        ) {
+            warn!(%error, "observability tray sync failed");
+        }
     }
 
     pub fn set_metrics_paused(&self, paused: bool) {
@@ -517,6 +618,7 @@ impl HostState {
         self.core
             .record_metrics(frame)
             .map_err(|error| error.to_string())?;
+        self.sync_presentation();
         debug!(at_ms, agent_samples, "metrics frame recorded");
         Ok(())
     }
@@ -581,9 +683,18 @@ impl HostState {
                 self.core
                     .ingest(command)
                     .map(|_| ())
-                    .map_err(|error| error.to_string())
+                    .map_err(|error| error.to_string())?;
+                self.record_connector_traffic(source, event.occurred_at_ms);
+                Ok(())
             }
         }
+    }
+
+    fn record_connector_traffic(&self, source: AgentSource, at_ms: i64) {
+        if source == AgentSource::Unknown {
+            return;
+        }
+        crate::commands::integration::record_connector_traffic(source, at_ms);
     }
 
     fn ingest_session_upsert(&self, incoming: AgentSession) -> Result<(), String> {
@@ -745,6 +856,7 @@ impl HostState {
                 .map_err(|error| error.to_string())?;
         }
 
+        self.record_connector_traffic(source, occurred_at_ms);
         self.reconcile_metric_roots()
     }
 
@@ -867,6 +979,7 @@ mod tests {
                     selected_display: None,
                     show_over_fullscreen: false,
                     history_retention_hours: 24,
+                    alert_sound_enabled: false,
                 },
             )
             .unwrap(),

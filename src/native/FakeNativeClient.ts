@@ -276,7 +276,7 @@ export class FakeNativeClient implements NativeClient {
     return this.settings
   }
 
-  async purgeHistory(): Promise<void> {}
+  async purgeHistory(_scope?: import('./contracts.ts').PurgeScope): Promise<void> {}
 
   async getHistory(range: NativeHistoryRange): Promise<NativeHistoryResponse> {
     const endMs = Date.now()

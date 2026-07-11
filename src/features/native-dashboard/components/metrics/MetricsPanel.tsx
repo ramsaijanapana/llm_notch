@@ -11,6 +11,7 @@ import {
   historyRangeLabel,
   metricAvailabilityLabel,
 } from '../../utils/formatters'
+import { attributionQualityLabel } from '../../../../native/contracts'
 import { EmptyState } from '../shared/EmptyState'
 import { ErrorState } from '../shared/ErrorState'
 import { LoadingState } from '../shared/LoadingState'
@@ -168,7 +169,7 @@ export function MetricsPanel({
                     {formatBytesPerSec(sample.readBytesPerSec)} /{' '}
                     {formatBytesPerSec(sample.writeBytesPerSec)}
                   </td>
-                  <td>{sample.quality.attribution}</td>
+                  <td>{attributionQualityLabel(sample.quality.attribution)}</td>
                 </tr>
               ))}
             </tbody>

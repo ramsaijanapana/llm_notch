@@ -8,7 +8,7 @@ use notch_protocol::{
 use parking_lot::RwLock;
 use uuid::Uuid;
 
-use crate::alerts::AlertEvaluator;
+use crate::alerts::{AlertEvaluator, resource_alerts_from_active};
 use crate::constants::{MAX_SESSIONS, METRIC_BUCKET_SECS, STALE_SESSION_MS};
 use crate::domain::{
     AcknowledgeAttentionCommand, AttentionCommand, IngestCommand, IngestResult,
@@ -170,10 +170,15 @@ impl<C: Clock, R: SessionRepository, S: StreamSink> AppCore<C, R, S> {
                 sessions,
                 settings: inner.settings.clone(),
                 adapters: inner.integrations.clone(),
+                resource_alerts: resource_alerts_from_active(inner.alerts.active_alerts()),
             },
             sequence: inner.stream_sequence,
             events: inner.registry.bootstrap_events(),
         }
+    }
+
+    pub fn active_alerts(&self) -> Vec<crate::ActiveAlert> {
+        self.inner.read().alerts.active_alerts().to_vec()
     }
 
     pub fn tick(&self) -> CoreResult<()> {
@@ -202,6 +207,35 @@ impl<C: Clock, R: SessionRepository, S: StreamSink> AppCore<C, R, S> {
         inner.registry.clear_latest_metrics();
         inner.latest_metrics = None;
         Ok(removed)
+    }
+
+    pub fn purge_session_events(&self) -> CoreResult<u64> {
+        let removed = self.repository.purge_session_events()?;
+        let mut inner = self.inner.write();
+        inner.registry.clear_events();
+        Ok(removed)
+    }
+
+    pub fn purge_scoped(
+        &self,
+        scope: notch_protocol::PurgeScope,
+    ) -> CoreResult<notch_protocol::PurgeResult> {
+        let mut history_rows_removed = 0_u64;
+        let mut events_removed = 0_u64;
+
+        if scope.history {
+            history_rows_removed = self.purge_metric_history()?;
+        }
+        if scope.session_events {
+            events_removed = self.purge_session_events()?;
+        }
+
+        Ok(notch_protocol::PurgeResult {
+            history_rows_removed,
+            events_removed,
+            backups_removed: 0,
+            active_connectors_disconnected: 0,
+        })
     }
 
     pub fn metric_history(
@@ -973,6 +1007,7 @@ mod tests {
             selected_display: None,
             show_over_fullscreen: false,
             history_retention_hours: 24,
+            alert_sound_enabled: false,
         }
     }
 

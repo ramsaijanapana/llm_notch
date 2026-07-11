@@ -129,7 +129,7 @@ export interface NativeClient {
   setOverlayMode(mode: OverlayMode): Promise<void>
   acknowledgeLocalAttention(sessionId: string): Promise<void>
   updateSettings(settings: PublicSettings): Promise<PublicSettings>
-  purgeHistory(): Promise<void>
+  purgeHistory(scope?: import('./contracts.ts').PurgeScope): Promise<void>
   getHistory(range: NativeHistoryRange): Promise<NativeHistoryResponse>
   getSessionEvents(
     sessionId: string,

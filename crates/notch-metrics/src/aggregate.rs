@@ -387,6 +387,45 @@ mod tests {
     }
 
     #[test]
+    fn aggregate_worsens_attribution_quality_honestly() {
+        let mut processes = BTreeMap::new();
+        processes.insert(1, node(1, None, 1.0, 10, 100, 100));
+        processes.insert(2, node(2, None, 1.0, 10, 100, 100));
+        let sessions = vec![
+            RegisteredSession {
+                session_id: "exact".into(),
+                root: ProcessIdentity {
+                    pid: 1,
+                    started_at_ms: 1_000,
+                },
+                attribution: AttributionQuality::Exact,
+                registered_at_ms: 0,
+            },
+            RegisteredSession {
+                session_id: "shared".into(),
+                root: ProcessIdentity {
+                    pid: 2,
+                    started_at_ms: 1_000,
+                },
+                attribution: AttributionQuality::Shared,
+                registered_at_ms: 0,
+            },
+        ];
+        let (metrics, _) = compute_session_metrics(
+            &sessions,
+            &processes,
+            4,
+            1_000,
+            2_000,
+            CounterReadiness::Ready,
+            CounterReadiness::Ready,
+            IoQuality::Disk,
+        );
+        let agg = compute_aggregate(&metrics, 2_000, 4, 2, 0, IoQuality::Disk);
+        assert_eq!(agg.quality.attribution, AttributionQuality::Shared);
+    }
+
+    #[test]
     fn warming_up_reports_quality_not_values() {
         let mut processes = BTreeMap::new();
         processes.insert(9, node(9, None, 99.0, 999, 9_000, 9_000));
@@ -442,5 +481,6 @@ mod tests {
         assert_eq!(tree.quality.io, IoQuality::Unavailable);
         assert_eq!(tree.cpu_core_percent, 0.0);
         assert!(tree.quality.reason.is_some());
+        assert_eq!(tree.quality.attribution, AttributionQuality::Unknown);
     }
 }

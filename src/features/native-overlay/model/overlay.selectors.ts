@@ -99,12 +99,16 @@ export function getSessionDotTone(session: AgentSession): SessionDotTone {
 export function deriveHealthBeaconTone(
   connectionState: OverlayConnectionState,
   attentionCount: number,
+  resourceAlertCount = 0,
 ): HealthBeaconTone {
   if (connectionState === 'ipcError' || connectionState === 'coreError') {
     return 'error'
   }
   if (attentionCount > 0) {
     return 'attention'
+  }
+  if (resourceAlertCount > 0) {
+    return 'degraded'
   }
   if (
     connectionState === 'stale' ||
