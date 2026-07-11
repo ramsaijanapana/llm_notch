@@ -2154,6 +2154,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "notch-connectors",
  "notch-core",
  "notch-ipc",
  "notch-metrics",
@@ -2323,6 +2324,27 @@ name = "nonzero_ext"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38bf9645c8b145698bb0b18a4637dcacbc421ea49bef2317e4fd8065a387cf21"
+
+[[package]]
+name = "notch-connectors"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "directories",
+ "hex",
+ "libc",
+ "notch-protocol",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+ "windows 0.61.3",
+]
 
 [[package]]
 name = "notch-core"

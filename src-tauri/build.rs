@@ -19,6 +19,9 @@ fn main() {
         "preview_connector_change",
         "apply_connector_change",
         "remove_connector",
+        "repair_connector",
+        "rollback_connector",
+        "detect_connectors",
         "connector_health",
     ];
     let attributes = tauri_build::Attributes::new()

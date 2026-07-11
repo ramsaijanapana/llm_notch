@@ -172,7 +172,10 @@ pub fn run() {
             commands::integration::preview_connector_change,
             commands::integration::apply_connector_change,
             commands::integration::remove_connector,
+            commands::integration::repair_connector,
+            commands::integration::rollback_connector,
             commands::integration::connector_health,
+            commands::integration::detect_connectors,
         ])
         .setup(|app| {
             let database_path = application_database_path(app.handle())?;

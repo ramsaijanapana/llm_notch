@@ -1,131 +1,231 @@
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
 
+use notch_connectors::{ConnectorConfig, ConnectorManager, ConnectorError as ManagerError};
 use notch_protocol::{
-    AdapterCapabilities, AgentSource, ConnectorHealthEntry, ConnectorHealthReport,
-    ConnectorPlanPreview, ConnectorScope, ConnectorUserStatus, HealthProbeAxis,
-    HealthProbeOutcome, HealthProbeResult, map_probes_to_user_status,
+    AdapterCapabilities, ConnectorApplyError, ConnectorApplyResult, ConnectorHealthEntry,
+    ConnectorHealthReport, ConnectorPlanPreview, ConnectorScope, AgentSource,
 };
-use tauri::State;
-use uuid::Uuid;
+use parking_lot::Mutex;
+use tauri::{AppHandle, Manager, State};
 
 use crate::commands::error::CommandError;
 use crate::commands::validation::{validate_agent_source, validate_plan_id};
-use crate::state::{HostState, SystemClock};
-use notch_core::Clock;
+use crate::state::{HostState};
+
+type SharedManager = Arc<Mutex<ConnectorManager>>;
+
+static MANAGER: OnceLock<SharedManager> = OnceLock::new();
+
+fn manager(app: &AppHandle) -> Result<SharedManager, CommandError> {
+    if let Some(existing) = MANAGER.get() {
+        return Ok(Arc::clone(existing));
+    }
+    let config = connector_config(app)?;
+    let manager = ConnectorManager::new(config).map_err(map_connector_error)?;
+    let shared = Arc::new(Mutex::new(manager));
+    let _ = MANAGER.set(Arc::clone(&shared));
+    Ok(shared)
+}
+
+fn connector_config(app: &AppHandle) -> Result<ConnectorConfig, CommandError> {
+    let repo_root = std::env::current_dir().map_err(|error| {
+        CommandError::Internal(format!("cannot resolve repo root: {error}"))
+    })?;
+    let app_data_dir = app.path().app_data_dir().map_err(|error| {
+        CommandError::Internal(format!("app data dir unavailable: {error}"))
+    })?;
+    std::fs::create_dir_all(&app_data_dir).map_err(|error| {
+        CommandError::Internal(format!("app data dir create failed: {error}"))
+    })?;
+    Ok(ConnectorConfig {
+        repo_root,
+        app_data_dir,
+        helper_path: resolve_helper_path(app),
+        workspace_root: std::env::current_dir().ok(),
+        user_scope_root: None,
+    })
+}
+
+fn resolve_helper_path(app: &AppHandle) -> PathBuf {
+    if let Ok(path) = std::env::var("LLM_NOTCH_HOOK_BIN") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return path;
+        }
+    }
+
+    if let Ok(resource) = app.path().resource_dir() {
+        let bundled = resource.join(if cfg!(windows) {
+            "llm-notch-hook.exe"
+        } else {
+            "llm-notch-hook"
+        });
+        if bundled.is_file() {
+            return bundled;
+        }
+    }
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let target_helper = manifest_dir
+        .join("../target/debug")
+        .join(if cfg!(windows) {
+            "llm-notch-hook.exe"
+        } else {
+            "llm-notch-hook"
+        });
+    if target_helper.is_file() {
+        return target_helper;
+    }
+
+    target_helper
+}
+
+fn map_connector_error(error: ManagerError) -> CommandError {
+    match error {
+        ManagerError::InvalidRequest(message) => CommandError::InvalidRequest(message),
+        ManagerError::NotFound(message) => CommandError::NotFound(message),
+        ManagerError::PlanNotFound => CommandError::NotFound("plan".into()),
+        ManagerError::PlanExpired => CommandError::Conflict("plan expired".into()),
+        ManagerError::FileChangedSincePreview { expected, actual } => {
+            CommandError::Conflict(format!(
+                "file changed since preview (expected {expected}, actual {actual})"
+            ))
+        }
+        ManagerError::LockContention => CommandError::Conflict("lock contention".into()),
+        ManagerError::PathEscapesScope(message) => CommandError::InvalidRequest(message),
+        ManagerError::RollbackHashMismatch => {
+            CommandError::Conflict("rollback hash mismatch".into())
+        }
+        ManagerError::PartialApplyFailure => {
+            CommandError::Conflict("partial apply failure".into())
+        }
+        ManagerError::Internal(message) => CommandError::Internal(message),
+    }
+}
 
 #[tauri::command]
 pub fn integration_health(
+    app: AppHandle,
     host: State<'_, Arc<HostState>>,
 ) -> Result<ConnectorHealthReport, CommandError> {
-    let adapters = host
-        .snapshot()
-        .adapters
-        .into_iter()
-        .map(health_entry)
-        .collect::<Vec<_>>();
-    Ok(ConnectorHealthReport {
-        checked_at_ms: SystemClock.now_ms(),
-        adapters,
-    })
+    let adapters = host.snapshot().adapters;
+    let manager = manager(&app)?;
+    manager
+        .lock()
+        .health_report(&adapters)
+        .map_err(map_connector_error)
 }
 
 #[tauri::command]
-pub fn preview_connector_change(source: AgentSource) -> Result<ConnectorPlanPreview, CommandError> {
+pub fn preview_connector_change(
+    app: AppHandle,
+    source: AgentSource,
+    scope: Option<ConnectorScope>,
+) -> Result<ConnectorPlanPreview, CommandError> {
     let source = validate_agent_source(source)?;
-    Ok(ConnectorPlanPreview {
-        plan_id: format!("preview-{}", Uuid::new_v4().simple()),
-        source,
-        scope: ConnectorScope::User,
-        summary: "Preview only: review the versioned template under integrations/; no file changes were made.".into(),
-        expires_at_ms: SystemClock.now_ms() + i64::try_from(notch_protocol::CONNECTOR_PLAN_TTL_MS).expect("CONNECTOR_PLAN_TTL_MS fits in i64"),
-        files: Vec::new(),
-        external_trust_actions: Vec::new(),
-        backup_display_hint: None,
-    })
+    let scope = scope.unwrap_or(ConnectorScope::User);
+    let manager = manager(&app)?;
+    manager
+        .lock()
+        .preview_install(source, scope)
+        .map_err(map_connector_error)
 }
 
 #[tauri::command]
-pub fn apply_connector_change(plan_id: String) -> Result<AdapterCapabilities, CommandError> {
+pub fn apply_connector_change(
+    app: AppHandle,
+    plan_id: String,
+) -> Result<ConnectorApplyResult, CommandError> {
     validate_plan_id(&plan_id)?;
-    Err(CommandError::NotAvailable(
-        "automatic connector writes are intentionally disabled; apply a reviewed template manually"
-            .into(),
-    ))
+    let manager = manager(&app)?;
+    manager.lock().apply(&plan_id).map_err(map_connector_error)
 }
 
 #[tauri::command]
-pub fn remove_connector(source: AgentSource) -> Result<(), CommandError> {
-    validate_agent_source(source)?;
-    Err(CommandError::NotAvailable(
-        "automatic connector removal is intentionally disabled; remove the reviewed template manually"
-            .into(),
-    ))
+pub fn remove_connector(
+    app: AppHandle,
+    source: AgentSource,
+    scope: Option<ConnectorScope>,
+) -> Result<ConnectorApplyResult, CommandError> {
+    let source = validate_agent_source(source)?;
+    let scope = scope.unwrap_or(ConnectorScope::User);
+    let manager = manager(&app)?;
+    manager
+        .lock()
+        .remove(source, scope)
+        .map_err(map_connector_error)
+}
+
+#[tauri::command]
+pub fn repair_connector(
+    app: AppHandle,
+    source: AgentSource,
+    scope: Option<ConnectorScope>,
+) -> Result<ConnectorPlanPreview, CommandError> {
+    let source = validate_agent_source(source)?;
+    let scope = scope.unwrap_or(ConnectorScope::User);
+    let manager = manager(&app)?;
+    manager
+        .lock()
+        .preview_repair(source, scope)
+        .map_err(map_connector_error)
+}
+
+#[tauri::command]
+pub fn rollback_connector(
+    app: AppHandle,
+    backup_id: String,
+) -> Result<ConnectorPlanPreview, CommandError> {
+    if backup_id.is_empty() {
+        return Err(CommandError::InvalidRequest("invalid backup id".into()));
+    }
+    let manager = manager(&app)?;
+    manager
+        .lock()
+        .preview_rollback(&backup_id)
+        .map_err(map_connector_error)
 }
 
 #[tauri::command]
 pub fn connector_health(
+    app: AppHandle,
     source: AgentSource,
     host: State<'_, Arc<HostState>>,
 ) -> Result<ConnectorHealthEntry, CommandError> {
     let source = validate_agent_source(source)?;
-    host.snapshot()
+    let capabilities = host
+        .snapshot()
         .adapters
         .into_iter()
         .find(|adapter| adapter.source == source)
-        .map(health_entry)
-        .ok_or_else(|| CommandError::NotFound("adapter".into()))
+        .ok_or_else(|| CommandError::NotFound("adapter".into()))?;
+    let manager = manager(&app)?;
+    manager
+        .lock()
+        .connector_health(source, capabilities)
+        .map_err(map_connector_error)
 }
 
-fn health_entry(capabilities: AdapterCapabilities) -> ConnectorHealthEntry {
-    let probes = template_loaded_probes(&capabilities);
-    let status = map_probes_to_user_status(&probes);
-    ConnectorHealthEntry {
-        source: capabilities.source,
-        status,
-        probes,
-        capabilities,
-        detail: Some(
-            "Capability template loaded; connector installation and recent-event health are not independently verified."
-                .into(),
-        ),
+#[allow(dead_code)]
+fn connector_apply_error(error: ManagerError, partial: Option<Vec<notch_protocol::ConnectorFileApplyResult>>) -> ConnectorApplyError {
+    let (expected_sha256, actual_sha256) = match &error {
+        ManagerError::FileChangedSincePreview { expected, actual } => {
+            (Some(expected.clone()), Some(actual.clone()))
+        }
+        _ => (None, None),
+    };
+    ConnectorApplyError {
+        code: error.code(),
+        message: error.to_string(),
+        expected_sha256,
+        actual_sha256,
+        partial_results: partial,
     }
 }
 
-fn template_loaded_probes(capabilities: &AdapterCapabilities) -> Vec<HealthProbeResult> {
-    vec![
-        HealthProbeResult {
-            axis: HealthProbeAxis::Installation,
-            outcome: HealthProbeOutcome::Warn,
-            failure_kind: None,
-            detail: Some("Template loaded; install state not verified".into()),
-        },
-        HealthProbeResult {
-            axis: HealthProbeAxis::Trust,
-            outcome: if capabilities.requires_external_trust {
-                HealthProbeOutcome::Warn
-            } else {
-                HealthProbeOutcome::Ok
-            },
-            failure_kind: None,
-            detail: capabilities.requires_external_trust.then_some(
-                "External trust step may be required (e.g. Codex /hooks review)".into(),
-            ),
-        },
-        HealthProbeResult {
-            axis: HealthProbeAxis::Traffic,
-            outcome: if capabilities.events {
-                HealthProbeOutcome::Warn
-            } else {
-                HealthProbeOutcome::Fail
-            },
-            failure_kind: None,
-            detail: Some("No recent events observed".into()),
-        },
-        HealthProbeResult {
-            axis: HealthProbeAxis::Helper,
-            outcome: HealthProbeOutcome::Ok,
-            failure_kind: None,
-            detail: None,
-        },
-    ]
+#[tauri::command]
+pub fn detect_connectors(app: AppHandle) -> Result<Vec<notch_connectors::DetectedConnector>, CommandError> {
+    let manager = manager(&app)?;
+    manager.lock().detect_all().map_err(map_connector_error)
 }
