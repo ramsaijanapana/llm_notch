@@ -30,6 +30,8 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 parking_lot.workspace = true
+base64.workspace = true
+sysinfo.workspace = true
 tauri = { workspace = true, features = ["macos-private-api"] }
 tauri-plugin-single-instance.workspace = true
 tauri-plugin-global-shortcut.workspace = true
