@@ -1,0 +1,9 @@
+{
+  "thread_id": "codex-thread-abc",
+  "hook_event_name": "PostToolUse",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "model": "gpt-5.4",
+  "turn_id": "turn-12",
+  "tool_name": "Bash",
+  "tool_output": "Finished dev [unoptimized + debuginfo] target(s) in 0.42s"
+}

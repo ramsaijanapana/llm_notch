@@ -58,10 +58,10 @@ Use the PowerShell wrapper with `pwsh -NoProfile -File ...`.
 ### Lifecycle hooks disabled
 
 ```bash
-codex -c features.codex_hooks=true
+codex -c features.hooks=true
 ```
 
-Flag name may differ by version — check Codex release notes.
+The deprecated alias `features.codex_hooks=true` still works on older builds — prefer `features.hooks`.
 
 ### Trust prompt at startup
 

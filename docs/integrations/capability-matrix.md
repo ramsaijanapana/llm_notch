@@ -7,7 +7,7 @@ Honest comparison of what each adapter template can observe in protocol v1. **De
 | Capability | Cursor | Claude Code | Codex (hooks) | Codex (notify) | Generic emit |
 |------------|--------|-------------|---------------|----------------|--------------|
 | `events` | ✅ partial | ✅ partial | ✅ partial | ⚠️ minimal | ✅ if you emit |
-| `attention` | ❌ none | ⚠️ partial | ❌ none | ❌ none | ✅ explicit events only |
+| `attention` | ❌ none | ⚠️ partial | ⚠️ partial | ❌ none | ✅ explicit events only |
 | `decisionResponse` | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `contextOpen` | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `processAttribution` | ❌ unknown | ❌ unknown | ❌ unknown | ❌ unknown | ✅ only with validated PID + start time |
@@ -65,7 +65,7 @@ The shipped Cursor template has no validated process identity, so attribution is
 {
   "source": "codex",
   "events": true,
-  "attention": "none",
+  "attention": "partial",
   "decisionResponse": false,
   "contextOpen": false,
   "processAttribution": "unknown"
@@ -73,6 +73,8 @@ The shipped Cursor template has no validated process identity, so attribution is
 ```
 
 **Beta / trust-gated:** Hooks do not run until reviewed in Codex `/hooks`. Enable via `features.hooks` (current); `features.codex_hooks` is deprecated.
+
+**Observation-only:** `PermissionRequest` is hooked for attention state, but the template never returns `decision.behavior` allow/deny responses.
 
 **PreToolUse limits:** Codex documentation notes not every tool path is interceptable.
 
