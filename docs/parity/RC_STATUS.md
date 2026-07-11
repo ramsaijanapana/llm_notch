@@ -103,4 +103,6 @@ Sol/Fable final review **may proceed** — compile surface is green, vitest/type
 
 ## Commit
 
-Recorded after Lane 10 phase B commit (local only, not pushed).
+**SHA:** `855b9516c3d71948332b2309f8a5c000291c9991`  
+**Message:** `feat(parity-rc): merge lanes 5-9, align IPC surface, and document RC status`  
+Local only — not pushed.
