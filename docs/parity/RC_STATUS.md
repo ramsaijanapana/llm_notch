@@ -5,6 +5,7 @@
 **Merged lanes:** 5 (decision), 6 (context), 7 (UI), 8 (observability), 9 (platform)  
 **Author:** llm_notch agent  
 **Date:** 2026-07-11
+**Tip SHA:** `caf37ac4fc33bca2e037e250fc2d5bc4e12f24d8`  
 
 > Commit SHA filled at end of Lane 10 phase B (see **Commit** section below).
 
@@ -96,11 +97,31 @@ Lane 7 originally expected `get_pending_decisions` / `respond_decision`; RC alig
 3. E2E verification on CI runners with Playwright browsers
 4. Optional: fix Windows IPC test sandbox permissions
 
+## Final review approvals
+
+| Reviewer | Verdict | Recorded at |
+|----------|---------|-------------|
+| Claude Fable | **NATIVE UX APPROVED** | `9cf2ddc` (UX assessment still valid at tip) |
+| GPT-5.6 Sol | **NATIVE TECHNICAL APPROVED** | `caf37ac4fc33bca2e037e250fc2d5bc4e12f24d8` |
+
+**Unsigned RC review:** **PASSED** — native UX and native technical gates are satisfied for merge review on `feat/parity-rc` at the tip SHA above.
+
+**Signed release publish:** **BLOCKED** until signing secrets, CI evidence (including Playwright on runners), macOS `NSPanel` / overlay hardening, and related P0 items in **What blocks release** are resolved. This RC does **not** publish a GitHub Release or attach signed installers.
+
+**Residual connector risk:** apply-path TOCTOU mitigations are layered; a residual parent-directory swap race remains without handle-relative Windows APIs — see [CONNECTOR_TOCTOU.md](CONNECTOR_TOCTOU.md).
+
 ## RC readiness
 
-**RC_READY_FOR_REVIEW:** `true` (with documented P0/P1 caveats above)
+**RC_READY_FOR_REVIEW:** `true` (unsigned RC review complete; signed release blocked as above)
 
-Sol/Fable final review **may proceed** — compile surface is green, vitest/typecheck pass, crate-level Rust tests pass, native Windows smoke passes. Reviewers should treat IPC socket failures, desktop lib test harness, E2E skip, and CRLF lint as known environment/pre-existing items.
+Compile surface is green, vitest/typecheck pass, crate-level Rust tests pass, native Windows smoke passes. Treat IPC socket failures, desktop lib test harness, E2E skip, and CRLF lint as known environment/pre-existing items.
+
+## Commit
+
+**Tip SHA:** `caf37ac4fc33bca2e037e250fc2d5bc4e12f24d8`  
+**Latest message:** `fix(connectors): close apply/backup TOCTOU races on feat/parity-rc`  
+Prior RC doc commit: `855b9516c3d71948332b2309f8a5c000291c9991` — `feat(parity-rc): merge lanes 5-9, align IPC surface, and document RC status`
+
 
 ## Commit
 
