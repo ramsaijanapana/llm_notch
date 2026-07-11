@@ -6,7 +6,7 @@ use notch_protocol::{
 
 use crate::adapter::{AdapterRegistry, PlanOperation};
 use crate::error::ConnectorError;
-use crate::hash::sha256_file;
+use crate::hash::{read_and_hash, sha256_file};
 use crate::journal::Journal;
 use crate::path_security::ScopeRoot;
 use crate::plan::{StoredPlan, new_plan_id, plan_expires_at};
@@ -43,11 +43,10 @@ pub fn preview_rollback(
         return Err(ConnectorError::NotFound("backup file missing".into()));
     }
 
-    let backup_bytes = fs::read(&backup_path)
-        .map_err(|error| ConnectorError::Internal(format!("read backup failed: {error}")))?;
+    let (backup_bytes, backup_hash) = read_and_hash(&backup_path).map_err(|error| {
+        ConnectorError::Internal(format!("read backup failed: {error}"))
+    })?;
     let backup_text = String::from_utf8_lossy(&backup_bytes).into_owned();
-    let backup_hash = sha256_file(&backup_path)
-        .map_err(|error| ConnectorError::Internal(format!("hash backup failed: {error}")))?;
     if backup_hash != backup.content_sha256 {
         return Err(ConnectorError::RollbackHashMismatch);
     }

@@ -1,6 +1,7 @@
 //! Connector manager: detection, preview, safe merge, backup, atomic apply, health, repair, rollback.
 //!
-//! Renderer commands accept only `plan_id`; canonical file identities stay backend-only.
+//! Apply accepts `plan_id` plus optional display paths that must already exist in the stored plan;
+//! canonical file identities and filesystem paths stay backend-only.
 
 mod adapter;
 mod apply;

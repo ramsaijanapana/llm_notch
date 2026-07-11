@@ -1,6 +1,12 @@
 use std::path::{Component, Path, PathBuf};
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use crate::error::ConnectorError;
+
+#[cfg(test)]
+pub static TEST_REVALIDATE_COUNT: AtomicU32 = AtomicU32::new(0);
 
 /// Allowlisted scope root for connector file operations.
 #[derive(Debug, Clone)]
@@ -210,11 +216,20 @@ pub fn reject_hardlink(path: &Path) -> Result<(), ConnectorError> {
 }
 
 /// Revalidate that `expected` still resolves under `root` via `relative`, rejecting parent swaps.
+///
+/// Call immediately before every mutating step while the per-target lock is held (backup create,
+/// temp create, atomic replace, rollback restore). Advisory locks do not pin directory entries;
+/// parent components can still be swapped to symlinks/junctions between calls — repeated
+/// revalidation narrows that window. Residual risk on Windows without handle-relative APIs is
+/// documented in `docs/parity/CONNECTOR_TOCTOU.md`.
 pub fn revalidate_locked_target(
     root: &Path,
     relative: &Path,
     expected: &Path,
 ) -> Result<PathBuf, ConnectorError> {
+    #[cfg(test)]
+    TEST_REVALIDATE_COUNT.fetch_add(1, Ordering::SeqCst);
+
     let resolved = validate_under_root(root, relative)?;
     let expected = std::fs::canonicalize(expected).unwrap_or_else(|_| expected.to_path_buf());
     let resolved = std::fs::canonicalize(&resolved).unwrap_or(resolved);
@@ -244,6 +259,9 @@ pub fn assert_parent_chain_safe(path: &Path) -> Result<(), ConnectorError> {
 }
 
 /// Allocate a sibling backup path with an unpredictable name under the target directory.
+///
+/// The caller must create the file with [`write_exclusive_file`] (create-new) so existence
+/// is enforced at open time, not via a separate stat (TOCTOU-safe allocation).
 pub fn secure_backup_path(target: &Path, timestamp: &str) -> Result<PathBuf, ConnectorError> {
     let parent = target
         .parent()
@@ -257,13 +275,40 @@ pub fn secure_backup_path(target: &Path, timestamp: &str) -> Result<PathBuf, Con
         "{file_name}.llm-notch.bak.{timestamp}.{}",
         uuid::Uuid::new_v4().simple()
     ));
-    if backup_path.exists() {
-        reject_hardlink(&backup_path)?;
-        return Err(ConnectorError::PathEscapesScope(
-            "backup path already exists".into(),
-        ));
-    }
     Ok(backup_path)
+}
+
+/// Create `path` exclusively and write `content` (reject if the path already exists).
+pub fn write_exclusive_file(path: &Path, content: &[u8]) -> Result<(), ConnectorError> {
+    use std::io::Write;
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                ConnectorError::PathEscapesScope(format!(
+                    "exclusive create rejected: {} already exists",
+                    path.display()
+                ))
+            } else {
+                ConnectorError::Internal(format!(
+                    "exclusive create failed for {}: {error}",
+                    path.display()
+                ))
+            }
+        })?;
+    file.write_all(content).map_err(|error| {
+        ConnectorError::Internal(format!(
+            "exclusive write failed for {}: {error}",
+            path.display()
+        ))
+    })?;
+    file.sync_all().map_err(|error| {
+        ConnectorError::Internal(format!("exclusive sync failed for {}: {error}", path.display()))
+    })?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -271,6 +316,15 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn write_exclusive_file_rejects_existing() {
+        let dir = TempDir::new().expect("tempdir");
+        let path = dir.path().join("backup.bak");
+        fs::write(&path, b"existing").expect("seed");
+        let err = write_exclusive_file(&path, b"new").unwrap_err();
+        assert!(matches!(err, ConnectorError::PathEscapesScope(_)));
+    }
 
     #[test]
     fn rejects_parent_dir_traversal() {

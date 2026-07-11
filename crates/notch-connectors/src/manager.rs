@@ -109,10 +109,22 @@ impl ConnectorManager {
         let now = now_ms();
         let mut plan = self.plans.get_valid(plan_id, now)?;
         if let Some(selected) = selected_display_paths {
-            let selected: std::collections::HashSet<&str> =
+            let plan_display_paths: std::collections::HashSet<&str> = plan
+                .files
+                .iter()
+                .map(|file| file.display_path.as_str())
+                .collect();
+            for path in selected {
+                if !plan_display_paths.contains(path.as_str()) {
+                    return Err(ConnectorError::InvalidRequest(format!(
+                        "selected path not in plan: {path}"
+                    )));
+                }
+            }
+            let selected_set: std::collections::HashSet<&str> =
                 selected.iter().map(String::as_str).collect();
             plan.files
-                .retain(|file| selected.contains(file.display_path.as_str()));
+                .retain(|file| selected_set.contains(file.display_path.as_str()));
             if plan.files.is_empty() {
                 return Err(ConnectorError::InvalidRequest(
                     "no files selected for apply".into(),

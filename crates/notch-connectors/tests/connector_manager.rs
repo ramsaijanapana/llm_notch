@@ -19,6 +19,29 @@ fn test_config(dir: &TempDir) -> ConnectorConfig {
 }
 
 #[test]
+fn apply_rejects_selected_paths_not_in_plan() {
+    let dir = TempDir::new().expect("tempdir");
+    let hooks = dir.path().join(".cursor/hooks.json");
+    std::fs::create_dir_all(hooks.parent().unwrap()).expect("mkdir");
+    std::fs::write(&hooks, r#"{"version":1,"hooks":{}}"#).expect("write");
+
+    let manager = ConnectorManager::new(test_config(&dir)).expect("manager");
+    let preview = manager
+        .preview_install(AgentSource::Cursor, ConnectorScope::User)
+        .expect("preview");
+    let err = manager
+        .apply(
+            &preview.plan_id,
+            Some(&["~/.cursor/hooks.json".into(), "/etc/passwd".into()]),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        notch_connectors::ConnectorError::InvalidRequest(_)
+    ));
+}
+
+#[test]
 fn merge_preserves_foreign_entries() {
     let dir = TempDir::new().expect("tempdir");
     let hooks = dir.path().join(".cursor/hooks.json");

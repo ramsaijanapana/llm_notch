@@ -8,6 +8,18 @@ use crate::error::ConnectorError;
 
 /// Atomically replace `target` with `content`, using platform-specific replace semantics.
 pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ConnectorError> {
+    atomic_write_with_revalidate(path, content, || Ok(()))
+}
+
+/// Like [`atomic_write`], invoking `revalidate` immediately before temp create and replace.
+pub fn atomic_write_with_revalidate<F>(
+    path: &Path,
+    content: &[u8],
+    mut revalidate: F,
+) -> Result<(), ConnectorError>
+where
+    F: FnMut() -> Result<(), ConnectorError>,
+{
     let parent = path
         .parent()
         .ok_or_else(|| ConnectorError::Internal("target has no parent".into()))?;
@@ -16,6 +28,7 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ConnectorError> {
 
     let temp_path = parent.join(format!(".{}.llm-notch.tmp", Uuid::new_v4().simple()));
 
+    revalidate()?;
     {
         let mut temp = fs::OpenOptions::new()
             .write(true)
@@ -28,6 +41,7 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ConnectorError> {
             .map_err(|error| ConnectorError::Internal(format!("temp sync failed: {error}")))?;
     }
 
+    revalidate()?;
     durable_replace(&temp_path, path)?;
     Ok(())
 }
@@ -92,6 +106,21 @@ mod tests {
     use super::*;
     use crate::hash::sha256_hex;
     use tempfile::TempDir;
+
+    #[test]
+    fn atomic_write_invokes_revalidate_before_each_mutation() {
+        let dir = TempDir::new().expect("tempdir");
+        let target = dir.path().join("hooks.json");
+        fs::write(&target, b"old").expect("seed");
+        let mut count = 0_u32;
+        atomic_write_with_revalidate(&target, b"new", || {
+            count += 1;
+            Ok(())
+        })
+        .expect("write");
+        assert_eq!(count, 2, "expected revalidation before temp create and replace");
+        assert_eq!(fs::read(&target).expect("read"), b"new");
+    }
 
     #[test]
     fn replaces_existing_file() {

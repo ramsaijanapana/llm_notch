@@ -87,6 +87,7 @@ Lane 7 originally expected `get_pending_decisions` / `respond_decision`; RC alig
 - Repo-wide CRLF lint noise (pre-existing)
 - `includeBackups` purge clears journal metadata only; physical backup file deletion deferred
 - Decision stream push still polled from UI; broker stream frames future work
+- Connector apply TOCTOU: layered mitigations in place; residual parent-swap race without handle-relative Windows APIs — see [CONNECTOR_TOCTOU.md](CONNECTOR_TOCTOU.md)
 
 ## What blocks release
 
