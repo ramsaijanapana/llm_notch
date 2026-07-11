@@ -3,4 +3,8 @@
 /**
  * User-visible settings safe to expose to overlay and dashboard surfaces.
  */
-export type PublicSettings = { overlayEnabled: boolean, autostartEnabled: boolean, reducedMotion: boolean, samplingIntervalMs: number, selectedDisplay?: string, showOverFullscreen: boolean, historyRetentionHours: number, alertSoundEnabled: boolean, };
+export type PublicSettings = { overlayEnabled: boolean, autostartEnabled: boolean, reducedMotion: boolean, samplingIntervalMs: number, selectedDisplay?: string, showOverFullscreen: boolean, historyRetentionHours: number, 
+/**
+ * Optional alert sound; off by default and never activates windows.
+ */
+alertSoundEnabled: boolean, };

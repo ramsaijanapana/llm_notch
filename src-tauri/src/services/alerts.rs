@@ -36,7 +36,10 @@ impl AlertNotifier {
             .collect();
 
         if resource.is_empty() {
-            self.sounded.lock().unwrap_or_else(|e| e.into_inner()).clear();
+            self.sounded
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
             return None;
         }
 
@@ -75,7 +78,7 @@ fn alert_severity(kind: AlertKind) -> u8 {
 pub fn play_alert_sound() {
     #[cfg(windows)]
     {
-        extern "system" {
+        unsafe extern "system" {
             fn MessageBeep(uType: u32) -> i32;
         }
         const MB_ICONASTERISK: u32 = 0x0000_0040;

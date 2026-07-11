@@ -47,4 +47,3 @@ pub fn acknowledge_attention(
     host.acknowledge_attention(session_id)
         .map_err(CommandError::Internal)
 }
-

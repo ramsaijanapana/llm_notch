@@ -34,7 +34,10 @@ fn merge_preserves_foreign_entries() {
     assert!(!preview.files[0].diff_text.is_empty());
 
     let result = manager.apply(&preview.plan_id).expect("apply");
-    assert_eq!(result.file_results[0].outcome, ConnectorFileOutcome::Applied);
+    assert_eq!(
+        result.file_results[0].outcome,
+        ConnectorFileOutcome::Applied
+    );
 
     let merged: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&hooks).expect("read")).expect("json");
@@ -61,7 +64,10 @@ fn idempotent_reinstall_skips_backup() {
     assert!(preview.files[0].diff_text.is_empty());
 
     let result = manager.apply(&preview.plan_id).expect("apply");
-    assert_eq!(result.file_results[0].outcome, ConnectorFileOutcome::Skipped);
+    assert_eq!(
+        result.file_results[0].outcome,
+        ConnectorFileOutcome::Skipped
+    );
     assert!(preview.backup_display_hint.is_none());
 }
 

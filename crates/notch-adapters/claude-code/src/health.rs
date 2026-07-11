@@ -69,12 +69,16 @@ pub fn health_probe_hints(settings: &Value) -> ClaudeHealthHints {
     };
 
     let detail = match state {
-        ClaudeInstallState::Installed => Some("Managed Claude Code hooks present for all template events".into()),
+        ClaudeInstallState::Installed => {
+            Some("Managed Claude Code hooks present for all template events".into())
+        }
         ClaudeInstallState::Partial => Some(format!(
             "Missing managed Claude Code hook events: {}",
             managed_events_missing.join(", ")
         )),
-        ClaudeInstallState::NotInstalled => Some("No managed Claude Code hook entries found".into()),
+        ClaudeInstallState::NotInstalled => {
+            Some("No managed Claude Code hook entries found".into())
+        }
     };
 
     ClaudeHealthHints {
@@ -117,13 +121,16 @@ mod tests {
 
     #[test]
     fn merged_settings_report_installed_without_trust() {
-        let merged =
-            merge_settings_hooks(&serde_json::json!({}), &template_settings_hooks()).expect("merge");
+        let merged = merge_settings_hooks(&serde_json::json!({}), &template_settings_hooks())
+            .expect("merge");
         let hints = health_probe_hints(&merged);
         assert_eq!(hints.state, ClaudeInstallState::Installed);
         assert!(!hints.trust_required);
         assert!(managed_entry_present(&merged));
-        assert_eq!(hints.managed_events_found.len(), hints.expected_events.len());
+        assert_eq!(
+            hints.managed_events_found.len(),
+            hints.expected_events.len()
+        );
     }
 
     #[test]
@@ -135,6 +142,10 @@ mod tests {
         });
         let hints = health_probe_hints(&settings);
         assert_eq!(hints.state, ClaudeInstallState::Partial);
-        assert!(hints.managed_events_missing.contains(&"PreToolUse".to_string()));
+        assert!(
+            hints
+                .managed_events_missing
+                .contains(&"PreToolUse".to_string())
+        );
     }
 }

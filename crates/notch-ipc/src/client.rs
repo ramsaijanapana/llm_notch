@@ -16,7 +16,7 @@ use crate::error::{IpcError, IpcResult};
 use crate::framing::{read_frame_async, write_frame_async};
 use crate::limits::{ACK_WAIT_MS, IPC_WIRE_VERSION};
 use crate::wire::{DecisionWaitPayload, IngestPayload, WireMessage};
-use notch_protocol::{DECISION_HOOK_NEUTRAL_OUTPUT, DECISION_FAIL_OPEN_TIMEOUT_MS};
+use notch_protocol::{DECISION_FAIL_OPEN_TIMEOUT_MS, DECISION_HOOK_NEUTRAL_OUTPUT};
 
 /// Client used by `notch-hook` to deliver normalized events to the host.
 #[derive(Clone)]

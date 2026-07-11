@@ -58,7 +58,12 @@ pub fn is_managed_command(event: &str, command: &str) -> bool {
 pub fn merge_hooks_json(target: &mut Value, entries: &[ManagedHookEntry]) {
     let hooks = target
         .as_object_mut()
-        .and_then(|object| object.entry("hooks").or_insert_with(|| json!({})).as_object_mut())
+        .and_then(|object| {
+            object
+                .entry("hooks")
+                .or_insert_with(|| json!({}))
+                .as_object_mut()
+        })
         .expect("hooks object");
 
     for entry in entries {

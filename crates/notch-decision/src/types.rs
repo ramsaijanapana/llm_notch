@@ -1,8 +1,7 @@
 //! Internal broker types (not frozen protocol wire types).
 
 use notch_protocol::{
-    DecisionDeliveryState, DecisionKind, DecisionRequest, DecisionResponse,
-    DecisionResponseRecord,
+    DecisionDeliveryState, DecisionKind, DecisionRequest, DecisionResponse, DecisionResponseRecord,
 };
 use serde_json::Value;
 
@@ -95,7 +94,11 @@ pub struct ActiveDecision {
 }
 
 impl ActiveDecision {
-    pub fn response_record(&self, response: &DecisionResponse, responded_at_ms: i64) -> DecisionResponseRecord {
+    pub fn response_record(
+        &self,
+        response: &DecisionResponse,
+        responded_at_ms: i64,
+    ) -> DecisionResponseRecord {
         DecisionResponseRecord {
             request_id: self.request.id.clone(),
             response: response.clone(),

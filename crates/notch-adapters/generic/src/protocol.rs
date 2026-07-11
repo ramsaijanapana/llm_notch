@@ -107,7 +107,8 @@ pub fn validate_ingest_example(payload: &IngestPayload) -> Result<(), GenericPro
     {
         return Err(GenericProtocolError::UnknownEvent(payload.event.clone()));
     }
-    validate_ingest_payload(payload).map_err(|err| GenericProtocolError::InvalidPayload(err.to_string()))
+    validate_ingest_payload(payload)
+        .map_err(|err| GenericProtocolError::InvalidPayload(err.to_string()))
 }
 
 /// Validate a protocol fixture object from `integrations/fixtures/protocol`.
@@ -130,7 +131,12 @@ mod tests {
     #[test]
     fn example_commands_use_generic_source() {
         for example in example_commands() {
-            assert!(example.argv.windows(2).any(|window| window == ["--source", "generic"]));
+            assert!(
+                example
+                    .argv
+                    .windows(2)
+                    .any(|window| window == ["--source", "generic"])
+            );
         }
     }
 

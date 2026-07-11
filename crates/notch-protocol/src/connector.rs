@@ -247,7 +247,10 @@ mod tests {
 
         let value = serde_json::to_value(&preview).expect("serialize");
         assert_eq!(value["planId"], "plan-abc");
-        assert_eq!(value["files"][0]["foreignEntriesPreserved"][0], "beforeShellExecution");
+        assert_eq!(
+            value["files"][0]["foreignEntriesPreserved"][0],
+            "beforeShellExecution"
+        );
 
         let decoded: ConnectorPlanPreview = serde_json::from_value(value).expect("deserialize");
         assert_eq!(decoded, preview);

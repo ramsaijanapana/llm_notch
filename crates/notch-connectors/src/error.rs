@@ -10,10 +10,7 @@ pub enum ConnectorError {
     #[error("plan expired")]
     PlanExpired,
     #[error("file changed since preview")]
-    FileChangedSincePreview {
-        expected: String,
-        actual: String,
-    },
+    FileChangedSincePreview { expected: String, actual: String },
     #[error("lock contention")]
     LockContention,
     #[error("path escapes scope")]

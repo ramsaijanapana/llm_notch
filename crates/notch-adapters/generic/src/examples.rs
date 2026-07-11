@@ -36,12 +36,10 @@ pub fn validate_emit_example(script: &str) -> Result<(), ExampleValidationError>
 /// Load and validate one protocol fixture under `integrations/fixtures/protocol`.
 pub fn validate_protocol_fixture_file(name: &str) -> Result<(), ExampleValidationError> {
     let path = protocol_fixture_path(name);
-    let raw = std::fs::read_to_string(&path).map_err(|err| {
-        ExampleValidationError::Io(path.display().to_string(), err.to_string())
-    })?;
-    let value: Value = serde_json::from_str(&raw).map_err(|err| {
-        ExampleValidationError::Io(path.display().to_string(), err.to_string())
-    })?;
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|err| ExampleValidationError::Io(path.display().to_string(), err.to_string()))?;
+    let value: Value = serde_json::from_str(&raw)
+        .map_err(|err| ExampleValidationError::Io(path.display().to_string(), err.to_string()))?;
     validate_protocol_fixture(&value).map_err(ExampleValidationError::Protocol)
 }
 

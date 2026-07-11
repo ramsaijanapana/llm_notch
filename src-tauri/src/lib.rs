@@ -18,8 +18,8 @@ use parking_lot::Mutex;
 use services::global_shortcut::ShortcutHandler;
 use services::tray::TrayActionHandler;
 use services::{
-    AlertNotifier, AutostartService, BACKGROUND_LAUNCH_ARG, DEFAULT_DASHBOARD_SHORTCUT, GlobalShortcutService,
-    SharedTrayService, TrayMenuAction, TrayMenuModel, TrayService,
+    AlertNotifier, AutostartService, BACKGROUND_LAUNCH_ARG, DEFAULT_DASHBOARD_SHORTCUT,
+    GlobalShortcutService, SharedTrayService, TrayMenuAction, TrayMenuModel, TrayService,
 };
 use state::{HostState, SystemClock, register_builtin_adapters};
 use stream::StreamHub;

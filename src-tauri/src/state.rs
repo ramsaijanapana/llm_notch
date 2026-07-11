@@ -3,14 +3,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use crate::services::SharedTrayService;
 use notch_core::{
     AcknowledgeAttentionCommand, AppCore, AttentionCommand, Clock, IngestCommand,
     IntegrationHealthCommand, LifecycleEventCommand, ProcessRootCommand, SessionEndCommand,
     SessionStartCommand, SessionUpdateCommand, SqliteRepository, ToolEventCommand,
 };
-use notch_decision::{
-    DecisionBroker, DecisionWaitPayload, PendingDecisionWait,
-};
+use notch_decision::{DecisionBroker, DecisionWaitPayload, PendingDecisionWait};
 use notch_ipc::{
     DecisionWaitPayload as IpcDecisionWaitPayload, IngestServerConfig, NormalizedIngest,
     PendingDecisionWait as IpcDecisionWait, SecurityCapabilities, start_ingest_server,
@@ -22,14 +21,13 @@ use notch_protocol::{
     STREAM_HEARTBEAT_INTERVAL_MS, SessionEventKind, SessionStatus,
 };
 use parking_lot::Mutex;
-use tauri::{AppHandle, Wry};
 use tauri::async_runtime::JoinHandle;
-use crate::services::SharedTrayService;
+use tauri::{AppHandle, Manager, Wry};
 use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
-use crate::stream::StreamHub;
 use crate::services::AlertNotifier;
+use crate::stream::StreamHub;
 
 pub type DesktopCore = AppCore<SystemClock, SqliteRepository, StreamHub>;
 
@@ -220,11 +218,9 @@ impl HostState {
             self.metrics.clear_history();
         }
         if scope.connector_journal {
-            let (_applies, backups) = crate::commands::integration::purge_connector_data(
-                app,
-                scope.include_backups,
-            )
-            .map_err(|error| error.to_string())?;
+            let (_applies, backups) =
+                crate::commands::integration::purge_connector_data(app, scope.include_backups)
+                    .map_err(|error| error.to_string())?;
             result.backups_removed = u64::from(backups);
         }
         Ok(result)
@@ -255,13 +251,9 @@ impl HostState {
             .get_webview_window("overlay")
             .and_then(|window| window.is_visible().ok())
             .unwrap_or(false);
-        if let Err(error) = crate::synchronize_tray_model(
-            app,
-            self,
-            tray,
-            island_visible,
-            &self.alert_notifier,
-        ) {
+        if let Err(error) =
+            crate::synchronize_tray_model(app, self, tray, island_visible, &self.alert_notifier)
+        {
             warn!(%error, "observability tray sync failed");
         }
     }

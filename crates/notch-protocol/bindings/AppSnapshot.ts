@@ -4,7 +4,6 @@ import type { AgentAggregate } from "./AgentAggregate";
 import type { AgentSession } from "./AgentSession";
 import type { HostMetricSample } from "./HostMetricSample";
 import type { PublicSettings } from "./PublicSettings";
-
 import type { ResourceAlert } from "./ResourceAlert";
 
 /**

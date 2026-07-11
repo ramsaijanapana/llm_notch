@@ -120,7 +120,10 @@ pub fn map_probes_to_user_status(probes: &[HealthProbeResult]) -> ConnectorUserS
         return ConnectorUserStatus::DriftDetected;
     }
 
-    if probes.iter().all(|entry| entry.outcome == HealthProbeOutcome::Ok) {
+    if probes
+        .iter()
+        .all(|entry| entry.outcome == HealthProbeOutcome::Ok)
+    {
         return ConnectorUserStatus::Connected;
     }
 

@@ -46,7 +46,10 @@ impl ScopeRoot {
 
 fn validate_root(path: &Path) -> Result<PathBuf, ConnectorError> {
     let metadata = std::fs::metadata(path).map_err(|error| {
-        ConnectorError::Internal(format!("cannot stat scope root {}: {error}", path.display()))
+        ConnectorError::Internal(format!(
+            "cannot stat scope root {}: {error}",
+            path.display()
+        ))
     })?;
     if metadata.file_type().is_symlink() {
         return Err(ConnectorError::PathEscapesScope(
@@ -93,10 +96,7 @@ pub fn validate_under_root(root: &Path, relative: &Path) -> Result<PathBuf, Conn
         if error.kind() == std::io::ErrorKind::NotFound {
             return error;
         }
-        std::io::Error::new(
-            error.kind(),
-            format!("canonicalize failed: {error}"),
-        )
+        std::io::Error::new(error.kind(), format!("canonicalize failed: {error}"))
     });
 
     match canonical {
@@ -141,7 +141,10 @@ fn lstat_component(path: &Path) -> Result<(), ConnectorError> {
     }
 }
 
-fn reject_special_file_type(path: &Path, metadata: &std::fs::Metadata) -> Result<(), ConnectorError> {
+fn reject_special_file_type(
+    path: &Path,
+    metadata: &std::fs::Metadata,
+) -> Result<(), ConnectorError> {
     if metadata.file_type().is_symlink() {
         return Err(ConnectorError::PathEscapesScope(format!(
             "symlink rejected: {}",
@@ -237,11 +240,8 @@ mod tests {
     #[test]
     fn allows_missing_leaf_under_root() {
         let root = TempDir::new().expect("tempdir");
-        let resolved = validate_under_root(
-            root.path(),
-            Path::new(".cursor/hooks.json"),
-        )
-        .expect("resolve");
+        let resolved =
+            validate_under_root(root.path(), Path::new(".cursor/hooks.json")).expect("resolve");
         let canonical_root = std::fs::canonicalize(root.path()).expect("canonicalize root");
         assert!(resolved.starts_with(&canonical_root));
     }

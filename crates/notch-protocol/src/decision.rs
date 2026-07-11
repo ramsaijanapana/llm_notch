@@ -39,12 +39,8 @@ pub enum DecisionResponseAction {
 #[serde(rename_all = "camelCase", tag = "type", deny_unknown_fields)]
 #[ts(export, rename_all = "camelCase", tag = "type")]
 pub enum DecisionResponse {
-    Action {
-        action: DecisionResponseAction,
-    },
-    Answer {
-        text: String,
-    },
+    Action { action: DecisionResponseAction },
+    Answer { text: String },
 }
 
 /// Honest delivery lifecycle; never claim vendor ACK without evidence.

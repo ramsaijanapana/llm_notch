@@ -17,9 +17,7 @@ const MANAGED_EVENTS: &[(&str, Option<&str>)] = &[
 
 /// Render a wrapper command string for a Codex lifecycle hook event.
 pub fn render_hook_command(vendor_event: &str) -> String {
-    format!(
-        "sh {WRAPPER_PATH_PLACEHOLDER} --source codex --vendor-event {vendor_event}"
-    )
+    format!("sh {WRAPPER_PATH_PLACEHOLDER} --source codex --vendor-event {vendor_event}")
 }
 
 /// Build the shipped Codex `hooks.json` template with path placeholders.
@@ -89,7 +87,10 @@ mod tests {
     #[test]
     fn template_includes_permission_request_and_placeholders() {
         let template = template_hooks_json();
-        let hooks = template.get("hooks").and_then(|value| value.as_object()).expect("hooks");
+        let hooks = template
+            .get("hooks")
+            .and_then(|value| value.as_object())
+            .expect("hooks");
         assert!(hooks.contains_key("PermissionRequest"));
         let encoded = template.to_string();
         assert!(encoded.contains(WRAPPER_PATH_PLACEHOLDER));

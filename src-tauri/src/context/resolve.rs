@@ -56,7 +56,10 @@ fn host_from_process_name(name: &str) -> Option<HostKind> {
     if normalized == "cursor" || normalized.contains("cursor.exe") {
         return Some(HostKind::Cursor);
     }
-    if normalized == "code" || normalized.contains("code.exe") || normalized.contains("code - insiders") {
+    if normalized == "code"
+        || normalized.contains("code.exe")
+        || normalized.contains("code - insiders")
+    {
         return Some(HostKind::VsCode);
     }
     if normalized == "terminal" || normalized.contains("terminal.app") {
@@ -142,7 +145,10 @@ mod tests {
         );
         assert_eq!(host_from_process_name("Cursor.exe"), Some(HostKind::Cursor));
         assert_eq!(host_from_process_name("Code.exe"), Some(HostKind::VsCode));
-        assert_eq!(host_from_process_name("Terminal"), Some(HostKind::TerminalApp));
+        assert_eq!(
+            host_from_process_name("Terminal"),
+            Some(HostKind::TerminalApp)
+        );
         assert_eq!(host_from_process_name("iTerm2"), Some(HostKind::ITerm2));
     }
 
@@ -155,11 +161,12 @@ mod tests {
                 started_at_ms: 1_700_000_000_000,
             }),
         );
-        let resolved = resolve_session(&session)
-            .expect("resolve")
-            .expect("some");
+        let resolved = resolve_session(&session).expect("resolve").expect("some");
         assert!(resolved.locator.token().starts_with("ln1_"));
-        assert_eq!(infer_host_from_source(AgentSource::Cursor), HostKind::Cursor);
+        assert_eq!(
+            infer_host_from_source(AgentSource::Cursor),
+            HostKind::Cursor
+        );
     }
 
     #[test]

@@ -18,13 +18,7 @@ pub fn probe_connector(
     last_event_at_ms: Option<i64>,
     now_ms: i64,
 ) -> ConnectorHealthEntry {
-    let probes = build_probes(
-        registry,
-        detected,
-        helper_exists,
-        last_event_at_ms,
-        now_ms,
-    );
+    let probes = build_probes(registry, detected, helper_exists, last_event_at_ms, now_ms);
     let status = map_probes_to_user_status(&probes);
     ConnectorHealthEntry {
         source: detected.source,
@@ -74,10 +68,7 @@ fn installation_probe(detected: &DetectedConnector) -> HealthProbeResult {
     }
 }
 
-fn trust_probe(
-    registry: &AdapterRegistry,
-    detected: &DetectedConnector,
-) -> HealthProbeResult {
+fn trust_probe(registry: &AdapterRegistry, detected: &DetectedConnector) -> HealthProbeResult {
     let Some(adapter) = registry.get(detected.source) else {
         return HealthProbeResult {
             axis: HealthProbeAxis::Trust,

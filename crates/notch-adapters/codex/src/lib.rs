@@ -17,7 +17,9 @@ pub use merge::{
     ManagedHookEntry, MergeScope, codex_managed_entries, entry_fingerprint, is_managed_command,
     merge_hooks_json,
 };
-pub use normalize::{CodexNormalizeError, NormalizedCodexEvent, normalize_event, redact_vendor_json};
+pub use normalize::{
+    CodexNormalizeError, NormalizedCodexEvent, normalize_event, redact_vendor_json,
+};
 pub use response::{
     CodexPermissionBehavior, CodexRespondableHook, build_permission_response, hook_response,
 };

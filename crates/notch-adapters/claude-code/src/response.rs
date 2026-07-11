@@ -120,7 +120,10 @@ mod tests {
             response["hookSpecificOutput"]["hookEventName"],
             "PermissionRequest"
         );
-        assert_eq!(response["hookSpecificOutput"]["decision"]["behavior"], "allow");
+        assert_eq!(
+            response["hookSpecificOutput"]["decision"]["behavior"],
+            "allow"
+        );
     }
 
     #[test]
@@ -130,8 +133,14 @@ mod tests {
             interrupt: false,
         })
         .expect("build");
-        assert_eq!(response["hookSpecificOutput"]["decision"]["behavior"], "deny");
-        assert_eq!(response["hookSpecificOutput"]["decision"]["message"], "Blocked");
+        assert_eq!(
+            response["hookSpecificOutput"]["decision"]["behavior"],
+            "deny"
+        );
+        assert_eq!(
+            response["hookSpecificOutput"]["decision"]["message"],
+            "Blocked"
+        );
     }
 
     #[test]

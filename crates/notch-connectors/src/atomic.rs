@@ -9,9 +9,8 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ConnectorError> {
     let parent = path
         .parent()
         .ok_or_else(|| ConnectorError::Internal("target has no parent".into()))?;
-    fs::create_dir_all(parent).map_err(|error| {
-        ConnectorError::Internal(format!("create parent failed: {error}"))
-    })?;
+    fs::create_dir_all(parent)
+        .map_err(|error| ConnectorError::Internal(format!("create parent failed: {error}")))?;
 
     let temp_name = format!(
         ".{}.llm-notch.tmp",
@@ -22,15 +21,12 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ConnectorError> {
     let temp_path = parent.join(temp_name);
 
     {
-        let mut temp = fs::File::create(&temp_path).map_err(|error| {
-            ConnectorError::Internal(format!("temp create failed: {error}"))
-        })?;
-        temp.write_all(content).map_err(|error| {
-            ConnectorError::Internal(format!("temp write failed: {error}"))
-        })?;
-        temp.sync_all().map_err(|error| {
-            ConnectorError::Internal(format!("temp sync failed: {error}"))
-        })?;
+        let mut temp = fs::File::create(&temp_path)
+            .map_err(|error| ConnectorError::Internal(format!("temp create failed: {error}")))?;
+        temp.write_all(content)
+            .map_err(|error| ConnectorError::Internal(format!("temp write failed: {error}")))?;
+        temp.sync_all()
+            .map_err(|error| ConnectorError::Internal(format!("temp sync failed: {error}")))?;
     }
 
     replace_file(&temp_path, path)?;
@@ -39,17 +35,16 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<(), ConnectorError> {
 
 fn replace_file(from: &Path, to: &Path) -> Result<(), ConnectorError> {
     if !to.exists() {
-        fs::rename(from, to).map_err(|error| {
-            ConnectorError::Internal(format!("rename failed: {error}"))
-        })?;
+        fs::rename(from, to)
+            .map_err(|error| ConnectorError::Internal(format!("rename failed: {error}")))?;
         return Ok(());
     }
 
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
+        use windows::Win32::Storage::FileSystem::{REPLACEFILE_WRITE_THROUGH, ReplaceFileW};
         use windows::core::PCWSTR;
-        use windows::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_WRITE_THROUGH};
 
         let to_wide: Vec<u16> = to.as_os_str().encode_wide().chain([0]).collect();
         let from_wide: Vec<u16> = from.as_os_str().encode_wide().chain([0]).collect();
@@ -86,9 +81,8 @@ fn replace_file(from: &Path, to: &Path) -> Result<(), ConnectorError> {
 
     #[cfg(not(windows))]
     {
-        fs::rename(from, to).map_err(|error| {
-            ConnectorError::Internal(format!("atomic rename failed: {error}"))
-        })?;
+        fs::rename(from, to)
+            .map_err(|error| ConnectorError::Internal(format!("atomic rename failed: {error}")))?;
         Ok(())
     }
 }

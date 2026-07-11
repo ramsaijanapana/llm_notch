@@ -39,9 +39,8 @@ pub fn managed_entry_present(state: &CursorInstallState) -> bool {
 /// Builds orthogonal health probe hints for the connector manager.
 pub fn health_probe_hints(state: &CursorInstallState) -> CursorHealthHints {
     let managed_entry_present = managed_entry_present(state);
-    let all_managed_events_present = state.managed_events_missing.is_empty()
-        && managed_entry_present
-        && state.hooks_file_exists;
+    let all_managed_events_present =
+        state.managed_events_missing.is_empty() && managed_entry_present && state.hooks_file_exists;
 
     let installation_probe = if !state.hooks_file_exists {
         HealthProbeResult {
@@ -85,8 +84,7 @@ pub fn health_probe_hints(state: &CursorInstallState) -> CursorHealthHints {
         },
         failure_kind: None,
         detail: Some(
-            "Cursor hooks require no external trust step; enable in Cursor Settings → Hooks"
-                .into(),
+            "Cursor hooks require no external trust step; enable in Cursor Settings → Hooks".into(),
         ),
     };
 
@@ -194,10 +192,7 @@ mod tests {
     #[test]
     fn managed_entry_present_when_any_event_installed() {
         let managed = cursor_managed_entries(crate::merge::MergeScope::User);
-        let merged = merge_hooks_json(
-            &json!({ "version": 1, "hooks": {} }),
-            &managed[..1],
-        );
+        let merged = merge_hooks_json(&json!({ "version": 1, "hooks": {} }), &managed[..1]);
         let hooks = merged["hooks"].as_object().unwrap();
         let state = classify_hooks_commands(hooks);
         assert!(managed_entry_present(&state));
@@ -212,10 +207,7 @@ mod tests {
         let state = classify_hooks_commands(hooks);
         let hints = health_probe_hints(&state);
         assert!(!state.helper_path_configured);
-        assert_eq!(
-            hints.helper_probe.outcome,
-            HealthProbeOutcome::Fail
-        );
+        assert_eq!(hints.helper_probe.outcome, HealthProbeOutcome::Fail);
     }
 
     #[test]
@@ -224,7 +216,9 @@ mod tests {
         let resolved: Vec<_> = managed
             .into_iter()
             .map(|mut entry| {
-                entry.command = entry.command.replace(HELPER_PATH_PLACEHOLDER, "/opt/llm-notch-hook");
+                entry.command = entry
+                    .command
+                    .replace(HELPER_PATH_PLACEHOLDER, "/opt/llm-notch-hook");
                 entry
             })
             .collect();

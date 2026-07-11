@@ -9,7 +9,7 @@ use notch_protocol::{
 use crate::atomic::atomic_write;
 use crate::error::ConnectorError;
 use crate::hash::{sha256_file, sha256_hex};
-use crate::journal::{backup_file_path, backup_timestamp, Journal};
+use crate::journal::{Journal, backup_file_path, backup_timestamp};
 use crate::lock::FileLock;
 use crate::path_security::reject_hardlink;
 use crate::plan::{PlanFileSnapshot, StoredPlan};
@@ -99,9 +99,8 @@ pub fn apply_plan(
 fn preflight(file: &PlanFileSnapshot) -> Result<(), ConnectorError> {
     reject_hardlink(&file.canonical_path)?;
     if file.canonical_path.exists() {
-        let actual = sha256_file(&file.canonical_path).map_err(|error| {
-            ConnectorError::Internal(format!("hash failed: {error}"))
-        })?;
+        let actual = sha256_file(&file.canonical_path)
+            .map_err(|error| ConnectorError::Internal(format!("hash failed: {error}")))?;
         if actual != file.baseline_sha256 {
             return Err(ConnectorError::FileChangedSincePreview {
                 expected: file.baseline_sha256.clone(),
@@ -127,10 +126,9 @@ fn apply_single_file(
     let _lock = FileLock::acquire(&file.canonical_path)?;
 
     // Re-read under lock.
-    let current_hash =     if file.canonical_path.exists() {
-        sha256_file(&file.canonical_path).map_err(|error| {
-            ConnectorError::Internal(format!("hash under lock failed: {error}"))
-        })?
+    let current_hash = if file.canonical_path.exists() {
+        sha256_file(&file.canonical_path)
+            .map_err(|error| ConnectorError::Internal(format!("hash under lock failed: {error}")))?
     } else {
         file.baseline_sha256.clone()
     };
@@ -147,10 +145,7 @@ fn apply_single_file(
         None
     };
 
-    atomic_write(
-        &file.canonical_path,
-        file.merged_text.as_bytes(),
-    )?;
+    atomic_write(&file.canonical_path, file.merged_text.as_bytes())?;
 
     let applied_hash = sha256_hex(file.merged_text.as_bytes());
     Ok(ConnectorFileApplyResult {
@@ -172,12 +167,10 @@ fn create_backup(
 ) -> Result<String, ConnectorError> {
     let timestamp = backup_timestamp(now_ms);
     let backup_path = backup_file_path(&file.canonical_path, &timestamp);
-    fs::copy(&file.canonical_path, &backup_path).map_err(|error| {
-        ConnectorError::Internal(format!("backup copy failed: {error}"))
-    })?;
-    let content_sha256 = sha256_file(&backup_path).map_err(|error| {
-        ConnectorError::Internal(format!("backup hash failed: {error}"))
-    })?;
+    fs::copy(&file.canonical_path, &backup_path)
+        .map_err(|error| ConnectorError::Internal(format!("backup copy failed: {error}")))?;
+    let content_sha256 = sha256_file(&backup_path)
+        .map_err(|error| ConnectorError::Internal(format!("backup hash failed: {error}")))?;
     let entry = BackupJournalEntry {
         id: Journal::new_backup_id(),
         plan_id: Some(plan_id.into()),
@@ -221,9 +214,8 @@ fn restore_from_backup(target: &Path, backup: &BackupJournalEntry) -> Result<(),
     if !backup_path.exists() {
         return Err(ConnectorError::NotFound("backup file missing".into()));
     }
-    let bytes = fs::read(&backup_path).map_err(|error| {
-        ConnectorError::Internal(format!("backup read failed: {error}"))
-    })?;
+    let bytes = fs::read(&backup_path)
+        .map_err(|error| ConnectorError::Internal(format!("backup read failed: {error}")))?;
     atomic_write(target, &bytes)
 }
 
@@ -276,7 +268,10 @@ mod tests {
             AdapterCapabilities::template(AgentSource::Cursor),
         )
         .expect("apply");
-        assert_eq!(result.file_results[0].outcome, ConnectorFileOutcome::Applied);
+        assert_eq!(
+            result.file_results[0].outcome,
+            ConnectorFileOutcome::Applied
+        );
         assert!(dir.path().join(".cursor/hooks.json").exists());
     }
 }

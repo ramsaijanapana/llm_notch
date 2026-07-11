@@ -20,9 +20,7 @@ pub const WRAPPER_PATH_PLACEHOLDER: &str = "{{LLM_NOTCH_WRAPPER}}";
 /// Cursor's per-entry `timeout` provides bounded execution; the helper always fails open
 /// in `--hook-mode`.
 pub fn render_hook_command(_scope: MergeScope, vendor_event: &str, helper_path: &str) -> String {
-    format!(
-        "\"{helper_path}\" hook --source cursor --vendor-event {vendor_event} --hook-mode"
-    )
+    format!("\"{helper_path}\" hook --source cursor --vendor-event {vendor_event} --hook-mode")
 }
 
 /// Renders a wrapper-based command for templates checked into a repository.

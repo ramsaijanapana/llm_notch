@@ -8,12 +8,14 @@ use tauri::WebviewWindow;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::HiDpi::{
     AreDpiAwarenessContextsEqual, DPI_AWARENESS, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-    GetAwarenessFromDpiAwarenessContext, GetThreadDpiAwarenessContext, SetProcessDpiAwarenessContext,
+    GetAwarenessFromDpiAwarenessContext, GetThreadDpiAwarenessContext,
+    SetProcessDpiAwarenessContext,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, GWL_EXSTYLE, GWLP_WNDPROC, GetWindowLongPtrW, HWND_TOPMOST, MA_NOACTIVATE,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SetWindowLongPtrW, SetWindowPos,
-    WINDOW_EX_STYLE, WM_MOUSEACTIVATE, WNDPROC, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WINDOW_EX_STYLE, WM_MOUSEACTIVATE, WNDPROC, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW,
 };
 
 const OVERLAY_LABEL: &str = "overlay";
@@ -211,10 +213,7 @@ mod tests {
     #[test]
     fn mouse_activate_policy_reports_supported_after_hook_flag() {
         OVERLAY_MOUSE_ACTIVATE_HOOK.store(true, Ordering::Release);
-        assert_eq!(
-            overlay_mouse_activate_policy(),
-            CapabilityStatus::Supported
-        );
+        assert_eq!(overlay_mouse_activate_policy(), CapabilityStatus::Supported);
         OVERLAY_MOUSE_ACTIVATE_HOOK.store(false, Ordering::Release);
     }
 
@@ -238,20 +237,26 @@ mod tests {
 
     #[test]
     fn dpi_acceptance_logic_prefers_v2_or_per_monitor() {
-        assert!(DpiAwarenessStatus {
-            per_monitor_v2: true,
-            awareness: DPI_AWARENESS(0),
-        }
-        .acceptable_for_overlay());
-        assert!(DpiAwarenessStatus {
-            per_monitor_v2: false,
-            awareness: DPI_AWARENESS(2),
-        }
-        .acceptable_for_overlay());
-        assert!(!DpiAwarenessStatus {
-            per_monitor_v2: false,
-            awareness: DPI_AWARENESS(0),
-        }
-        .acceptable_for_overlay());
+        assert!(
+            DpiAwarenessStatus {
+                per_monitor_v2: true,
+                awareness: DPI_AWARENESS(0),
+            }
+            .acceptable_for_overlay()
+        );
+        assert!(
+            DpiAwarenessStatus {
+                per_monitor_v2: false,
+                awareness: DPI_AWARENESS(2),
+            }
+            .acceptable_for_overlay()
+        );
+        assert!(
+            !DpiAwarenessStatus {
+                per_monitor_v2: false,
+                awareness: DPI_AWARENESS(0),
+            }
+            .acceptable_for_overlay()
+        );
     }
 }

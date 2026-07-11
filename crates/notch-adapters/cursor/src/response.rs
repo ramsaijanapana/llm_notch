@@ -102,12 +102,14 @@ mod tests {
     #[test]
     fn permission_response_disabled_in_v1() {
         let caps = AdapterCapabilities::template(AgentSource::Cursor);
-        assert!(build_permission_response(
-            CursorRespondableHook::PreToolUse,
-            CursorPermissionDecision::Deny,
-            &caps,
-        )
-        .is_none());
+        assert!(
+            build_permission_response(
+                CursorRespondableHook::PreToolUse,
+                CursorPermissionDecision::Deny,
+                &caps,
+            )
+            .is_none()
+        );
     }
 
     #[test]

@@ -24,7 +24,7 @@ pub use response::{
     CursorPermissionDecision, CursorRespondableHook, build_permission_response, hook_response,
 };
 pub use template::{
-    HELPER_PATH_PLACEHOLDER, WRAPPER_PATH_PLACEHOLDER, render_hook_command,
-    render_wrapper_command, template_hooks_json,
+    HELPER_PATH_PLACEHOLDER, WRAPPER_PATH_PLACEHOLDER, render_hook_command, render_wrapper_command,
+    template_hooks_json,
 };
 pub use version::{CursorVersionProfile, detect_version};

@@ -130,12 +130,12 @@ pub fn update_settings(
                 let _ = AutostartService::set_enabled(&app, previous.autostart_enabled);
             }
             let _ = crate::synchronize_tray_model(
-            &app,
-            &host,
-            &tray,
-            previous.overlay_enabled,
-            &host.alert_notifier(),
-        );
+                &app,
+                &host,
+                &tray,
+                previous.overlay_enabled,
+                &host.alert_notifier(),
+            );
             return Err(CommandError::Internal(error));
         }
     };

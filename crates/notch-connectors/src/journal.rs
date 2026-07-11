@@ -140,7 +140,9 @@ pub fn backup_timestamp(now_ms: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use notch_protocol::{AgentSource, BackupJournalOperation, ConnectorJournalEntry, ConnectorScope};
+    use notch_protocol::{
+        AgentSource, BackupJournalOperation, ConnectorJournalEntry, ConnectorScope,
+    };
     use tempfile::TempDir;
 
     #[test]

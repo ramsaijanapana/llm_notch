@@ -3,9 +3,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use notch_adapters_cursor::{
-    capabilities, detect_version, normalize_event, CursorVersionProfile,
-};
+use notch_adapters_cursor::{CursorVersionProfile, capabilities, detect_version, normalize_event};
 use notch_protocol::AgentSource;
 
 fn fixture(rel: &str) -> serde_json::Value {
@@ -53,8 +51,17 @@ fn vendor_fixtures_normalize_without_sensitive_fields() {
         let payload = fixture(file);
         let normalized = normalize_event(event, &payload, 1_700_000_000_000).expect(file);
         let encoded = serde_json::to_string(&normalized.summary).expect("summary");
-        assert!(!encoded.contains("cargo test"), "{file} leaked command body");
-        assert!(!encoded.contains("npm install"), "{file} leaked command body");
-        assert!(!encoded.contains("running 4 tests"), "{file} leaked tool output");
+        assert!(
+            !encoded.contains("cargo test"),
+            "{file} leaked command body"
+        );
+        assert!(
+            !encoded.contains("npm install"),
+            "{file} leaked command body"
+        );
+        assert!(
+            !encoded.contains("running 4 tests"),
+            "{file} leaked tool output"
+        );
     }
 }

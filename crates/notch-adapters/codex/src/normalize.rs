@@ -64,11 +64,12 @@ pub fn redact_vendor_json(value: &Value) -> Value {
 }
 
 /// Map Codex vendor hook JSON to a bounded [`IngestPayload`].
-pub fn normalize_event(vendor_event: &str, value: &Value) -> Result<NormalizedCodexEvent, CodexNormalizeError> {
+pub fn normalize_event(
+    vendor_event: &str,
+    value: &Value,
+) -> Result<NormalizedCodexEvent, CodexNormalizeError> {
     let redacted = redact_vendor_json(value);
-    let object = redacted
-        .as_object()
-        .ok_or(CodexNormalizeError::NotObject)?;
+    let object = redacted.as_object().ok_or(CodexNormalizeError::NotObject)?;
 
     let hook_event_name = object
         .get("hook_event_name")
@@ -140,7 +141,12 @@ pub fn normalize_event(vendor_event: &str, value: &Value) -> Result<NormalizedCo
 fn map_vendor_event(
     normalized_event: &str,
     profile: &CodexVersionProfile,
-) -> (&'static str, Option<&'static str>, Option<&'static str>, Option<&'static str>) {
+) -> (
+    &'static str,
+    Option<&'static str>,
+    Option<&'static str>,
+    Option<&'static str>,
+) {
     if matches!(profile, CodexVersionProfile::NotifyFallback) {
         return (
             "update",
@@ -211,7 +217,10 @@ mod tests {
             normalized.payload.external_session_id.as_deref(),
             Some("codex-thread-abc")
         );
-        assert_eq!(normalized.payload.workspace_label.as_deref(), Some("llm_notch"));
+        assert_eq!(
+            normalized.payload.workspace_label.as_deref(),
+            Some("llm_notch")
+        );
         assert!(matches!(
             normalized.profile,
             CodexVersionProfile::LifecycleHooks { .. }
@@ -261,6 +270,9 @@ mod tests {
         let value = serde_json::json!({"thread_id": "codex-thread-abc"});
         let normalized = normalize_event("ExperimentalHook", &value).expect("normalize");
         assert_eq!(normalized.payload.event, "lifecycle");
-        assert!(matches!(normalized.profile, CodexVersionProfile::Unknown { .. }));
+        assert!(matches!(
+            normalized.profile,
+            CodexVersionProfile::Unknown { .. }
+        ));
     }
 }

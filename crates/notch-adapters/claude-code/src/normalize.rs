@@ -34,7 +34,10 @@ pub enum ClaudeNormalizeError {
 ///
 /// Raw prompts, command bodies, tool output, transcript paths, and plan content
 /// are never copied into the normalized event.
-pub fn normalize_event(vendor_event: &str, payload: &Value) -> Result<NormalizedClaudeEvent, ClaudeNormalizeError> {
+pub fn normalize_event(
+    vendor_event: &str,
+    payload: &Value,
+) -> Result<NormalizedClaudeEvent, ClaudeNormalizeError> {
     let object = payload.as_object().ok_or(ClaudeNormalizeError::NotObject)?;
     let external_session_id = ["session_id", "sessionId"]
         .iter()

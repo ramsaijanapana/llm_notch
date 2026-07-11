@@ -22,7 +22,7 @@ mod repair;
 mod rollback;
 
 pub use adapter::{AdapterDescriptor, AdapterRegistry, PlanOperation};
-pub use error::ConnectorError;
 pub use detect::DetectedConnector;
+pub use error::ConnectorError;
 pub use manager::{ConnectorConfig, ConnectorManager, SharedConnectorManager};
 pub use plan::StoredPlan;

@@ -34,8 +34,7 @@ pub fn open_session_context(
             context_open_tier: ContextOpenTier::None,
             activated: false,
             message: Some(
-                "This adapter does not advertise context open and no process is attributed."
-                    .into(),
+                "This adapter does not advertise context open and no process is attributed.".into(),
             ),
         };
     }
@@ -76,9 +75,9 @@ pub fn open_session_context(
         return OpenContextResult {
             context_open_tier: outcome.achieved_tier,
             activated: outcome.activated,
-            message: outcome.detail.or_else(|| {
-                fallback_message(tier, outcome.achieved_tier, fallback_host)
-            }),
+            message: outcome
+                .detail
+                .or_else(|| fallback_message(tier, outcome.achieved_tier, fallback_host)),
         };
     };
 

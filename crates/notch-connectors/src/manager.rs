@@ -2,19 +2,19 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use notch_protocol::{
-    AdapterCapabilities, ConnectorApplyResult, ConnectorHealthEntry, ConnectorHealthReport,
-    ConnectorPlanPreview, ConnectorScope, AgentSource,
+    AdapterCapabilities, AgentSource, ConnectorApplyResult, ConnectorHealthEntry,
+    ConnectorHealthReport, ConnectorPlanPreview, ConnectorScope,
 };
 use parking_lot::Mutex;
 
 use crate::adapter::{AdapterRegistry, PlanOperation};
 use crate::apply::apply_plan;
-use crate::detect::{detect_all, detect_source, DetectedConnector};
+use crate::detect::{DetectedConnector, detect_all, detect_source};
 use crate::error::ConnectorError;
 use crate::health::{helper_exists, probe_connector};
 use crate::journal::Journal;
 use crate::path_security::ScopeRoot;
-use crate::plan::{now_ms, PlanStore};
+use crate::plan::{PlanStore, now_ms};
 use crate::preview::{build_preview, capabilities_for};
 use crate::rollback::preview_rollback;
 
@@ -50,13 +50,13 @@ impl ConnectorManager {
     }
 
     pub fn detect_all(&self) -> Result<Vec<DetectedConnector>, ConnectorError> {
-        detect_all(
-            &self.registry,
-            self.config.workspace_root.as_deref(),
-        )
+        detect_all(&self.registry, self.config.workspace_root.as_deref())
     }
 
-    pub fn detect_source(&self, source: AgentSource) -> Result<Vec<DetectedConnector>, ConnectorError> {
+    pub fn detect_source(
+        &self,
+        source: AgentSource,
+    ) -> Result<Vec<DetectedConnector>, ConnectorError> {
         detect_source(
             &self.registry,
             source,
@@ -88,7 +88,10 @@ impl ConnectorManager {
         self.preview(source, scope, PlanOperation::Repair)
     }
 
-    pub fn preview_rollback(&self, backup_id: &str) -> Result<ConnectorPlanPreview, ConnectorError> {
+    pub fn preview_rollback(
+        &self,
+        backup_id: &str,
+    ) -> Result<ConnectorPlanPreview, ConnectorError> {
         let now = now_ms();
         let scope_root = self.scope_root(ConnectorScope::User)?;
         let (preview, stored) =
@@ -106,9 +109,18 @@ impl ConnectorManager {
         Ok(result)
     }
 
-    pub fn remove(&self, source: AgentSource, scope: ConnectorScope) -> Result<ConnectorApplyResult, ConnectorError> {
+    pub fn remove(
+        &self,
+        source: AgentSource,
+        scope: ConnectorScope,
+    ) -> Result<ConnectorApplyResult, ConnectorError> {
         let preview = self.preview_remove(source, scope)?;
-        if preview.files.first().map(|file| file.diff_text.is_empty()).unwrap_or(true) {
+        if preview
+            .files
+            .first()
+            .map(|file| file.diff_text.is_empty())
+            .unwrap_or(true)
+        {
             return Ok(ConnectorApplyResult {
                 plan_id: preview.plan_id,
                 source,
@@ -119,7 +131,10 @@ impl ConnectorManager {
         self.apply(&preview.plan_id)
     }
 
-    pub fn health_report(&self, adapters: &[AdapterCapabilities]) -> Result<ConnectorHealthReport, ConnectorError> {
+    pub fn health_report(
+        &self,
+        adapters: &[AdapterCapabilities],
+    ) -> Result<ConnectorHealthReport, ConnectorError> {
         let now = now_ms();
         let detected = self.detect_all()?;
         let helper_ok = helper_exists(&self.config.helper_path);

@@ -1,4 +1,6 @@
-use notch_protocol::{AttentionKind, HostMetricSample, MetricSample, ResourceAlert, ResourceAlertKind};
+use notch_protocol::{
+    AttentionKind, HostMetricSample, MetricSample, ResourceAlert, ResourceAlertKind,
+};
 
 use crate::constants::{
     CPU_CRITICAL_DURATION, CPU_CRITICAL_THRESHOLD, CPU_WARN_DURATION, CPU_WARN_THRESHOLD,
@@ -6,7 +8,7 @@ use crate::constants::{
 };
 
 /// V1 alert kinds evaluated by the core (never focus windows).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlertKind {
     NewAttention,
     CpuWarn,

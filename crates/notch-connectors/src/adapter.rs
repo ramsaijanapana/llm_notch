@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use notch_protocol::{
-    AgentSource, ConnectorScope, ExternalTrustAction, ExternalTrustActionKind,
-};
+use notch_protocol::{AgentSource, ConnectorScope, ExternalTrustAction, ExternalTrustActionKind};
 use serde_json::Value;
 
-use crate::merge::{merge_claude_settings, merge_hooks_json, remove_claude_settings, remove_hooks_json};
+use crate::merge::{
+    merge_claude_settings, merge_hooks_json, remove_claude_settings, remove_hooks_json,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlanOperation {
@@ -159,8 +159,7 @@ impl AdapterRegistry {
             external_trust_actions: vec![ExternalTrustAction {
                 kind: ExternalTrustActionKind::CodexHooksReview,
                 instructions:
-                    "Run /hooks in Codex and approve the llm_notch hooks to finish setup."
-                        .into(),
+                    "Run /hooks in Codex and approve the llm_notch hooks to finish setup.".into(),
             }],
         }
     }
@@ -241,12 +240,9 @@ mod tests {
 
     #[test]
     fn registry_loads_cursor_template() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..");
-        let registry = AdapterRegistry::new(
-            root.clone(),
-            root.join("target/fake/llm-notch-hook.exe"),
-        );
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let registry =
+            AdapterRegistry::new(root.clone(), root.join("target/fake/llm-notch-hook.exe"));
         let adapter = registry.get(AgentSource::Cursor).expect("cursor");
         let template = adapter.load_template().expect("template");
         assert!(template.get("hooks").is_some());

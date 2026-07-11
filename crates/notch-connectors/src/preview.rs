@@ -6,14 +6,14 @@ use notch_protocol::{
 };
 use serde_json::Value;
 
-use crate::adapter::{materialize_template, AdapterDescriptor, AdapterRegistry, PlanOperation};
+use crate::adapter::{AdapterDescriptor, AdapterRegistry, PlanOperation, materialize_template};
 use crate::diff::unified_diff;
 use crate::error::ConnectorError;
 use crate::hash::sha256_hex;
-use crate::journal::{backup_display_path, backup_timestamp, backup_file_path};
+use crate::journal::{backup_display_path, backup_file_path, backup_timestamp};
 use crate::merge::pretty_json;
-use crate::path_security::{reject_hardlink, ScopeRoot};
-use crate::plan::{new_plan_id, plan_expires_at, PlanFileSnapshot, StoredPlan};
+use crate::path_security::{ScopeRoot, reject_hardlink};
+use crate::plan::{PlanFileSnapshot, StoredPlan, new_plan_id, plan_expires_at};
 
 pub fn build_preview(
     registry: &AdapterRegistry,
@@ -29,9 +29,9 @@ pub fn build_preview(
     let canonical = scope_root.resolve(&target.relative_path)?;
     reject_hardlink(&canonical)?;
 
-    let template_raw = adapter.load_template().map_err(|error| {
-        ConnectorError::Internal(format!("template read failed: {error}"))
-    })?;
+    let template_raw = adapter
+        .load_template()
+        .map_err(|error| ConnectorError::Internal(format!("template read failed: {error}")))?;
     let template = materialize_template(&template_raw, registry.helper_path());
 
     let (baseline_text, baseline_value, is_new_file) = read_baseline(&canonical)?;
@@ -43,7 +43,7 @@ pub fn build_preview(
         PlanOperation::Rollback => {
             return Err(ConnectorError::InvalidRequest(
                 "rollback plans require a journal entry".into(),
-            ))
+            ));
         }
     };
 
@@ -150,9 +150,8 @@ fn read_baseline(path: &Path) -> Result<(String, Value, bool), ConnectorError> {
     if !path.exists() {
         return Ok(("{}".into(), Value::Object(Default::default()), true));
     }
-    let text = std::fs::read_to_string(path).map_err(|error| {
-        ConnectorError::Internal(format!("read baseline failed: {error}"))
-    })?;
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| ConnectorError::Internal(format!("read baseline failed: {error}")))?;
     let value: Value = serde_json::from_str(&text).unwrap_or(Value::Object(Default::default()));
     Ok((text, value, false))
 }
@@ -179,9 +178,7 @@ fn empty_summary(operation: PlanOperation) -> String {
         PlanOperation::Install => {
             "Already up to date — llm_notch hooks are present; no changes needed.".into()
         }
-        PlanOperation::Remove => {
-            "No llm_notch hooks found — nothing to remove.".into()
-        }
+        PlanOperation::Remove => "No llm_notch hooks found — nothing to remove.".into(),
         PlanOperation::Repair => "Configuration matches expected llm_notch hooks.".into(),
         PlanOperation::Rollback => "Nothing to rollback.".into(),
     }
@@ -195,8 +192,8 @@ pub fn capabilities_for(source: notch_protocol::AgentSource) -> AdapterCapabilit
 mod tests {
     use super::*;
     use crate::adapter::AdapterRegistry;
-    use notch_protocol::AgentSource;
     use crate::path_security::ScopeRoot;
+    use notch_protocol::AgentSource;
     use std::path::PathBuf;
     use tempfile::TempDir;
 

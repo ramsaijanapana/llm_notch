@@ -4,15 +4,11 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodexVersionProfile {
     /// Lifecycle hooks enabled via canonical `features.hooks`.
-    LifecycleHooks {
-        hooks_feature: HooksFeatureFlag,
-    },
+    LifecycleHooks { hooks_feature: HooksFeatureFlag },
     /// Legacy `notify` completion callback only — strictly weaker.
     NotifyFallback,
     /// Unrecognized hook surface — observation-only capabilities.
-    Unknown {
-        hook_event: Option<String>,
-    },
+    Unknown { hook_event: Option<String> },
 }
 
 /// Which Codex feature flag enables lifecycle hooks.
@@ -53,7 +49,9 @@ pub fn detect_version(vendor_event: &str, hook_event_name: Option<&str>) -> Code
         return CodexVersionProfile::NotifyFallback;
     }
 
-    let hook_event = hook_event_name.map(str::trim).filter(|value| !value.is_empty());
+    let hook_event = hook_event_name
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     if is_lifecycle_hook_event(hook_event.or(Some(vendor_event))) {
         return CodexVersionProfile::LifecycleHooks {
             hooks_feature: HooksFeatureFlag::Hooks,

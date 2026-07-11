@@ -16,8 +16,7 @@ use tracing::debug;
 use crate::adapter::{self, AdapterBuildError};
 use crate::store::{DecisionStore, StoreError, truncate_summary};
 use crate::types::{
-    ActiveDecision, DecisionReplyPayload, InternalDeliveryState,
-    PendingDecisionWait,
+    ActiveDecision, DecisionReplyPayload, InternalDeliveryState, PendingDecisionWait,
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -94,8 +93,7 @@ impl DecisionBroker {
             }
         }
 
-        let expires_at_ms =
-            payload.created_at_ms + DECISION_FAIL_OPEN_TIMEOUT_MS as i64;
+        let expires_at_ms = payload.created_at_ms + DECISION_FAIL_OPEN_TIMEOUT_MS as i64;
         let session_id = payload
             .session_id
             .clone()
@@ -174,9 +172,7 @@ impl DecisionBroker {
         self.validate_response(&response)?;
         let now = (self.now_ms)();
         let mut guard = self.active.lock();
-        let active = guard
-            .get_mut(request_id)
-            .ok_or(BrokerError::NotFound)?;
+        let active = guard.get_mut(request_id).ok_or(BrokerError::NotFound)?;
 
         if active.internal_state.is_terminal() {
             return Err(BrokerError::AlreadyFinalized);
@@ -223,9 +219,7 @@ impl DecisionBroker {
 
     pub fn observe_effect(&self, request_id: &str, evidence: String) -> Result<(), BrokerError> {
         let mut guard = self.active.lock();
-        let active = guard
-            .get_mut(request_id)
-            .ok_or(BrokerError::NotFound)?;
+        let active = guard.get_mut(request_id).ok_or(BrokerError::NotFound)?;
         match &active.internal_state {
             InternalDeliveryState::Delivered { .. } => {
                 active.internal_state = InternalDeliveryState::EffectObserved {
@@ -320,7 +314,9 @@ impl DecisionBroker {
                 stdout_json: adapter::neutral_stdout(),
                 delivery_state: DecisionDeliveryState::Failed,
             },
-            InternalDeliveryState::Expired => self.neutral_reply(nonce, DecisionDeliveryState::Expired),
+            InternalDeliveryState::Expired => {
+                self.neutral_reply(nonce, DecisionDeliveryState::Expired)
+            }
             InternalDeliveryState::Chosen { .. } | InternalDeliveryState::Pending => {
                 self.neutral_reply(nonce, DecisionDeliveryState::Expired)
             }

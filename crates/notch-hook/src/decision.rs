@@ -1,7 +1,7 @@
 //! Interactive vendor hook decision path for Claude Code respondable events.
 
 use notch_adapters_claude_code::{capabilities, detect_version, normalize_event};
-use notch_ipc::{DecisionWaitPayload, IpcError, IngestClient, IngestPayload};
+use notch_ipc::{DecisionWaitPayload, IngestClient, IngestPayload, IpcError};
 use notch_protocol::{DECISION_HOOK_NEUTRAL_OUTPUT, DecisionKind};
 use serde_json::Value;
 use uuid::Uuid;
@@ -19,9 +19,8 @@ pub fn plan_interactive_decision(
     if source != "claudeCode" {
         return Ok(None);
     }
-    let normalized = normalize_event(vendor_event, value).map_err(|err| {
-        IpcError::FrameRejected(format!("claude normalize failed: {err}"))
-    })?;
+    let normalized = normalize_event(vendor_event, value)
+        .map_err(|err| IpcError::FrameRejected(format!("claude normalize failed: {err}")))?;
     let Some(decision_kind) = normalized.decision_kind else {
         return Ok(None);
     };
@@ -39,9 +38,7 @@ pub fn plan_interactive_decision(
         caps.respond_decisions && caps.decision_response && decision_kind != DecisionKind::Question;
 
     let respondable_name = match respondable_hook {
-        notch_adapters_claude_code::ClaudeRespondableHook::PermissionRequest => {
-            "permissionRequest"
-        }
+        notch_adapters_claude_code::ClaudeRespondableHook::PermissionRequest => "permissionRequest",
         notch_adapters_claude_code::ClaudeRespondableHook::ExitPlanModePreToolUse => {
             "exitPlanModePreToolUse"
         }
@@ -76,10 +73,7 @@ pub fn plan_interactive_decision(
         "{}:{}:{}",
         normalized.external_session_id,
         vendor_event,
-        normalized
-            .tool_name
-            .as_deref()
-            .unwrap_or("none")
+        normalized.tool_name.as_deref().unwrap_or("none")
     );
 
     Ok(Some(InteractiveDecisionPlan {
@@ -112,11 +106,7 @@ pub async fn execute_interactive_decision(plan: InteractiveDecisionPlan) -> Stri
         Err(_) => return DECISION_HOOK_NEUTRAL_OUTPUT.into(),
     };
     let ingest_id = format!("{}-ingest", plan.wait.nonce);
-    if client
-        .send_ingest(&ingest_id, &plan.ingest)
-        .await
-        .is_err()
-    {
+    if client.send_ingest(&ingest_id, &plan.ingest).await.is_err() {
         return DECISION_HOOK_NEUTRAL_OUTPUT.into();
     }
     client
@@ -147,7 +137,10 @@ mod tests {
             .expect("interactive");
         // Fixture omits Claude version metadata; broker stays observation-only.
         assert!(!plan.wait.has_actionable_payload);
-        assert_eq!(plan.wait.respondable_hook.as_deref(), Some("permissionRequest"));
+        assert_eq!(
+            plan.wait.respondable_hook.as_deref(),
+            Some("permissionRequest")
+        );
         assert_eq!(plan.ingest.event, "attention");
     }
 
@@ -167,8 +160,7 @@ mod tests {
     #[test]
     fn ordinary_tool_event_does_not_plan_decision() {
         let value = fixture("pre-tool-use-input.json");
-        let plan =
-            plan_interactive_decision("claudeCode", "PreToolUse", &value).expect("plan");
+        let plan = plan_interactive_decision("claudeCode", "PreToolUse", &value).expect("plan");
         assert!(plan.is_none());
     }
 }

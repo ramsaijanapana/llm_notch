@@ -5,9 +5,9 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use notch_protocol::{
-    DecisionDeliveryState, DecisionKind, DecisionRequest, DecisionResponse,
-    DecisionResponseRecord, MAX_DECISION_SUMMARY_LEN, MigrationLane, MigrationRecord,
-    MigrationRegistry, MIGRATION_REGISTRY_VERSION,
+    DecisionDeliveryState, DecisionKind, DecisionRequest, DecisionResponse, DecisionResponseRecord,
+    MAX_DECISION_SUMMARY_LEN, MIGRATION_REGISTRY_VERSION, MigrationLane, MigrationRecord,
+    MigrationRegistry,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use thiserror::Error;
@@ -77,7 +77,9 @@ impl DecisionStore {
 
     fn init(conn: &Connection) -> StoreResult<()> {
         let version: Option<i32> = conn
-            .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
+            .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| {
+                row.get(0)
+            })
             .ok();
         if version.is_none() {
             return Err(StoreError::Other(
@@ -135,9 +137,7 @@ impl DecisionStore {
         responded_at_ms: Option<i64>,
         delivery_detail: Option<&str>,
     ) -> StoreResult<()> {
-        let response_json = response
-            .map(serde_json::to_string)
-            .transpose()?;
+        let response_json = response.map(serde_json::to_string).transpose()?;
         let conn = self.connection();
         conn.execute(
             "UPDATE decision_audit SET
@@ -181,7 +181,8 @@ impl DecisionStore {
                 expires_at_ms: row.get(7)?,
             })
         })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(StoreError::from)
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StoreError::from)
     }
 
     pub fn load_record(&self, request_id: &str) -> StoreResult<Option<DecisionResponseRecord>> {
@@ -224,11 +225,9 @@ fn record_lane_migration(conn: &Connection) -> StoreResult<()> {
         .map(serde_json::from_str)
         .transpose()?
         .unwrap_or_default();
-    if registry
-        .records
-        .iter()
-        .any(|record| record.lane == MigrationLane::Decisions && record.version == DECISIONS_MIGRATION_VERSION)
-    {
+    if registry.records.iter().any(|record| {
+        record.lane == MigrationLane::Decisions && record.version == DECISIONS_MIGRATION_VERSION
+    }) {
         return Ok(());
     }
     registry.records.push(MigrationRecord {
@@ -279,10 +278,7 @@ pub fn truncate_summary(summary: &str) -> String {
     if summary.len() <= MAX_DECISION_SUMMARY_LEN {
         return summary.to_string();
     }
-    summary
-        .chars()
-        .take(MAX_DECISION_SUMMARY_LEN)
-        .collect()
+    summary.chars().take(MAX_DECISION_SUMMARY_LEN).collect()
 }
 
 #[cfg(test)]

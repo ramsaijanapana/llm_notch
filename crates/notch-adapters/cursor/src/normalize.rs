@@ -46,9 +46,7 @@ pub fn normalize_event(
     payload: &Value,
     now_ms: i64,
 ) -> Result<NormalizedCursorEvent, CursorNormalizeError> {
-    let object = payload
-        .as_object()
-        .ok_or(CursorNormalizeError::NotObject)?;
+    let object = payload.as_object().ok_or(CursorNormalizeError::NotObject)?;
 
     let external_session_id = session_id(object).ok_or(CursorNormalizeError::MissingSessionId)?;
     let tool_name = object
@@ -97,10 +95,15 @@ pub fn normalize_event(
 }
 
 fn session_id(object: &serde_json::Map<String, Value>) -> Option<String> {
-    ["session_id", "sessionId", "conversation_id", "conversationId"]
-        .iter()
-        .find_map(|key| object.get(*key).and_then(Value::as_str))
-        .map(str::to_string)
+    [
+        "session_id",
+        "sessionId",
+        "conversation_id",
+        "conversationId",
+    ]
+    .iter()
+    .find_map(|key| object.get(*key).and_then(Value::as_str))
+    .map(str::to_string)
 }
 
 fn workspace_label_from(object: &serde_json::Map<String, Value>) -> Option<String> {
@@ -213,14 +216,16 @@ fn map_vendor_event(
                 None,
             )
         }
-        "beforeshellexecution" | "beforemcpexecution" | "beforereadfile" | "beforesubmitprompt" => (
-            "tool".into(),
-            SessionEventKind::Tool,
-            EventLevel::Info,
-            format!("Hook gate: {normalized_vendor}"),
-            None,
-            None,
-        ),
+        "beforeshellexecution" | "beforemcpexecution" | "beforereadfile" | "beforesubmitprompt" => {
+            (
+                "tool".into(),
+                SessionEventKind::Tool,
+                EventLevel::Info,
+                format!("Hook gate: {normalized_vendor}"),
+                None,
+                None,
+            )
+        }
         "afteragentresponse" | "afteragentthought" | "precompact" => (
             "lifecycle".into(),
             SessionEventKind::Lifecycle,
@@ -329,8 +334,7 @@ mod tests {
     #[test]
     fn normalizes_post_tool_use_failure() {
         let payload = fixture("post-tool-use-failure-input.json");
-        let event =
-            normalize_event("postToolUseFailure", &payload, 1_700_000_000_000).expect("ok");
+        let event = normalize_event("postToolUseFailure", &payload, 1_700_000_000_000).expect("ok");
         assert_eq!(event.level, EventLevel::Warning);
         assert!(event.summary.contains("timeout"));
     }

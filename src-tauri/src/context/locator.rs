@@ -120,10 +120,7 @@ impl ContextLocator {
 
     pub fn process(&self) -> Option<ProcessIdentity> {
         match (self.payload.pid, self.payload.started_at_ms) {
-            (Some(pid), Some(started_at_ms)) => Some(ProcessIdentity {
-                pid,
-                started_at_ms,
-            }),
+            (Some(pid), Some(started_at_ms)) => Some(ProcessIdentity { pid, started_at_ms }),
             _ => None,
         }
     }

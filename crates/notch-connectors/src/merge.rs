@@ -15,14 +15,12 @@ pub fn merge_hooks_json(target: &Value, template: &Value) -> (Value, Vec<String>
         return (merged, preserved);
     };
 
-    let target_hooks = merged
-        .as_object_mut()
-        .and_then(|root| {
-            if !root.contains_key("hooks") {
-                root.insert("hooks".into(), Value::Object(Map::new()));
-            }
-            root.get_mut("hooks").and_then(Value::as_object_mut)
-        });
+    let target_hooks = merged.as_object_mut().and_then(|root| {
+        if !root.contains_key("hooks") {
+            root.insert("hooks".into(), Value::Object(Map::new()));
+        }
+        root.get_mut("hooks").and_then(Value::as_object_mut)
+    });
 
     let Some(target_hooks) = target_hooks else {
         return (merged, preserved);
@@ -121,14 +119,12 @@ pub fn merge_claude_settings(target: &Value, template: &Value) -> (Value, Vec<St
         return (merged, preserved);
     };
 
-    let target_hooks = merged
-        .as_object_mut()
-        .and_then(|root| {
-            if !root.contains_key("hooks") {
-                root.insert("hooks".into(), Value::Object(Map::new()));
-            }
-            root.get_mut("hooks").and_then(Value::as_object_mut)
-        });
+    let target_hooks = merged.as_object_mut().and_then(|root| {
+        if !root.contains_key("hooks") {
+            root.insert("hooks".into(), Value::Object(Map::new()));
+        }
+        root.get_mut("hooks").and_then(Value::as_object_mut)
+    });
 
     let Some(target_hooks) = target_hooks else {
         return (merged, preserved);
@@ -175,23 +171,19 @@ pub fn merge_claude_settings(target: &Value, template: &Value) -> (Value, Vec<St
                 continue;
             }
 
-            if let Some(existing) = target_groups.iter_mut().find(|group| {
-                group.get("matcher").and_then(Value::as_str).unwrap_or("") == matcher
-            }) {
-                let hooks_slot = existing
-                    .as_object_mut()
-                    .and_then(|obj| {
-                        if !obj.contains_key("hooks") {
-                            obj.insert("hooks".into(), Value::Array(Vec::new()));
-                        }
-                        obj.get_mut("hooks").and_then(Value::as_array_mut)
-                    });
+            if let Some(existing) = target_groups
+                .iter_mut()
+                .find(|group| group.get("matcher").and_then(Value::as_str).unwrap_or("") == matcher)
+            {
+                let hooks_slot = existing.as_object_mut().and_then(|obj| {
+                    if !obj.contains_key("hooks") {
+                        obj.insert("hooks".into(), Value::Array(Vec::new()));
+                    }
+                    obj.get_mut("hooks").and_then(Value::as_array_mut)
+                });
                 if let Some(hooks_slot) = hooks_slot {
                     for hook in managed {
-                        let command = hook
-                            .get("command")
-                            .and_then(Value::as_str)
-                            .unwrap_or("");
+                        let command = hook.get("command").and_then(Value::as_str).unwrap_or("");
                         let exists = hooks_slot.iter().any(|entry| {
                             entry
                                 .get("command")

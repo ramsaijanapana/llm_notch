@@ -48,9 +48,8 @@ impl FileLock {
                 }
             })?;
 
-        file.set_len(0).map_err(|error| {
-            ConnectorError::Internal(format!("lock truncate failed: {error}"))
-        })?;
+        file.set_len(0)
+            .map_err(|error| ConnectorError::Internal(format!("lock truncate failed: {error}")))?;
         (&file)
             .write_all(format!("pid={}\n", std::process::id()).as_bytes())
             .map_err(|error| ConnectorError::Internal(format!("lock write failed: {error}")))?;

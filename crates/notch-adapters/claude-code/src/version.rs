@@ -6,9 +6,7 @@ pub enum ClaudeVersionProfile {
     /// Semver Claude Code version we recognize for verified response paths.
     Known { claude_code_version: String },
     /// Unrecognized semver or missing version metadata — observation-only.
-    Unknown {
-        claude_code_version: Option<String>,
-    },
+    Unknown { claude_code_version: Option<String> },
 }
 
 /// Minimum Claude Code semver treated as fully supported for the shipped template.
@@ -20,7 +18,10 @@ const KNOWN_MIN_PATCH: u64 = 0;
 ///
 /// Unknown versions downgrade to observation-only capabilities via [`crate::capabilities`].
 pub fn detect_version(claude_code_version: Option<&str>) -> ClaudeVersionProfile {
-    let Some(raw) = claude_code_version.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(raw) = claude_code_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return ClaudeVersionProfile::Unknown {
             claude_code_version: None,
         };
@@ -51,7 +52,11 @@ fn is_known_claude_semver(raw: &str) -> bool {
     let minor = parts.next().and_then(|part| part.parse::<u64>().ok());
     let patch = parts
         .next()
-        .and_then(|part| part.trim_end_matches(|c: char| !c.is_ascii_digit()).parse().ok())
+        .and_then(|part| {
+            part.trim_end_matches(|c: char| !c.is_ascii_digit())
+                .parse()
+                .ok()
+        })
         .or(Some(0));
 
     match (major, minor, patch) {
@@ -115,9 +120,6 @@ mod tests {
 
     #[test]
     fn semver_ordering_matches_expectations() {
-        assert_eq!(
-            compare_semver((2, 1, 10), (2, 1, 0)),
-            Ordering::Greater
-        );
+        assert_eq!(compare_semver((2, 1, 10), (2, 1, 0)), Ordering::Greater);
     }
 }

@@ -11,9 +11,7 @@ pub fn achievable_tier(host: HostKind, pane_verified: bool) -> ContextOpenTier {
         HostKind::TerminalApp | HostKind::ITerm2 | HostKind::WindowsTerminal => {
             ContextOpenTier::WindowFocus
         }
-        HostKind::VsCode | HostKind::Cursor | HostKind::UnknownHost => {
-            ContextOpenTier::AppActivate
-        }
+        HostKind::VsCode | HostKind::Cursor | HostKind::UnknownHost => ContextOpenTier::AppActivate,
     }
 }
 
@@ -121,11 +119,7 @@ mod tests {
             ContextOpenTier::None
         );
         assert_eq!(
-            cap_tier(
-                ContextOpenTier::ExactPane,
-                HostKind::TerminalApp,
-                false
-            ),
+            cap_tier(ContextOpenTier::ExactPane, HostKind::TerminalApp, false),
             ContextOpenTier::WindowFocus
         );
     }

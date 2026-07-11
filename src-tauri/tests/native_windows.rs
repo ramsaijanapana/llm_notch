@@ -2,7 +2,9 @@
 
 //! Native Windows smoke tests for overlay platform guarantees.
 
-use llm_notch_desktop_lib::runtime::helper_path::{bundled_helper_filename, bundled_helper_in_resource_dir};
+use llm_notch_desktop_lib::runtime::helper_path::{
+    bundled_helper_filename, bundled_helper_in_resource_dir,
+};
 use llm_notch_desktop_lib::window::types::CapabilityStatus;
 use llm_notch_desktop_lib::window::windows::{
     ensure_process_per_monitor_dpi_awareness, expected_overlay_ex_styles,

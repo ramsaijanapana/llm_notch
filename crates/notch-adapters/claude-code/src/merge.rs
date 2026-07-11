@@ -57,9 +57,7 @@ pub fn merge_settings_hooks(existing: &Value, template_hooks: &Value) -> Result<
         Value::Null => json!({}),
         _ => return Err(MergeError::InvalidExisting),
     };
-    let root = merged
-        .as_object_mut()
-        .expect("merged settings root object");
+    let root = merged.as_object_mut().expect("merged settings root object");
     let hooks = root
         .entry("hooks")
         .or_insert_with(|| Value::Object(Map::new()));

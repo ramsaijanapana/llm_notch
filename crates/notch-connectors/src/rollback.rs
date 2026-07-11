@@ -9,7 +9,7 @@ use crate::error::ConnectorError;
 use crate::hash::sha256_file;
 use crate::journal::Journal;
 use crate::path_security::ScopeRoot;
-use crate::plan::{new_plan_id, plan_expires_at, StoredPlan};
+use crate::plan::{StoredPlan, new_plan_id, plan_expires_at};
 use crate::preview::build_preview;
 
 pub fn preview_rollback(
@@ -32,9 +32,8 @@ pub fn preview_rollback(
     let display_path = scope_root.display_path(&target.relative_path);
 
     let current_hash = if canonical.exists() {
-        sha256_file(&canonical).map_err(|error| {
-            ConnectorError::Internal(format!("hash current failed: {error}"))
-        })?
+        sha256_file(&canonical)
+            .map_err(|error| ConnectorError::Internal(format!("hash current failed: {error}")))?
     } else {
         String::new()
     };
@@ -44,13 +43,11 @@ pub fn preview_rollback(
         return Err(ConnectorError::NotFound("backup file missing".into()));
     }
 
-    let backup_bytes = fs::read(&backup_path).map_err(|error| {
-        ConnectorError::Internal(format!("read backup failed: {error}"))
-    })?;
+    let backup_bytes = fs::read(&backup_path)
+        .map_err(|error| ConnectorError::Internal(format!("read backup failed: {error}")))?;
     let backup_text = String::from_utf8_lossy(&backup_bytes).into_owned();
-    let backup_hash = sha256_file(&backup_path).map_err(|error| {
-        ConnectorError::Internal(format!("hash backup failed: {error}"))
-    })?;
+    let backup_hash = sha256_file(&backup_path)
+        .map_err(|error| ConnectorError::Internal(format!("hash backup failed: {error}")))?;
 
     if let Some(applied_hash) = &backup.applied_hash {
         if current_hash == *applied_hash {
@@ -187,8 +184,8 @@ mod tests {
             canonical: std::fs::canonicalize(dir.path()).expect("canonicalize"),
             display_prefix: "~".into(),
         };
-        let (preview, _) = preview_rollback(&registry, &journal, &entry.id, &root, now)
-            .expect("rollback preview");
+        let (preview, _) =
+            preview_rollback(&registry, &journal, &entry.id, &root, now).expect("rollback preview");
         assert!(preview.summary.contains("Restore"));
     }
 }

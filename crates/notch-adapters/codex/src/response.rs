@@ -49,24 +49,21 @@ mod tests {
 
     #[test]
     fn observation_template_returns_empty_object() {
-        assert_eq!(hook_response(CodexRespondableHook::PermissionRequest), json!({}));
+        assert_eq!(
+            hook_response(CodexRespondableHook::PermissionRequest),
+            json!({})
+        );
     }
 
     #[test]
     fn documented_allow_shape_matches_codex_hooks() {
         let value = build_permission_response(CodexPermissionBehavior::Allow);
-        assert_eq!(
-            value["hookSpecificOutput"]["decision"]["behavior"],
-            "allow"
-        );
+        assert_eq!(value["hookSpecificOutput"]["decision"]["behavior"], "allow");
     }
 
     #[test]
     fn documented_deny_shape_matches_codex_hooks() {
         let value = build_permission_response(CodexPermissionBehavior::Deny);
-        assert_eq!(
-            value["hookSpecificOutput"]["decision"]["behavior"],
-            "deny"
-        );
+        assert_eq!(value["hookSpecificOutput"]["decision"]["behavior"], "deny");
     }
 }

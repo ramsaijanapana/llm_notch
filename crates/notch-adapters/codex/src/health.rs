@@ -153,6 +153,9 @@ mod tests {
             helper_available: true,
             saw_traffic: false,
         };
-        assert_eq!(user_status_from_hints(&hints), ConnectorUserStatus::ActionNeeded);
+        assert_eq!(
+            user_status_from_hints(&hints),
+            ConnectorUserStatus::ActionNeeded
+        );
     }
 }

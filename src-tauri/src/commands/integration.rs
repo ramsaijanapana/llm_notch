@@ -1,9 +1,9 @@
 use std::sync::{Arc, OnceLock};
 
-use notch_connectors::{ConnectorConfig, ConnectorManager, ConnectorError as ManagerError};
+use notch_connectors::{ConnectorConfig, ConnectorError as ManagerError, ConnectorManager};
 use notch_protocol::{
-    AdapterCapabilities, ConnectorApplyError, ConnectorApplyResult, ConnectorHealthEntry,
-    ConnectorHealthReport, ConnectorPlanPreview, ConnectorScope, AgentSource,
+    AdapterCapabilities, AgentSource, ConnectorApplyError, ConnectorApplyResult,
+    ConnectorHealthEntry, ConnectorHealthReport, ConnectorPlanPreview, ConnectorScope,
 };
 use parking_lot::Mutex;
 use tauri::{AppHandle, Manager, State};
@@ -11,7 +11,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::commands::error::CommandError;
 use crate::commands::validation::{validate_agent_source, validate_plan_id};
 use crate::runtime::helper_path::resolve_helper_path;
-use crate::state::{HostState};
+use crate::state::HostState;
 
 type SharedManager = Arc<Mutex<ConnectorManager>>;
 
@@ -29,15 +29,14 @@ fn manager(app: &AppHandle) -> Result<SharedManager, CommandError> {
 }
 
 fn connector_config(app: &AppHandle) -> Result<ConnectorConfig, CommandError> {
-    let repo_root = std::env::current_dir().map_err(|error| {
-        CommandError::Internal(format!("cannot resolve repo root: {error}"))
-    })?;
-    let app_data_dir = app.path().app_data_dir().map_err(|error| {
-        CommandError::Internal(format!("app data dir unavailable: {error}"))
-    })?;
-    std::fs::create_dir_all(&app_data_dir).map_err(|error| {
-        CommandError::Internal(format!("app data dir create failed: {error}"))
-    })?;
+    let repo_root = std::env::current_dir()
+        .map_err(|error| CommandError::Internal(format!("cannot resolve repo root: {error}")))?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| CommandError::Internal(format!("app data dir unavailable: {error}")))?;
+    std::fs::create_dir_all(&app_data_dir)
+        .map_err(|error| CommandError::Internal(format!("app data dir create failed: {error}")))?;
     Ok(ConnectorConfig {
         repo_root,
         app_data_dir,
@@ -53,19 +52,15 @@ fn map_connector_error(error: ManagerError) -> CommandError {
         ManagerError::NotFound(message) => CommandError::NotFound(message),
         ManagerError::PlanNotFound => CommandError::NotFound("plan".into()),
         ManagerError::PlanExpired => CommandError::Conflict("plan expired".into()),
-        ManagerError::FileChangedSincePreview { expected, actual } => {
-            CommandError::Conflict(format!(
-                "file changed since preview (expected {expected}, actual {actual})"
-            ))
-        }
+        ManagerError::FileChangedSincePreview { expected, actual } => CommandError::Conflict(
+            format!("file changed since preview (expected {expected}, actual {actual})"),
+        ),
         ManagerError::LockContention => CommandError::Conflict("lock contention".into()),
         ManagerError::PathEscapesScope(message) => CommandError::InvalidRequest(message),
         ManagerError::RollbackHashMismatch => {
             CommandError::Conflict("rollback hash mismatch".into())
         }
-        ManagerError::PartialApplyFailure => {
-            CommandError::Conflict("partial apply failure".into())
-        }
+        ManagerError::PartialApplyFailure => CommandError::Conflict("partial apply failure".into()),
         ManagerError::Internal(message) => CommandError::Internal(message),
     }
 }
@@ -174,7 +169,10 @@ pub fn connector_health(
 }
 
 #[allow(dead_code)]
-fn connector_apply_error(error: ManagerError, partial: Option<Vec<notch_protocol::ConnectorFileApplyResult>>) -> ConnectorApplyError {
+fn connector_apply_error(
+    error: ManagerError,
+    partial: Option<Vec<notch_protocol::ConnectorFileApplyResult>>,
+) -> ConnectorApplyError {
     let (expected_sha256, actual_sha256) = match &error {
         ManagerError::FileChangedSincePreview { expected, actual } => {
             (Some(expected.clone()), Some(actual.clone()))
@@ -191,7 +189,9 @@ fn connector_apply_error(error: ManagerError, partial: Option<Vec<notch_protocol
 }
 
 #[tauri::command]
-pub fn detect_connectors(app: AppHandle) -> Result<Vec<notch_connectors::DetectedConnector>, CommandError> {
+pub fn detect_connectors(
+    app: AppHandle,
+) -> Result<Vec<notch_connectors::DetectedConnector>, CommandError> {
     let manager = manager(&app)?;
     manager.lock().detect_all().map_err(map_connector_error)
 }

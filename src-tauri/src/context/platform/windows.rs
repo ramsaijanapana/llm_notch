@@ -1,13 +1,13 @@
 //! Windows context activation via HWND foreground selection.
 
 use notch_protocol::ContextOpenTier;
-use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow,
-    ShowWindow, SW_RESTORE,
+    EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible, SW_RESTORE,
+    SetForegroundWindow, ShowWindow,
 };
+use windows::core::BOOL;
 
 use crate::context::activate::ActivationOutcome;
 use crate::context::locator::{ContextLocator, HostKind};
@@ -81,9 +81,7 @@ fn host_specific_detail(host: HostKind) -> Option<String> {
         HostKind::WindowsTerminal => {
             Some("Focused Windows Terminal window (tab selection is best-effort).".into())
         }
-        HostKind::VsCode | HostKind::Cursor => {
-            Some("Activated editor application window.".into())
-        }
+        HostKind::VsCode | HostKind::Cursor => Some("Activated editor application window.".into()),
         _ => None,
     }
 }

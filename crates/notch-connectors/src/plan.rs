@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use notch_protocol::{AgentSource, ConnectorScope, CONNECTOR_PLAN_TTL_MS};
+use notch_protocol::{AgentSource, CONNECTOR_PLAN_TTL_MS, ConnectorScope};
 use parking_lot::Mutex;
 use uuid::Uuid;
 
@@ -70,8 +70,7 @@ pub fn new_plan_id() -> String {
 }
 
 pub fn plan_expires_at(now_ms: i64) -> i64 {
-    now_ms
-        + i64::try_from(CONNECTOR_PLAN_TTL_MS).expect("CONNECTOR_PLAN_TTL_MS fits in i64")
+    now_ms + i64::try_from(CONNECTOR_PLAN_TTL_MS).expect("CONNECTOR_PLAN_TTL_MS fits in i64")
 }
 
 pub fn now_ms() -> i64 {

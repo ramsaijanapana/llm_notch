@@ -104,9 +104,9 @@ fn downgrade_to_window_focus(host: HostKind) -> ActivationOutcome {
 
 fn host_detail(host: HostKind, tier: ContextOpenTier) -> Option<String> {
     match (host, tier) {
-        (HostKind::TerminalApp | HostKind::ITerm2, ContextOpenTier::WindowFocus) => Some(
-            "Activated terminal application (tab/pane selection is best-effort).".into(),
-        ),
+        (HostKind::TerminalApp | HostKind::ITerm2, ContextOpenTier::WindowFocus) => {
+            Some("Activated terminal application (tab/pane selection is best-effort).".into())
+        }
         (HostKind::VsCode | HostKind::Cursor, ContextOpenTier::AppActivate) => {
             Some("Activated editor application.".into())
         }

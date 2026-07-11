@@ -51,13 +51,12 @@ fn build_claude_stdout(
         None => return Err(AdapterBuildError::CapabilityDisabled),
     };
 
-    let version = vendor_context
-        .and_then(|value| {
-            value
-                .get("claude_code_version")
-                .or_else(|| value.get("claudeCodeVersion"))
-                .and_then(Value::as_str)
-        });
+    let version = vendor_context.and_then(|value| {
+        value
+            .get("claude_code_version")
+            .or_else(|| value.get("claudeCodeVersion"))
+            .and_then(Value::as_str)
+    });
     let profile = detect_version(version);
     let caps = capabilities(&profile);
     if !caps.respond_decisions && !caps.decision_response {
@@ -65,7 +64,11 @@ fn build_claude_stdout(
     }
 
     let updated_input = vendor_context
-        .and_then(|value| value.get("updated_input").or_else(|| value.get("updatedInput")))
+        .and_then(|value| {
+            value
+                .get("updated_input")
+                .or_else(|| value.get("updatedInput"))
+        })
         .cloned();
 
     let value = build_decision_response(hook, action, updated_input)

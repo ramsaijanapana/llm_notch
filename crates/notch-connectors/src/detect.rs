@@ -93,10 +93,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn registry_with(root: &Path) -> AdapterRegistry {
-        AdapterRegistry::new(
-            root.to_path_buf(),
-            root.join("llm-notch-hook.exe"),
-        )
+        AdapterRegistry::new(root.to_path_buf(), root.join("llm-notch-hook.exe"))
     }
 
     #[test]
@@ -106,6 +103,10 @@ mod tests {
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let registry = registry_with(&repo);
         let results = detect_source(&registry, AgentSource::Cursor, None).expect("detect");
-        assert!(results.iter().any(|entry| entry.scope == ConnectorScope::User));
+        assert!(
+            results
+                .iter()
+                .any(|entry| entry.scope == ConnectorScope::User)
+        );
     }
 }

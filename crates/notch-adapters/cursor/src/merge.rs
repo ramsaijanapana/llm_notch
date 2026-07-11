@@ -62,13 +62,9 @@ pub fn is_managed_command(command: &str) -> bool {
 
 /// Merge managed entries into an existing hooks.json value, preserving foreign hooks.
 pub fn merge_hooks_json(existing: &Value, managed: &[ManagedHookEntry]) -> Value {
-    let mut root = existing
-        .as_object()
-        .cloned()
-        .unwrap_or_else(Map::new);
+    let mut root = existing.as_object().cloned().unwrap_or_else(Map::new);
 
-    root.entry("version".to_string())
-        .or_insert(json!(1));
+    root.entry("version".to_string()).or_insert(json!(1));
 
     let hooks = root
         .entry("hooks".to_string())
@@ -84,7 +80,10 @@ pub fn merge_hooks_json(existing: &Value, managed: &[ManagedHookEntry]) -> Value
             continue;
         };
 
-        if array.iter().any(|item| command_matches(item, &entry.fingerprint)) {
+        if array
+            .iter()
+            .any(|item| command_matches(item, &entry.fingerprint))
+        {
             continue;
         }
 
@@ -101,7 +100,8 @@ fn command_matches(item: &Value, fingerprint: &str) -> bool {
     item.get("command")
         .and_then(Value::as_str)
         .is_some_and(|command| {
-            is_managed_command(command) && command.contains(&fingerprint[MANAGED_FINGERPRINT_PREFIX.len()..])
+            is_managed_command(command)
+                && command.contains(&fingerprint[MANAGED_FINGERPRINT_PREFIX.len()..])
         })
 }
 
@@ -114,9 +114,11 @@ mod tests {
     fn managed_entries_cover_v1_events() {
         let entries = cursor_managed_entries(MergeScope::Project);
         assert_eq!(entries.len(), MANAGED_EVENTS.len());
-        assert!(entries
-            .iter()
-            .any(|entry| entry.event == "postToolUseFailure"));
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.event == "postToolUseFailure")
+        );
     }
 
     #[test]

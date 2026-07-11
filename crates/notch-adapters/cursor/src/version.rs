@@ -30,7 +30,10 @@ pub fn detect_version(
     hooks_json_version: Option<u64>,
 ) -> CursorVersionProfile {
     let schema = hooks_json_version.unwrap_or(1);
-    let Some(raw) = cursor_version.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(raw) = cursor_version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return CursorVersionProfile::Unknown {
             cursor_version: None,
             hooks_schema_version: Some(schema),
@@ -63,7 +66,11 @@ fn is_known_cursor_semver(raw: &str) -> bool {
     let minor = parts.next().and_then(|part| part.parse::<u64>().ok());
     let patch = parts
         .next()
-        .and_then(|part| part.trim_end_matches(|c: char| !c.is_ascii_digit()).parse().ok())
+        .and_then(|part| {
+            part.trim_end_matches(|c: char| !c.is_ascii_digit())
+                .parse()
+                .ok()
+        })
         .or(Some(0));
 
     match (major, minor, patch) {
