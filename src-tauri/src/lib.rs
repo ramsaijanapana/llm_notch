@@ -1,6 +1,7 @@
 //! Native Tauri 2 host for llm_notch.
 
 mod commands;
+mod context;
 mod services;
 mod state;
 mod stream;
@@ -161,7 +162,7 @@ pub fn run() {
             commands::bootstrap::get_session_events,
             commands::overlay::set_overlay_mode,
             commands::overlay::open_dashboard,
-            commands::overlay::open_session,
+            commands::context::open_session,
             commands::overlay::acknowledge_attention,
             commands::settings::get_settings,
             commands::settings::list_displays,

@@ -2153,6 +2153,7 @@ name = "llm-notch-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "notch-connectors",
  "notch-core",
@@ -2166,6 +2167,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
+ "sysinfo",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
