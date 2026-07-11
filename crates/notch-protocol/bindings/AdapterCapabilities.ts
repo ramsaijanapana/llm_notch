@@ -7,4 +7,8 @@ import type { ContextOpenTier } from "./ContextOpenTier";
 /**
  * Capability flags advertised by an adapter integration.
  */
-export type AdapterCapabilities = { source: AgentSource, events: boolean, attention: AttentionCapability, decisionResponse: boolean, contextOpen: boolean, processAttribution: AttributionQuality, contextOpenTier: ContextOpenTier, observeLifecycle: boolean, observeTools: boolean, respondDecisions: boolean, respondQuestions: boolean, failOpenHooks: boolean, requiresExternalTrust: boolean, };
+export type AdapterCapabilities = { source: AgentSource, events: boolean, attention: AttentionCapability, decisionResponse: boolean, contextOpen: boolean, processAttribution: AttributionQuality, 
+/**
+ * Additive v2 field; supersedes coarse `context_open` when non-`none`.
+ */
+contextOpenTier: ContextOpenTier, observeLifecycle: boolean, observeTools: boolean, respondDecisions: boolean, respondQuestions: boolean, failOpenHooks: boolean, requiresExternalTrust: boolean, };
