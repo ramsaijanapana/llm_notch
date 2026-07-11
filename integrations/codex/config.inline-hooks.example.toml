@@ -1,0 +1,34 @@
+# Inline hooks example — prefer hooks.json.template unless you need TOML
+# Requires explicit user trust via Codex /hooks. llm_notch never automates trust.
+#
+# Place in Codex config.toml (user or project .codex/config.toml):
+#
+# Enable lifecycle hooks (canonical flag):
+#   codex -c features.hooks=true
+#
+# Deprecated alias still accepted by Codex:
+#   codex -c features.codex_hooks=true
+
+[features]
+hooks = true
+
+[[hooks.SessionStart]]
+matcher = "startup|resume"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event SessionStart"
+timeout = 2
+statusMessage = "llm_notch: session observe"
+
+[[hooks.PermissionRequest]]
+matcher = ".*"
+
+[[hooks.PermissionRequest.hooks]]
+type = "command"
+command = "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event PermissionRequest"
+timeout = 2
+statusMessage = "llm_notch: permission observe"
+
+# Windows override example (optional per handler):
+# command_windows = 'pwsh -NoProfile -File {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} -Source codex -VendorEvent PermissionRequest'

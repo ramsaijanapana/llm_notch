@@ -9,6 +9,8 @@ members = [
     "crates/notch-connectors",
     "crates/notch-adapters/cursor",
     "crates/notch-adapters/claude-code",
+    "crates/notch-adapters/codex",
+    "crates/notch-adapters/generic",
     "src-tauri",
 ]
 
@@ -87,3 +89,5 @@ notch-ipc = { path = "crates/notch-ipc" }
 notch-connectors = { path = "crates/notch-connectors" }
 notch-adapters-cursor = { path = "crates/notch-adapters/cursor" }
 notch-adapters-claude-code = { path = "crates/notch-adapters/claude-code" }
+notch-adapters-codex = { path = "crates/notch-adapters/codex" }
+notch-adapters-generic = { path = "crates/notch-adapters/generic" }

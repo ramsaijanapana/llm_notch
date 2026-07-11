@@ -1,12 +1,13 @@
 {
-  "_comment": "TEMPLATE ONLY — beta lifecycle hooks. Requires explicit user trust via Codex /hooks. Enable with: codex -c features.codex_hooks=true",
+  "_comment": "TEMPLATE ONLY — requires explicit user trust via Codex /hooks. Enable with: codex -c features.hooks=true (features.codex_hooks is deprecated). Replace {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} with the absolute path to llm-notch-hook-wrapper after copying integrations/wrappers/ out of the repo.",
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "startup|resume",
         "hooks": [
           {
             "type": "command",
-            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event SessionStart",
+            "command": "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event SessionStart",
             "statusMessage": "llm_notch: session observe",
             "timeout": 2
           }
@@ -19,8 +20,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event PreToolUse",
+            "command": "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event PreToolUse",
             "statusMessage": "llm_notch: tool observe",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event PermissionRequest",
+            "statusMessage": "llm_notch: permission observe",
             "timeout": 2
           }
         ]
@@ -32,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event PostToolUse",
+            "command": "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event PostToolUse",
             "timeout": 2
           }
         ]
@@ -43,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event UserPromptSubmit",
+            "command": "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event UserPromptSubmit",
             "timeout": 2
           }
         ]
@@ -54,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh integrations/wrappers/llm-notch-hook-wrapper.sh --source codex --vendor-event Stop",
+            "command": "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event Stop",
             "statusMessage": "llm_notch: turn observe",
             "timeout": 2
           }

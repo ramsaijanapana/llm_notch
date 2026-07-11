@@ -7,6 +7,7 @@ Templates and protocol reference for connecting local AI coding agents to the ll
 | Document | Description |
 |----------|-------------|
 | [protocol.md](./protocol.md) | Generic ingest protocol, sample events, shell examples |
+| [generic-protocol.md](./generic-protocol.md) | Third-party generic SDK and emit examples |
 | [capability-matrix.md](./capability-matrix.md) | Honest per-vendor capability comparison |
 | [security-privacy.md](./security-privacy.md) | Auth, redaction, and raw-payload handling |
 | [installation.md](./installation.md) | Diff preview, backup, rollback, merge rules |

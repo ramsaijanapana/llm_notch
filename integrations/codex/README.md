@@ -5,26 +5,40 @@
 ## Before you enable
 
 1. Confirm your Codex build supports lifecycle hooks (`features.hooks`; the legacy `features.codex_hooks` flag is deprecated).
-2. Open `/hooks` in the Codex CLI and **review + trust** each llm_notch hook definition.
-3. Untrusted hooks are skipped — llm_notch will show the integration as `actionNeeded` until trust is complete.
+2. Copy [`hooks.json.template`](./hooks.json.template) to your Codex config directory (commonly `~/.codex/hooks.json` or project `.codex/hooks.json`).
+3. Replace `{{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}}` with the absolute path to `llm-notch-hook-wrapper` after copying `integrations/wrappers/` to a stable location.
+4. Open `/hooks` in the Codex CLI and **review + trust** each llm_notch hook definition. llm_notch never automates this step.
+5. Untrusted hooks are skipped — llm_notch shows the integration as `actionNeeded` until trust is complete.
 
 ## Capability honesty (V1)
 
 | Signal | Quality | Notes |
 |--------|---------|-------|
-| Session lifecycle | Partial | `SessionStart`, `Stop` when hooks enabled |
+| Session lifecycle | Partial | `SessionStart`, `Stop` when hooks enabled and trusted |
 | Tool events | Partial | `PreToolUse` / `PostToolUse`; not all tool paths are hook-interceptable per Codex docs |
-| Attention | None | No reliable permission/approval channel in V1 templates |
+| Attention | Partial | `PermissionRequest` is observed; template never returns allow/deny decisions |
 | Process attribution | Heuristic | Distinct CLI trees expected; not verified at install time |
-| Decision response | None | Wrapper never returns `block` / `continue` decisions |
+| Decision response | None | Wrapper always returns `{}` (fail-open) |
 
 ## Preferred: lifecycle hooks
 
-Copy [`hooks.json.template`](./hooks.json.template) to your Codex config directory (commonly `~/.codex/hooks.json` or project `.codex/hooks.json`). Adjust wrapper paths to absolute locations after copying `integrations/wrappers/` out of the repo.
+Copy [`hooks.json.template`](./hooks.json.template) or render programmatically via `notch-adapters-codex::template_hooks_json`. Adjust wrapper paths to absolute locations.
+
+Equivalent inline TOML lives in [`config.inline-hooks.example.toml`](./config.inline-hooks.example.toml). Prefer **one** representation per config layer (`hooks.json` **or** inline `[hooks]`, not both).
+
+Enable hooks:
+
+```bash
+codex -c features.hooks=true
+```
 
 ## Fallback: legacy `notify`
 
 Use [`config.notify.fallback.toml`](./config.notify.fallback.toml) **only** if lifecycle hooks are unavailable. This fires after turn completion only — strictly weaker than lifecycle hooks. Codex is deprecating `notify`.
+
+## PermissionRequest (observation-only)
+
+Codex documents allow/deny responses for `PermissionRequest`. llm_notch V1 observes the event and maps it to local attention state only. The wrapper stdout remains `{}` so the normal Codex approval flow continues unchanged.
 
 ## Stdin / stdout
 
@@ -32,6 +46,13 @@ Use [`config.notify.fallback.toml`](./config.notify.fallback.toml) **only** if l
 - **stdout:** `{}` (fail-open).
 - **exit:** `0` from wrapper.
 
+## External trust
+
+After install, complete the guided step surfaced as `externalTrustActions`:
+
+> Open the Codex CLI, run `/hooks`, review each llm_notch hook definition, and trust it.
+
 ## References
 
 - [Codex hooks documentation](https://developers.openai.com/codex/hooks)
+- Rust adapter: `crates/notch-adapters/codex`
