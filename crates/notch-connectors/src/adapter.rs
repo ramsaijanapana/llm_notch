@@ -166,6 +166,10 @@ impl AdapterRegistry {
     }
 }
 
+const HELPER_PLACEHOLDER: &str = "{{LLM_NOTCH_HELPER}}";
+const WRAPPER_PLACEHOLDER: &str = "{{LLM_NOTCH_WRAPPER}}";
+const WRAPPER_ABSOLUTE_PLACEHOLDER: &str = "{{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}}";
+
 /// Rewrite template hook commands to use the absolute bundled helper path.
 pub fn materialize_template(template: &Value, helper_path: &Path) -> Value {
     let helper = helper_path.to_string_lossy();
@@ -186,7 +190,12 @@ fn rewrite_commands(value: &mut Value, helper_path: &Path, helper: &str) {
                 rewrite_commands(item, helper_path, helper);
             }
         }
-        Value::String(text) if text.contains("llm-notch-hook") => {
+        Value::String(text)
+            if text.contains("llm-notch-hook")
+                || text.contains(HELPER_PLACEHOLDER)
+                || text.contains(WRAPPER_PLACEHOLDER)
+                || text.contains(WRAPPER_ABSOLUTE_PLACEHOLDER) =>
+        {
             *text = rewrite_command(text, helper_path, helper);
         }
         _ => {}
@@ -199,6 +208,16 @@ fn rewrite_command(command: &str, helper_path: &Path, helper: &str) -> String {
     } else {
         helper.to_string()
     };
+
+    if command.contains(HELPER_PLACEHOLDER) {
+        return command.replace(HELPER_PLACEHOLDER, &quoted_helper);
+    }
+    if command.contains(WRAPPER_PLACEHOLDER) {
+        return command.replace(WRAPPER_PLACEHOLDER, &quoted_helper);
+    }
+    if command.contains(WRAPPER_ABSOLUTE_PLACEHOLDER) {
+        return command.replace(WRAPPER_ABSOLUTE_PLACEHOLDER, &quoted_helper);
+    }
 
     if let Some(idx) = command.find("--source") {
         let suffix = command[idx..].trim();
