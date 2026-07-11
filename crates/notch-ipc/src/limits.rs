@@ -57,5 +57,8 @@ pub const MAX_SPOOL_BYTES: u64 = 10 * 1024 * 1024;
 /// Client wait for a durable host acceptance acknowledgement (milliseconds).
 pub const ACK_WAIT_MS: u64 = 2_000;
 
+/// Maximum ephemeral vendor context JSON attached to decision waits.
+pub const MAX_DECISION_CONTEXT_BYTES: usize = 8_192;
+
 /// Server wait for the host core to accept and persist an ingest (milliseconds).
 pub const HOST_ACCEPT_WAIT_MS: u64 = 1_500;

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use notch_core::{AppCore, SqliteRepository};
+use notch_decision::DecisionBroker;
 use notch_protocol::PublicSettings;
 use parking_lot::Mutex;
 use services::global_shortcut::ShortcutHandler;
@@ -176,12 +177,17 @@ pub fn run() {
             commands::integration::rollback_connector,
             commands::integration::connector_health,
             commands::integration::detect_connectors,
+            commands::decision::list_pending_decisions,
+            commands::decision::submit_decision,
         ])
         .setup(|app| {
             let database_path = application_database_path(app.handle())?;
             let stream_hub = Arc::new(StreamHub::default());
             let repository = Arc::new(SqliteRepository::open(&database_path)?);
             harden_database_file(&database_path)?;
+            let decision_broker = Arc::new(
+                DecisionBroker::open(&database_path).map_err(|error| anyhow::anyhow!(error))?,
+            );
             let core = Arc::new(AppCore::new(
                 SystemClock,
                 repository,
@@ -194,9 +200,11 @@ pub fn run() {
                 Arc::clone(&core),
                 notch_metrics::MetricsEngine::new(),
                 Arc::clone(&stream_hub),
+                Arc::clone(&decision_broker),
             ));
             let windows = Arc::new(Mutex::new(WindowCoordinator::new(app.handle().clone())));
             app.manage(Arc::clone(&host));
+            app.manage(Arc::clone(&decision_broker));
             app.manage(Arc::clone(&windows));
 
             let shortcuts = Arc::new(StdMutex::new(GlobalShortcutService::<Wry>::default()));

@@ -15,7 +15,8 @@ use crate::descriptor::{RuntimeDescriptor, find_descriptor, find_descriptor_in};
 use crate::error::{IpcError, IpcResult};
 use crate::framing::{read_frame_async, write_frame_async};
 use crate::limits::{ACK_WAIT_MS, IPC_WIRE_VERSION};
-use crate::wire::{IngestPayload, WireMessage};
+use crate::wire::{DecisionWaitPayload, IngestPayload, WireMessage};
+use notch_protocol::{DECISION_HOOK_NEUTRAL_OUTPUT, DECISION_FAIL_OPEN_TIMEOUT_MS};
 
 /// Client used by `notch-hook` to deliver normalized events to the host.
 #[derive(Clone)]
@@ -51,6 +52,51 @@ impl IngestClient {
         )
         .await?;
         self.wait_for_ack(&mut stream, request_id).await
+    }
+
+    /// Wait for an interactive decision reply. Never spooled; fail-open on timeout.
+    pub async fn request_decision(&self, payload: &DecisionWaitPayload) -> IpcResult<String> {
+        let mut stream = self.connect().await?;
+        self.authenticate(&mut stream).await?;
+        write_frame_async(
+            &mut stream,
+            &WireMessage::DecisionWait {
+                v: IPC_WIRE_VERSION,
+                request_id: payload.nonce.clone(),
+                source: payload.source.clone(),
+                vendor_event: payload.vendor_event.clone(),
+                external_session_id: payload.external_session_id.clone(),
+                session_id: payload.session_id.clone(),
+                decision_kind: payload.decision_kind.clone(),
+                summary: payload.summary.clone(),
+                has_actionable_payload: payload.has_actionable_payload,
+                respondable_hook: payload.respondable_hook.clone(),
+                tool_name: payload.tool_name.clone(),
+                connection_id: payload.connection_id.clone(),
+                vendor_context_json: payload.vendor_context_json.clone(),
+                created_at_ms: payload.created_at_ms,
+            },
+        )
+        .await?;
+        let response = time::timeout(
+            Duration::from_millis(DECISION_FAIL_OPEN_TIMEOUT_MS),
+            read_frame_async(&mut stream),
+        )
+        .await
+        .map_err(|_| IpcError::ReadTimeout)??;
+        match response {
+            WireMessage::DecisionReply {
+                request_id,
+                stdout_json,
+                ..
+            } if request_id == payload.nonce => Ok(stdout_json),
+            WireMessage::Error { code, message, .. } => match code.as_str() {
+                "decision_expired" | "host_timeout" => Ok(DECISION_HOOK_NEUTRAL_OUTPUT.into()),
+                "auth_failed" | "auth_required" => Err(IpcError::AuthFailed),
+                _ => Err(IpcError::FrameRejected(message)),
+            },
+            _ => Ok(DECISION_HOOK_NEUTRAL_OUTPUT.into()),
+        }
     }
 
     async fn connect(&self) -> IpcResult<LocalSocketStream> {

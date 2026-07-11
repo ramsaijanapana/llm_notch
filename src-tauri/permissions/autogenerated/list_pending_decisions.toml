@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-pending-decisions"
+description = "Enables the list_pending_decisions command without any pre-configured scope."
+commands.allow = ["list_pending_decisions"]
+
+[[permission]]
+identifier = "deny-list-pending-decisions"
+description = "Denies the list_pending_decisions command without any pre-configured scope."
+commands.deny = ["list_pending_decisions"]

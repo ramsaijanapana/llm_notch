@@ -2,6 +2,8 @@
 //! authenticates against the host runtime descriptor, and delivers bounded ingest
 //! frames. Vendor hook mode always fails open (exit 0).
 
+mod decision;
+
 use std::env;
 use std::io::{self, Read};
 use std::process::ExitCode;
@@ -10,6 +12,7 @@ use notch_ipc::{
     EventSpool, IPC_WIRE_VERSION, IngestClient, IngestPayload, IpcError, WireMessage,
     default_runtime_dir, vendor_json_to_payload,
 };
+use notch_protocol::DECISION_HOOK_NEUTRAL_OUTPUT;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
@@ -57,42 +60,51 @@ async fn main() -> ExitCode {
         }
     };
 
-    let payload = match &mode {
-        HookMode::NormalizedVendor => match read_vendor_payload() {
-            Ok(payload) => payload,
-            Err(err) => {
-                debug!(?err, "vendor payload unavailable");
-                return fail_open(&mode);
+    if let HookMode::Vendor {
+        source,
+        vendor_event,
+    } = &mode
+    {
+        match run_vendor_hook(source, vendor_event).await {
+            Ok(stdout) => {
+                println!("{stdout}");
+                ExitCode::SUCCESS
             }
-        },
-        HookMode::Vendor {
-            source,
-            vendor_event,
-        } => match read_vendor_hook_payload(source, vendor_event) {
-            Ok(payload) => payload,
             Err(err) => {
-                debug!(?err, "vendor hook payload unavailable");
-                return fail_open(&mode);
+                debug!(?err, "vendor hook failed open");
+                println!("{DECISION_HOOK_NEUTRAL_OUTPUT}");
+                ExitCode::SUCCESS
             }
-        },
-        HookMode::Emit { .. } => match parse_emit_args(&args[2..]) {
-            Ok(payload) => payload,
-            Err(err) => return emit_failure(&mode, err),
-        },
-    };
-
-    let request_id = Uuid::new_v4().simple().to_string();
-    match deliver_payload(&request_id, &payload).await {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            debug!(?err, "deliver failed");
-            if is_vendor_mode(&mode) && is_transient_delivery_error(&err) {
-                if let Err(spool_error) = spool_payload(&request_id, &payload) {
-                    debug!(?spool_error, "transient event could not be spooled");
+        }
+    } else {
+        let payload = match &mode {
+            HookMode::NormalizedVendor => match read_vendor_payload() {
+                Ok(payload) => payload,
+                Err(err) => {
+                    debug!(?err, "vendor payload unavailable");
+                    return fail_open(&mode);
                 }
-                return ExitCode::SUCCESS;
+            },
+            HookMode::Emit { .. } => match parse_emit_args(&args[2..]) {
+                Ok(payload) => payload,
+                Err(err) => return emit_failure(&mode, err),
+            },
+            HookMode::Vendor { .. } => unreachable!("handled above"),
+        };
+
+        let request_id = Uuid::new_v4().simple().to_string();
+        match deliver_payload(&request_id, &payload).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                debug!(?err, "deliver failed");
+                if is_vendor_mode(&mode) && is_transient_delivery_error(&err) {
+                    if let Err(spool_error) = spool_payload(&request_id, &payload) {
+                        debug!(?spool_error, "transient event could not be spooled");
+                    }
+                    return ExitCode::SUCCESS;
+                }
+                emit_failure(&mode, err)
             }
-            emit_failure(&mode, err)
         }
     }
 }
@@ -161,9 +173,27 @@ fn parse_hook_mode(args: &[String]) -> Result<HookMode, IpcError> {
     })
 }
 
-fn read_vendor_hook_payload(source: &str, vendor_event: &str) -> Result<IngestPayload, IpcError> {
+async fn run_vendor_hook(source: &str, vendor_event: &str) -> Result<String, IpcError> {
     let value = read_stdin_json()?;
-    vendor_hook_payload(source, vendor_event, &value)
+    if let Some(plan) = decision::plan_interactive_decision(source, vendor_event, &value)? {
+        return Ok(decision::execute_interactive_decision(plan).await);
+    }
+
+    let payload = vendor_hook_payload(source, vendor_event, &value)?;
+    let request_id = Uuid::new_v4().simple().to_string();
+    deliver_payload(&request_id, &payload).await?;
+    Ok(DECISION_HOOK_NEUTRAL_OUTPUT.into())
+}
+
+fn read_stdin_json() -> Result<serde_json::Value, IpcError> {
+    let mut input = String::new();
+    io::stdin()
+        .read_to_string(&mut input)
+        .map_err(IpcError::Io)?;
+    if input.trim().is_empty() {
+        return Err(IpcError::FrameRejected("empty stdin".into()));
+    }
+    serde_json::from_str(&input).map_err(|err| IpcError::FrameRejected(err.to_string()))
 }
 
 fn vendor_hook_payload(
@@ -267,17 +297,6 @@ fn vendor_hook_payload(
 fn read_vendor_payload() -> Result<IngestPayload, IpcError> {
     let value = read_stdin_json()?;
     vendor_json_to_payload(&value)
-}
-
-fn read_stdin_json() -> Result<serde_json::Value, IpcError> {
-    let mut input = String::new();
-    io::stdin()
-        .read_to_string(&mut input)
-        .map_err(IpcError::Io)?;
-    if input.trim().is_empty() {
-        return Err(IpcError::FrameRejected("empty stdin".into()));
-    }
-    serde_json::from_str(&input).map_err(|err| IpcError::FrameRejected(err.to_string()))
 }
 
 fn parse_emit_args(args: &[String]) -> Result<IngestPayload, IpcError> {
@@ -530,6 +549,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("temp runtime");
         let mut server = notch_ipc::start_ingest_server(notch_ipc::IngestServerConfig {
             runtime_dir: Some(directory.path().to_path_buf()),
+            decision_wait_tx: None,
         })
         .await
         .expect("server");

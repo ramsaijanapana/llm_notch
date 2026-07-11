@@ -23,6 +23,8 @@ fn main() {
         "rollback_connector",
         "detect_connectors",
         "connector_health",
+        "list_pending_decisions",
+        "submit_decision",
     ];
     let attributes = tauri_build::Attributes::new()
         .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS));

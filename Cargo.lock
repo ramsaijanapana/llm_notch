@@ -2156,6 +2156,7 @@ dependencies = [
  "chrono",
  "notch-connectors",
  "notch-core",
+ "notch-decision",
  "notch-ipc",
  "notch-metrics",
  "notch-protocol",
@@ -2405,10 +2406,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "notch-decision"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "notch-adapters-claude-code",
+ "notch-protocol",
+ "parking_lot",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "notch-hook"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
+ "notch-adapters-claude-code",
  "notch-ipc",
  "notch-protocol",
  "serde",

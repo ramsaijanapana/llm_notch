@@ -30,12 +30,13 @@ pub use limits::*;
 pub use normalize::{NormalizedIngest, normalize_ingest, stable_session_id};
 pub use security::{PeerCheckCapability, SecurityCapabilities};
 pub use server::{
-    IngestServerConfig, IngestServerHandle, PendingIngest, open_runtime_descriptor,
-    start_ingest_server,
+    DecisionReplyWire, IngestServerConfig, IngestServerHandle, PendingDecisionWait, PendingIngest,
+    open_runtime_descriptor, start_ingest_server,
 };
 pub use spool::EventSpool;
 pub use wire::{
-    IngestPayload, WireMessage, encode_message, validate_ingest_payload, vendor_json_to_payload,
+    DecisionWaitPayload, IngestPayload, WireMessage, encode_message, validate_ingest_payload,
+    vendor_json_to_payload,
 };
 
 /// Legacy placeholder kept for workspace compatibility while host wiring lands.

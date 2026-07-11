@@ -2,6 +2,7 @@
 //! file bodies, or network destinations.
 
 pub mod bootstrap;
+pub mod decision;
 pub mod error;
 pub mod integration;
 pub mod overlay;

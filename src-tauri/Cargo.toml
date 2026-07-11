@@ -20,6 +20,7 @@ notch-core.workspace = true
 notch-metrics.workspace = true
 notch-ipc.workspace = true
 notch-connectors.workspace = true
+notch-decision.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

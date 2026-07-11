@@ -23,6 +23,8 @@
     "allow-preview-connector-change",
     "allow-apply-connector-change",
     "allow-remove-connector",
-    "allow-connector-health"
+    "allow-connector-health",
+    "allow-list-pending-decisions",
+    "allow-submit-decision"
   ]
 }

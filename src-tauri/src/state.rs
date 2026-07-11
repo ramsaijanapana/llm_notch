@@ -8,12 +8,18 @@ use notch_core::{
     IntegrationHealthCommand, LifecycleEventCommand, ProcessRootCommand, SessionEndCommand,
     SessionStartCommand, SessionUpdateCommand, SqliteRepository, ToolEventCommand,
 };
-use notch_ipc::{IngestServerConfig, NormalizedIngest, SecurityCapabilities, start_ingest_server};
+use notch_decision::{
+    DecisionBroker, DecisionWaitPayload, PendingDecisionWait,
+};
+use notch_ipc::{
+    DecisionWaitPayload as IpcDecisionWaitPayload, IngestServerConfig, NormalizedIngest,
+    PendingDecisionWait as IpcDecisionWait, SecurityCapabilities, start_ingest_server,
+};
 use notch_metrics::MetricsEngine;
 use notch_protocol::{
     AdapterCapabilities, AgentSession, AgentSource, AttentionCapability, AttentionKind,
-    AttributionQuality, EventLevel, PublicSettings, STREAM_HEARTBEAT_INTERVAL_MS, SessionEventKind,
-    SessionStatus,
+    AttributionQuality, DecisionDeliveryState, DecisionKind, EventLevel, PublicSettings,
+    STREAM_HEARTBEAT_INTERVAL_MS, SessionEventKind, SessionStatus,
 };
 use parking_lot::Mutex;
 use tauri::async_runtime::JoinHandle;
@@ -36,6 +42,7 @@ pub struct HostState {
     core: Arc<DesktopCore>,
     metrics: MetricsEngine,
     stream_hub: Arc<StreamHub>,
+    decision_broker: Arc<DecisionBroker>,
     ipc_runtime_dir: Option<PathBuf>,
     ipc_status: Mutex<Option<IpcRuntimeStatus>>,
     metrics_paused: AtomicBool,
@@ -55,14 +62,20 @@ impl Clock for SystemClock {
 }
 
 impl HostState {
-    pub fn new(core: Arc<DesktopCore>, metrics: MetricsEngine, stream_hub: Arc<StreamHub>) -> Self {
-        Self::with_runtime_dir(core, metrics, stream_hub, None)
+    pub fn new(
+        core: Arc<DesktopCore>,
+        metrics: MetricsEngine,
+        stream_hub: Arc<StreamHub>,
+        decision_broker: Arc<DecisionBroker>,
+    ) -> Self {
+        Self::with_runtime_dir(core, metrics, stream_hub, decision_broker, None)
     }
 
     pub fn with_runtime_dir(
         core: Arc<DesktopCore>,
         metrics: MetricsEngine,
         stream_hub: Arc<StreamHub>,
+        decision_broker: Arc<DecisionBroker>,
         ipc_runtime_dir: Option<PathBuf>,
     ) -> Self {
         let (shutdown_tx, _) = watch::channel(false);
@@ -70,6 +83,7 @@ impl HostState {
             core,
             metrics,
             stream_hub,
+            decision_broker,
             ipc_runtime_dir,
             ipc_status: Mutex::new(None),
             metrics_paused: AtomicBool::new(false),
@@ -81,6 +95,10 @@ impl HostState {
             warn!(%error, "failed to reconcile restored process roots");
         }
         state
+    }
+
+    pub fn decision_broker(&self) -> &Arc<DecisionBroker> {
+        &self.decision_broker
     }
 
     pub fn stream_hub(&self) -> &Arc<StreamHub> {
@@ -321,8 +339,10 @@ impl HostState {
 
     async fn run_ipc(self: Arc<Self>) {
         let mut shutdown = self.shutdown_tx.subscribe();
+        let (decision_tx, mut decision_rx) = tokio::sync::mpsc::channel(64);
         let mut server = match start_ingest_server(IngestServerConfig {
             runtime_dir: self.ipc_runtime_dir.clone(),
+            decision_wait_tx: Some(decision_tx),
         })
         .await
         {
@@ -367,6 +387,22 @@ impl HostState {
                         warn!(%error, "normalized ingest rejected");
                     }
                     let _ = completion.send(result);
+                }
+                ipc_wait = decision_rx.recv() => {
+                    let Some(IpcDecisionWait { payload, completion }) = ipc_wait else {
+                        continue;
+                    };
+                    let broker = Arc::clone(&self.decision_broker);
+                    let reply = broker
+                        .handle_wait(PendingDecisionWait {
+                            payload: convert_ipc_payload(payload),
+                        })
+                        .await;
+                    let _ = completion.send(notch_ipc::DecisionReplyWire {
+                        nonce: reply.nonce,
+                        stdout_json: reply.stdout_json,
+                        delivery_state: delivery_state_wire(reply.delivery_state),
+                    });
                 }
             }
         }
@@ -761,6 +797,56 @@ fn attribution_for_source(source: AgentSource) -> AttributionQuality {
     }
 }
 
+fn convert_ipc_payload(payload: IpcDecisionWaitPayload) -> DecisionWaitPayload {
+    let vendor_context = payload
+        .vendor_context_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok());
+    DecisionWaitPayload {
+        nonce: payload.nonce,
+        source: parse_ipc_source(&payload.source),
+        vendor_event: payload.vendor_event,
+        external_session_id: payload.external_session_id,
+        session_id: payload.session_id,
+        decision_kind: parse_ipc_decision_kind(&payload.decision_kind),
+        summary: payload.summary,
+        has_actionable_payload: payload.has_actionable_payload,
+        respondable_hook: payload.respondable_hook,
+        tool_name: payload.tool_name,
+        connection_id: payload.connection_id,
+        vendor_context,
+        created_at_ms: payload.created_at_ms,
+    }
+}
+
+fn parse_ipc_source(raw: &str) -> AgentSource {
+    match raw {
+        "cursor" => AgentSource::Cursor,
+        "claudeCode" => AgentSource::ClaudeCode,
+        "codex" => AgentSource::Codex,
+        "generic" => AgentSource::Generic,
+        _ => AgentSource::Unknown,
+    }
+}
+
+fn parse_ipc_decision_kind(raw: &str) -> DecisionKind {
+    match raw {
+        "approval" => DecisionKind::Approval,
+        "question" => DecisionKind::Question,
+        _ => DecisionKind::Permission,
+    }
+}
+
+fn delivery_state_wire(state: DecisionDeliveryState) -> String {
+    match state {
+        DecisionDeliveryState::Pending => "pending".into(),
+        DecisionDeliveryState::Delivered => "delivered".into(),
+        DecisionDeliveryState::EffectObserved => "effectObserved".into(),
+        DecisionDeliveryState::Expired => "expired".into(),
+        DecisionDeliveryState::Failed => "failed".into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -786,7 +872,8 @@ mod tests {
             .unwrap(),
         );
         register_builtin_adapters(&core).unwrap();
-        HostState::new(core, MetricsEngine::new(), stream)
+        let decision_broker = Arc::new(DecisionBroker::in_memory().expect("broker"));
+        HostState::new(core, MetricsEngine::new(), stream, decision_broker)
     }
 
     fn generic_session(

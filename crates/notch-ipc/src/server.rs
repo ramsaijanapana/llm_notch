@@ -27,13 +27,30 @@ use crate::platform;
 use crate::rate::IngestRateLimiters;
 use crate::security::{SecurityCapabilities, verify_same_user_peer};
 use crate::spool::EventSpool;
-use crate::wire::{WireMessage, validate_wire_message};
+use crate::wire::{DecisionWaitPayload, WireMessage, validate_wire_message};
+use notch_protocol::DECISION_FAIL_OPEN_TIMEOUT_MS;
 
 /// Configuration for [`start_ingest_server`].
 #[derive(Debug, Clone, Default)]
 pub struct IngestServerConfig {
     /// Override runtime directory (used in tests).
     pub runtime_dir: Option<PathBuf>,
+    /// Optional channel for interactive decision waits (never spooled).
+    pub decision_wait_tx: Option<mpsc::Sender<PendingDecisionWait>>,
+}
+
+/// Reply delivered to a waiting hook helper connection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecisionReplyWire {
+    pub nonce: String,
+    pub stdout_json: String,
+    pub delivery_state: String,
+}
+
+/// Interactive decision wait forwarded to the host broker.
+pub struct PendingDecisionWait {
+    pub payload: DecisionWaitPayload,
+    pub completion: oneshot::Sender<DecisionReplyWire>,
 }
 
 /// Handle returned to the host application.
@@ -123,6 +140,7 @@ pub async fn start_ingest_server(config: IngestServerConfig) -> IpcResult<Ingest
     descriptor.write_to(&descriptor_path_for(&runtime_dir))?;
 
     let (tx, rx) = mpsc::channel(MAX_INGEST_QUEUE);
+    let decision_wait_tx = config.decision_wait_tx.clone();
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
     let capabilities = SecurityCapabilities::platform_default();
     let limits = Arc::new(IngestRateLimiters::new());
@@ -152,9 +170,12 @@ pub async fn start_ingest_server(config: IngestServerConfig) -> IpcResult<Ingest
                     let limits = limits.clone();
                     let expected = expected_token.clone();
                     let caps = caps.clone();
+                    let decision_tx = decision_wait_tx.clone();
                     tokio::spawn(async move {
                         let _permit = permit;
-                        if let Err(err) = handle_connection(stream, expected, limits, caps, tx).await {
+                        if let Err(err) =
+                            handle_connection(stream, expected, limits, caps, tx, decision_tx).await
+                        {
                             debug!(?err, "connection closed");
                         }
                     });
@@ -179,6 +200,7 @@ async fn handle_connection(
     limits: Arc<IngestRateLimiters>,
     capabilities: SecurityCapabilities,
     tx: mpsc::Sender<PendingIngest>,
+    decision_tx: Option<mpsc::Sender<PendingDecisionWait>>,
 ) -> IpcResult<()> {
     let creds = stream.peer_creds().map_err(IpcError::Io)?;
     verify_same_user_peer(&creds, &capabilities)?;
@@ -271,6 +293,87 @@ async fn handle_connection(
                         .await?;
                 }
             },
+            WireMessage::DecisionWait {
+                request_id,
+                source,
+                vendor_event,
+                external_session_id,
+                session_id,
+                decision_kind,
+                summary,
+                has_actionable_payload,
+                respondable_hook,
+                tool_name,
+                connection_id,
+                vendor_context_json,
+                created_at_ms,
+                ..
+            } => {
+                let Some(decision_tx) = decision_tx.clone() else {
+                    write_error(
+                        &mut stream,
+                        &request_id,
+                        "decision_unavailable",
+                        "interactive decisions are not enabled",
+                    )
+                    .await?;
+                    continue;
+                };
+                let (completion, response) = oneshot::channel();
+                let payload = DecisionWaitPayload {
+                    nonce: request_id.clone(),
+                    source,
+                    vendor_event,
+                    external_session_id,
+                    session_id,
+                    decision_kind,
+                    summary,
+                    has_actionable_payload,
+                    respondable_hook,
+                    tool_name,
+                    connection_id,
+                    vendor_context_json,
+                    created_at_ms,
+                };
+                decision_tx
+                    .send(PendingDecisionWait {
+                        payload,
+                        completion,
+                    })
+                    .await
+                    .map_err(|_| IpcError::QueueFull)?;
+                match timeout(
+                    Duration::from_millis(DECISION_FAIL_OPEN_TIMEOUT_MS),
+                    response,
+                )
+                .await
+                {
+                    Ok(Ok(reply)) => {
+                        write_frame_async(
+                            &mut stream,
+                            &WireMessage::DecisionReply {
+                                v: IPC_WIRE_VERSION,
+                                request_id: reply.nonce,
+                                stdout_json: reply.stdout_json,
+                                delivery_state: reply.delivery_state,
+                            },
+                        )
+                        .await?;
+                    }
+                    Ok(Err(_)) | Err(_) => {
+                        write_frame_async(
+                            &mut stream,
+                            &WireMessage::DecisionReply {
+                                v: IPC_WIRE_VERSION,
+                                request_id,
+                                stdout_json: notch_protocol::DECISION_HOOK_NEUTRAL_OUTPUT.into(),
+                                delivery_state: "expired".into(),
+                            },
+                        )
+                        .await?;
+                    }
+                }
+            }
             WireMessage::Ack { .. } => {}
             other => {
                 write_error(
@@ -437,6 +540,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let mut handle = start_ingest_server(IngestServerConfig {
             runtime_dir: Some(dir.path().to_path_buf()),
+            decision_wait_tx: None,
         })
         .await
         .expect("start");
@@ -484,6 +588,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let mut handle = start_ingest_server(IngestServerConfig {
             runtime_dir: Some(dir.path().to_path_buf()),
+            decision_wait_tx: None,
         })
         .await
         .expect("start");
@@ -551,6 +656,7 @@ mod tests {
         spool.spool_message(&spooled_start()).expect("write spool");
         let mut handle = start_ingest_server(IngestServerConfig {
             runtime_dir: Some(dir.path().to_path_buf()),
+            decision_wait_tx: None,
         })
         .await
         .expect("start");
@@ -576,6 +682,7 @@ mod tests {
         spool.spool_message(&spooled_start()).expect("write spool");
         let mut handle = start_ingest_server(IngestServerConfig {
             runtime_dir: Some(dir.path().to_path_buf()),
+            decision_wait_tx: None,
         })
         .await
         .expect("start");
