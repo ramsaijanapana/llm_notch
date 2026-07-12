@@ -1,4 +1,4 @@
-use std::path::Path;
+﻿use std::path::Path;
 
 use notch_agent_catalog::AgentCatalog;
 use notch_protocol::{AgentSource, ConnectorScope};
@@ -158,6 +158,9 @@ mod tests {
 
     #[test]
     fn cursor_executable_is_detected_on_developer_windows_machines() {
+        if std::env::var_os("CI").is_some() {
+            return;
+        }
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let registry = AdapterRegistry::new(repo.clone(), repo.join("llm-notch-hook.exe"));
         let results = detect_source(&registry, AgentSource::Cursor, None).expect("detect");
@@ -169,3 +172,4 @@ mod tests {
         assert!(user.executable_present, "expected cursor on PATH");
     }
 }
+
