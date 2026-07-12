@@ -3,7 +3,7 @@
 use notch_platform::NavigationDisposition;
 use notch_protocol::ContextOpenTier;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSApplicationActivationOptions, NSWorkspace};
+use objc2_app_kit::{NSWorkspace, NSWorkspaceLaunchOptions};
 use objc2_foundation::NSString;
 
 use crate::context::activate::{ActivationOutcome, bundle_id_for_host};
@@ -96,15 +96,15 @@ fn activate_application(
             )),
         };
     };
-    let workspace = NSWorkspace::sharedWorkspace(mtm);
+    let workspace = NSWorkspace::sharedWorkspace();
     let bundle = NSString::from_str(bundle_id);
     let activated = workspace
-        .openApplicationWithBundleIdentifier_options_configuration_error(
+        .launchAppWithBundleIdentifier_options_additionalEventParamDescriptor_launchIdentifier(
             &bundle,
-            NSApplicationActivationOptions::ActivateIgnoringOtherApps,
+            NSWorkspaceLaunchOptions::Default,
             None,
-        )
-        .is_ok();
+            None,
+        );
     ActivationOutcome {
         achieved_tier: if activated {
             target_tier
