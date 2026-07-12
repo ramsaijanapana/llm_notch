@@ -125,6 +125,8 @@ jobs:
       contents: write
     if: github.event_name == 'push'
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: relay-sidecar-*
@@ -143,4 +145,4 @@ jobs:
             echo "No relay sidecars to upload." >&2
             exit 1
           fi
-          gh release upload "$tag" "${files[@]}" --clobber
+          gh release upload "$tag" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
