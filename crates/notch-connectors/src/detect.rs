@@ -158,7 +158,9 @@ mod tests {
 
     #[test]
     fn cursor_executable_is_detected_on_developer_windows_machines() {
-        if std::env::var_os("CI").is_some() || std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
+        if std::env::var_os("CI").is_some()
+            || std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+        {
             return;
         }
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -172,4 +174,3 @@ mod tests {
         assert!(user.executable_present, "expected cursor on PATH");
     }
 }
-
