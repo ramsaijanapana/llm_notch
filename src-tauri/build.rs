@@ -53,6 +53,7 @@ fn embed_common_controls_manifest_for_lib_tests() {
     let manifest =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-test.manifest.xml");
     let manifest = manifest.to_string_lossy().replace('\\', "/");
-    println!("cargo:rustc-link-arg-tests=/MANIFEST:EMBED");
-    println!("cargo:rustc-link-arg-tests=/MANIFESTINPUT:{manifest}");
+    // Applied to test/integration binaries only in CI (`--lib` / `--test`); avoid `cargo test --workspace` linking the app bin twice.
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg=/MANIFESTINPUT:{manifest}");
 }
