@@ -309,6 +309,20 @@ mod tests {
     use std::sync::atomic::Ordering;
     use tempfile::TempDir;
 
+    /// macOS CI temp dirs live under `/var` (a symlink); parent-chain checks reject that.
+    fn scoped_tempdir() -> TempDir {
+        #[cfg(unix)]
+        if let Some(home) = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf()) {
+            if let Ok(dir) = tempfile::Builder::new()
+                .prefix("llm-notch-test-")
+                .tempdir_in(home)
+            {
+                return dir;
+            }
+        }
+        TempDir::new().expect("tempdir")
+    }
+
     #[test]
     fn apply_creates_backup_and_writes_file() {
         let integrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
@@ -349,7 +363,7 @@ mod tests {
 
     #[test]
     fn backup_exclusive_create_rejects_preexisting_path() {
-        let dir = TempDir::new().expect("tempdir");
+        let dir = scoped_tempdir();
         let target = dir.path().join("hooks.json");
         fs::write(&target, b"original").expect("write");
         let backup_path = secure_backup_path(&target, "20260711T120000").expect("path");
@@ -361,7 +375,7 @@ mod tests {
 
     #[test]
     fn restore_rejects_backup_bytes_that_differ_from_journal_hash() {
-        let dir = TempDir::new().expect("tempdir");
+        let dir = scoped_tempdir();
         let target = dir.path().join("hooks.json");
         fs::write(&target, b"applied").expect("write");
         let backup_path = dir.path().join("hooks.json.llm-notch.bak.test");

@@ -117,10 +117,11 @@ mod tests {
 
     #[test]
     fn resolve_prefers_path_before_known_dirs() {
-        let resolved = resolve_executable(&["cmd"]);
         #[cfg(windows)]
-        assert!(resolved.is_some());
+        let names = &["cmd"];
         #[cfg(unix)]
+        let names = &["sh"];
+        let resolved = resolve_executable(names);
         assert!(resolved.is_some());
     }
 }
