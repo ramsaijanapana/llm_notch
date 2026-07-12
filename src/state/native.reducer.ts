@@ -102,6 +102,23 @@ function applySnapshot(
   }
 }
 
+function syncSnapshotSessions(
+  state: NativeState,
+  sessions: Record<string, AgentSession>,
+  sessionOrder: string[],
+): NativeState['snapshot'] {
+  if (!state.snapshot) {
+    return state.snapshot
+  }
+
+  return {
+    ...state.snapshot,
+    sessions: sessionOrder
+      .map((sessionId) => sessions[sessionId])
+      .filter((session): session is AgentSession => session !== undefined),
+  }
+}
+
 function upsertSession(state: NativeState, session: AgentSession): NativeState {
   const terminal = ['completed', 'failed', 'stale'].includes(session.status)
   const normalizedSession = terminal ? clearLatestMetric(session) : session
@@ -113,6 +130,7 @@ function upsertSession(state: NativeState, session: AgentSession): NativeState {
     ...state,
     sessions,
     sessionOrder,
+    snapshot: syncSnapshotSessions(state, sessions, sessionOrder),
     metrics: normalizedSession.latestMetric
       ? {
           host: state.metrics?.host ?? {
@@ -189,10 +207,13 @@ function removeSession(state: NativeState, sessionId: string): NativeState {
   const agents = { ...(state.metrics?.agents ?? {}) }
   delete agents[sessionId]
 
+  const sessionOrder = state.sessionOrder.filter((id) => id !== sessionId)
+
   return {
     ...state,
     sessions,
-    sessionOrder: state.sessionOrder.filter((id) => id !== sessionId),
+    sessionOrder,
+    snapshot: syncSnapshotSessions(state, sessions, sessionOrder),
     events: state.events.filter((event) => event.sessionId !== sessionId),
     eventsBySession,
     metrics: state.metrics

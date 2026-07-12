@@ -1,9 +1,206 @@
 use serde_json::{Map, Value};
+use std::path::{Path, PathBuf};
 
 pub const MANAGED_MARKER: &str = "llm-notch-hook";
+pub const HELPER_PATH_PLACEHOLDER: &str = "{{LLM_NOTCH_HELPER}}";
+pub const WRAPPER_PATH_PLACEHOLDER: &str = "{{LLM_NOTCH_WRAPPER}}";
+pub const WRAPPER_ABSOLUTE_PLACEHOLDER: &str = "{{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}}";
 
 pub fn is_managed_command(command: &str) -> bool {
     command.contains(MANAGED_MARKER)
+}
+
+pub fn file_has_managed_entries(path: &Path) -> bool {
+    !file_managed_commands(path).is_empty()
+}
+
+/// Parses connector config JSON and returns managed hook command strings.
+pub fn file_managed_commands(path: &Path) -> Vec<String> {
+    if !path.exists() {
+        return Vec::new();
+    }
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+        return Vec::new();
+    };
+    collect_managed_commands(&value)
+}
+
+pub fn collect_managed_commands(value: &Value) -> Vec<String> {
+    let mut commands = Vec::new();
+    walk_managed_commands(value, &mut commands);
+    commands
+}
+
+fn walk_managed_commands(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(command) = map.get("command").and_then(Value::as_str) {
+                if is_managed_command(command) {
+                    out.push(command.to_string());
+                }
+            }
+            for child in map.values() {
+                walk_managed_commands(child, out);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                walk_managed_commands(item, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Extracts the executable path from a managed hook command when possible.
+pub fn extract_invocation_path_from_command(command: &str) -> Option<PathBuf> {
+    let command = strip_env_prefix(command.trim());
+    if command.contains(HELPER_PATH_PLACEHOLDER)
+        || command.contains(WRAPPER_PATH_PLACEHOLDER)
+        || command.contains(WRAPPER_ABSOLUTE_PLACEHOLDER)
+    {
+        return None;
+    }
+
+    let executable = extract_executable_token(command)?;
+    let executable = unquote_token(executable);
+
+    if executable == "llm-notch-hook" || executable == "llm-notch-hook.exe" {
+        return None;
+    }
+
+    if looks_like_path(executable) {
+        return Some(PathBuf::from(executable));
+    }
+
+    None
+}
+
+fn strip_env_prefix(command: &str) -> &str {
+    let mut rest = command.trim();
+    loop {
+        let Some(eq_idx) = rest.find('=') else {
+            break;
+        };
+        let name = &rest[..eq_idx];
+        if name.is_empty() || !name.chars().all(|ch| ch.is_ascii_uppercase() || ch == '_') {
+            break;
+        }
+        let after = rest[eq_idx + 1..].trim_start();
+        rest = if let Some(stripped) = after.strip_prefix(|ch: char| ch.is_ascii_digit()) {
+            stripped.trim_start()
+        } else {
+            after
+        };
+    }
+    rest
+}
+
+fn extract_executable_token(command: &str) -> Option<&str> {
+    let command = command.trim();
+    if command.is_empty() {
+        return None;
+    }
+
+    if command.starts_with('"') {
+        let end = command[1..].find('"')? + 1;
+        return Some(&command[1..end]);
+    }
+
+    let lower = command.to_ascii_lowercase();
+    if lower.starts_with("sh ")
+        || lower.starts_with("pwsh ")
+        || lower.starts_with("powershell ")
+    {
+        return command.split_whitespace().nth(1).map(unquote_token);
+    }
+
+    if let Some(idx) = command.find(" hook ") {
+        return Some(unquote_token(command[..idx].trim()));
+    }
+
+    command.split_whitespace().next().map(unquote_token)
+}
+
+fn unquote_token(token: &str) -> &str {
+    token
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .unwrap_or(token)
+}
+
+fn looks_like_path(value: &str) -> bool {
+    value.contains('/')
+        || value.contains('\\')
+        || value.ends_with(".exe")
+        || Path::new(value).is_absolute()
+        || value.contains("llm-notch-hook-wrapper")
+}
+
+pub fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
+    let Ok(left) = left.canonicalize() else {
+        return left == right;
+    };
+    let Ok(right) = right.canonicalize() else {
+        return left == right;
+    };
+    left == right
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfiguredHelperValidation {
+    Ok,
+    UnresolvedPlaceholder,
+    PathMissing { configured: PathBuf },
+    PathMismatch {
+        configured: PathBuf,
+        expected: PathBuf,
+    },
+}
+
+pub fn validate_configured_helper_paths(
+    commands: &[String],
+    expected_helper: &Path,
+) -> ConfiguredHelperValidation {
+    for command in commands {
+        if command.contains(HELPER_PATH_PLACEHOLDER)
+            || command.contains(WRAPPER_PATH_PLACEHOLDER)
+            || command.contains(WRAPPER_ABSOLUTE_PLACEHOLDER)
+        {
+            return ConfiguredHelperValidation::UnresolvedPlaceholder;
+        }
+    }
+
+    let mut extracted = Vec::new();
+    for command in commands {
+        if let Some(path) = extract_invocation_path_from_command(command) {
+            extracted.push(path);
+        }
+    }
+
+    if extracted.is_empty() {
+        return ConfiguredHelperValidation::Ok;
+    }
+
+    extracted.sort();
+    extracted.dedup();
+
+    for configured in extracted {
+        if !configured.is_file() {
+            return ConfiguredHelperValidation::PathMissing { configured };
+        }
+        if !paths_refer_to_same_file(&configured, expected_helper) {
+            return ConfiguredHelperValidation::PathMismatch {
+                configured,
+                expected: expected_helper.to_path_buf(),
+            };
+        }
+    }
+
+    ConfiguredHelperValidation::Ok
 }
 
 /// Merge hooks.json-style configs (Cursor, Codex).
@@ -64,6 +261,13 @@ pub fn merge_hooks_json(target: &Value, template: &Value) -> (Value, Vec<String>
             if !exists {
                 target_entries.push(template_entry);
             }
+        }
+    }
+
+    if let Some(version) = template.get("version") {
+        if let Some(root) = merged.as_object_mut() {
+            root.entry("version".to_string())
+                .or_insert_with(|| version.clone());
         }
     }
 
@@ -433,6 +637,31 @@ mod tests {
     }
 
     #[test]
+    fn merge_emits_version_from_template_when_missing() {
+        let target = json!({
+            "hooks": {
+                "sessionStart": [{"command": "echo hello"}]
+            }
+        });
+        let template = json!({
+            "version": 1,
+            "hooks": {
+                "sessionStart": [{"command": "llm-notch-hook --source cursor --vendor-event sessionStart --hook-mode"}]
+            }
+        });
+        let (merged, _) = merge_hooks_json(&target, &template);
+        assert_eq!(merged["version"], 1);
+    }
+
+    #[test]
+    fn merge_skips_version_when_template_has_none() {
+        let target = json!({ "hooks": {} });
+        let template = json!({ "hooks": { "SessionStart": [] } });
+        let (merged, _) = merge_hooks_json(&target, &template);
+        assert!(merged.get("version").is_none());
+    }
+
+    #[test]
     fn merge_is_idempotent() {
         let target = json!({
             "hooks": {
@@ -556,5 +785,51 @@ mod tests {
         assert!(merged["safety-gate"].is_object());
         assert!(merged["llm-notch"].is_object());
         assert_eq!(preserved, vec!["safety-gate".to_string()]);
+    }
+
+    #[test]
+    fn file_managed_commands_ignores_comment_markers_outside_commands() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("hooks.json");
+        std::fs::write(
+            &path,
+            r#"{"version":1,"_comment":"stale debug path target/debug/llm-notch-hook.exe","hooks":{"sessionStart":[{"command":"echo hello"}]}}"#,
+        )
+        .expect("write");
+        assert!(!file_has_managed_entries(&path));
+    }
+
+    #[test]
+    fn extract_invocation_path_from_quoted_helper_command() {
+        let command = r#""C:\Program Files\llm_notch\llm-notch-hook.exe" hook --source cursor --vendor-event sessionStart --hook-mode"#;
+        assert_eq!(
+            extract_invocation_path_from_command(command),
+            Some(PathBuf::from(r"C:\Program Files\llm_notch\llm-notch-hook.exe"))
+        );
+    }
+
+    #[test]
+    fn validate_flags_stale_debug_helper_path() {
+        let bundled = PathBuf::from(r"C:\Program Files\llm_notch\llm-notch-hook.exe");
+        let stale = vec![format!(
+            r#""C:\dev\llm_notch\target\debug\llm-notch-hook.exe" hook --source cursor --vendor-event sessionStart --hook-mode"#
+        )];
+        assert_eq!(
+            validate_configured_helper_paths(&stale, &bundled),
+            ConfiguredHelperValidation::PathMissing {
+                configured: PathBuf::from(r"C:\dev\llm_notch\target\debug\llm-notch-hook.exe"),
+            }
+        );
+    }
+
+    #[test]
+    fn validate_flags_unresolved_placeholder() {
+        let commands = vec![format!(
+            r#""{HELPER_PATH_PLACEHOLDER}" hook --source cursor --vendor-event sessionStart --hook-mode"#
+        )];
+        assert_eq!(
+            validate_configured_helper_paths(&commands, Path::new("/opt/llm-notch-hook")),
+            ConfiguredHelperValidation::UnresolvedPlaceholder
+        );
     }
 }

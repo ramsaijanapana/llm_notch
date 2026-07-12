@@ -164,6 +164,27 @@
   font-weight: var(--weight-medium);
 }
 
+.compactStatusHint {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.625rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactStatusHint[data-tone="muted"] {
+  color: var(--color-text-muted);
+}
+
+.compactStatusHint[data-tone="warning"] {
+  color: var(--color-warning);
+}
+
+.compactStatusHint[data-tone="error"] {
+  color: var(--color-danger, #e05252);
+}
+
 .cpuCluster {
   display: inline-flex;
   align-items: center;
@@ -253,6 +274,21 @@
   border: 1px solid rgb(232 184 74 / 25%);
   border-radius: var(--radius-sm);
   background: var(--color-warning-bg);
+}
+
+.decisionPrompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid rgb(232 184 74 / 35%);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+}
+
+.decisionActions {
+  display: flex;
+  gap: var(--space-2);
 }
 
 .attentionCopy {

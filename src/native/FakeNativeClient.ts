@@ -54,6 +54,8 @@ import type {
   OverlayMode,
   RemoteConnectionChangeHandler,
   RemoteConnectionSubscription,
+  ConnectorHealthChangeHandler,
+  ConnectorHealthSubscription,
   SessionEventPage,
   StreamErrorHandler,
   StreamFrameHandler,
@@ -96,6 +98,10 @@ const PREVIEW_DETECTED: DetectedConnector[] = [
     displayPath: '~/.cursor/hooks.json',
     configPresent: true,
     managedEntriesPresent: false,
+    executablePresent: true,
+    executablePath: 'C:\\Program Files\\cursor\\cursor.cmd',
+    processRunning: true,
+    runningProcessName: 'cursor',
   },
   {
     source: 'claudeCode',
@@ -103,6 +109,7 @@ const PREVIEW_DETECTED: DetectedConnector[] = [
     displayPath: '~/.claude/settings.json',
     configPresent: true,
     managedEntriesPresent: false,
+    executablePresent: false,
   },
   {
     source: 'codex',
@@ -110,6 +117,8 @@ const PREVIEW_DETECTED: DetectedConnector[] = [
     displayPath: '~/.codex/hooks.json',
     configPresent: false,
     managedEntriesPresent: false,
+    executablePresent: true,
+    executablePath: 'C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd',
   },
   {
     source: 'gemini',
@@ -117,6 +126,7 @@ const PREVIEW_DETECTED: DetectedConnector[] = [
     displayPath: '~/.gemini/settings.json',
     configPresent: false,
     managedEntriesPresent: false,
+    executablePresent: false,
   },
   {
     source: 'qwen',
@@ -124,6 +134,7 @@ const PREVIEW_DETECTED: DetectedConnector[] = [
     displayPath: '~/.qwen/settings.json',
     configPresent: false,
     managedEntriesPresent: false,
+    executablePresent: false,
   },
   {
     source: 'antigravityCli',
@@ -131,6 +142,7 @@ const PREVIEW_DETECTED: DetectedConnector[] = [
     displayPath: '~/.gemini/antigravity-cli/hooks.json',
     configPresent: false,
     managedEntriesPresent: false,
+    executablePresent: false,
   },
   {
     source: 'copilotCli',
@@ -138,6 +150,7 @@ const PREVIEW_DETECTED: DetectedConnector[] = [
     displayPath: '~/.copilot/hooks/llm-notch.json',
     configPresent: false,
     managedEntriesPresent: false,
+    executablePresent: false,
   },
 ]
 
@@ -173,11 +186,37 @@ function sourceFromPlanId(planId: string): AgentSource {
 function previewHealthEntry(
   capabilities: ConnectorHealthEntry['capabilities'],
 ): ConnectorHealthEntry {
+  const detected = PREVIEW_DETECTED.find((entry) => entry.source === capabilities.source)
+  const installationOutcome = detected?.managedEntriesPresent
+    ? ('ok' as const)
+    : detected?.configPresent
+      ? ('warn' as const)
+      : detected?.executablePresent
+        ? ('fail' as const)
+        : ('fail' as const)
+  const installationFailureKind = detected?.managedEntriesPresent
+    ? undefined
+    : detected?.configPresent
+      ? ('configDrift' as const)
+      : detected?.executablePresent
+        ? ('notInstalled' as const)
+        : ('agentNotFound' as const)
+
   const probes: HealthProbeResult[] = [
     {
       axis: 'installation',
-      outcome: capabilities.source === 'codex' ? 'fail' : 'ok',
-      ...(capabilities.source === 'codex' ? { failureKind: 'notInstalled' as const } : {}),
+      outcome: installationOutcome,
+      ...(installationFailureKind ? { failureKind: installationFailureKind } : {}),
+      ...(detected?.executablePresent && !detected.configPresent
+        ? {
+            detail: detected.executablePath
+              ? `CLI installed at ${detected.executablePath} — hook config missing`
+              : 'CLI installed — hook config missing',
+          }
+        : {}),
+      ...(detected?.configPresent && !detected.managedEntriesPresent
+        ? { detail: 'Hook config present — llm_notch hooks need repair' }
+        : {}),
     },
     {
       axis: 'trust',
@@ -186,30 +225,43 @@ function previewHealthEntry(
     },
     {
       axis: 'traffic',
-      outcome: capabilities.events ? 'warn' : 'fail',
-      ...(capabilities.events ? {} : { failureKind: 'noTraffic' as const }),
+      outcome:
+        detected?.managedEntriesPresent && capabilities.events
+          ? 'warn'
+          : detected?.managedEntriesPresent
+            ? 'fail'
+            : 'fail',
+      ...(!detected?.managedEntriesPresent ? { failureKind: 'noTraffic' as const } : {}),
     },
     { axis: 'helper', outcome: 'ok' },
   ]
 
-  const status =
-    capabilities.source === 'codex'
-      ? 'actionNeeded'
-      : capabilities.events
-        ? 'waitingFirstEvent'
-        : 'notInstalled'
+  let status: ConnectorHealthEntry['status'] = 'notFound'
+  if (detected?.managedEntriesPresent) {
+    status = capabilities.events ? 'waitingFirstEvent' : 'waitingFirstEvent'
+  } else if (detected?.configPresent) {
+    status = 'driftDetected'
+  } else if (detected?.executablePresent) {
+    status = 'notInstalled'
+  } else if (detected) {
+    status = detected.configPresent ? 'driftDetected' : 'notFound'
+  }
+
+  let detail: string | undefined
+  if (detected?.configPresent && !detected.managedEntriesPresent) {
+    detail = 'Hook config exists but llm_notch entries are missing — use Repair.'
+  } else if (detected?.executablePresent && !detected.configPresent) {
+    detail = 'Agent CLI is installed — use Connect to wire llm_notch hooks.'
+  } else if (detected?.managedEntriesPresent) {
+    detail = 'Hooks installed; waiting for the first agent event.'
+  }
 
   return {
     source: capabilities.source,
     status,
     probes,
     capabilities,
-    detail:
-      capabilities.source === 'codex'
-        ? 'Run /hooks in Codex and trust llm_notch hook definitions.'
-        : capabilities.events
-          ? 'Preview adapter ready; awaiting first event'
-          : 'Preview adapter limited',
+    ...(detail !== undefined ? { detail } : {}),
   }
 }
 
@@ -296,6 +348,7 @@ export class FakeNativeClient implements NativeClient {
   private decisionRecords = new Map<string, DecisionResponseRecord>()
   private remoteHosts = new Map<string, RemoteHostView>()
   private remoteConnectionHandlers = new Set<RemoteConnectionChangeHandler>()
+  private connectorHealthHandlers = new Set<ConnectorHealthChangeHandler>()
 
   async bootstrap(): Promise<BootstrapResult> {
     const scenario = resolveNativePreviewScenario()
@@ -360,6 +413,17 @@ export class FakeNativeClient implements NativeClient {
     return {
       unsubscribe: async () => {
         this.remoteConnectionHandlers.delete(onChange)
+      },
+    }
+  }
+
+  async subscribeConnectorHealthChanges(
+    onChange: ConnectorHealthChangeHandler,
+  ): Promise<ConnectorHealthSubscription> {
+    this.connectorHealthHandlers.add(onChange)
+    return {
+      unsubscribe: async () => {
+        this.connectorHealthHandlers.delete(onChange)
       },
     }
   }

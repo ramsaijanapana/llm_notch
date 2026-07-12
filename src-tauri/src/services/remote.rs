@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
 
 use notch_core::SqliteRepository;
 use notch_remote::{
-    ConnectionState, DEFAULT_REMOTE_BIN_DIRECTORY, DEFAULT_REMOTE_RUNTIME_DIRECTORY,
+    hidden_command, ConnectionState, DEFAULT_REMOTE_BIN_DIRECTORY, DEFAULT_REMOTE_RUNTIME_DIRECTORY,
     DeployTransport, DeploymentExecutor, DeploymentPlan, DeploymentStep, OpenSshDeployTransport,
     OpenSshTransport, ReconnectPolicy, RelayArtifactError, RelayFrame, RelayPayload, RelaySession,
     RelaySessionError, RemoteArchitecture, RemoteHostConfig, RemoteOs, RemoteRelayManager,
@@ -240,6 +239,19 @@ pub struct DesktopRemoteRegistry {
     config: RemoteRegistryConfig,
     repository: Option<Arc<SqliteRepository>>,
     session_watch: HashMap<String, SessionWatchState>,
+    cached_ssh_present: Option<bool>,
+    cached_scp_present: Option<bool>,
+}
+
+#[cfg(test)]
+impl DesktopRemoteRegistry {
+    pub(crate) fn cached_ssh_probe(&self) -> Option<bool> {
+        self.cached_ssh_present
+    }
+
+    pub(crate) fn cached_scp_probe(&self) -> Option<bool> {
+        self.cached_scp_present
+    }
 }
 
 impl DesktopRemoteRegistry {
@@ -257,7 +269,10 @@ impl DesktopRemoteRegistry {
             config,
             repository,
             session_watch: HashMap::new(),
+            cached_ssh_present: None,
+            cached_scp_present: None,
         };
+        registry.refresh_executable_probes();
         registry.load_persisted_hosts();
         registry
     }
@@ -351,7 +366,9 @@ impl DesktopRemoteRegistry {
     }
 
     pub fn backend_status(&self) -> RemoteBackendStatus {
-        let ssh_present = probe_ssh_executable(&self.config.ssh_executable);
+        let ssh_present = self
+            .cached_ssh_present
+            .unwrap_or_else(|| probe_ssh_executable(&self.config.ssh_executable));
         let relay_present = self.config.relay_binary_path.is_file();
         let availability = if ssh_present && relay_present {
             RemoteAvailability::Available
@@ -370,6 +387,21 @@ impl DesktopRemoteRegistry {
             ssh_executable_present: Some(ssh_present),
             relay_binary_present: Some(relay_present),
         }
+    }
+
+    fn refresh_executable_probes(&mut self) {
+        self.cached_ssh_present = Some(probe_ssh_executable(&self.config.ssh_executable));
+        self.cached_scp_present = Some(probe_scp_executable(&self.config.scp_executable));
+    }
+
+    fn ssh_executable_present(&self) -> bool {
+        self.cached_ssh_present
+            .unwrap_or_else(|| probe_ssh_executable(&self.config.ssh_executable))
+    }
+
+    fn scp_executable_present(&self) -> bool {
+        self.cached_scp_present
+            .unwrap_or_else(|| probe_scp_executable(&self.config.scp_executable))
     }
 
     pub fn list_hosts(&mut self) -> Vec<RemoteHostView> {
@@ -417,7 +449,7 @@ impl DesktopRemoteRegistry {
                 .message
                 .unwrap_or_else(|| "SSH relay backend is unavailable".into()));
         }
-        if !probe_scp_executable(&self.config.scp_executable) {
+        if !self.scp_executable_present() {
             return Err(
                 "SCP is unavailable; install OpenSSH scp before executing remote deployment."
                     .into(),
@@ -801,7 +833,7 @@ fn scp_candidates() -> Vec<String> {
 }
 
 fn probe_ssh_executable(executable: &str) -> bool {
-    Command::new(executable)
+    hidden_command(executable)
         .arg("-V")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -811,7 +843,7 @@ fn probe_ssh_executable(executable: &str) -> bool {
 }
 
 fn probe_scp_executable(executable: &str) -> bool {
-    Command::new(executable)
+    hidden_command(executable)
         .arg("-V")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -1072,6 +1104,15 @@ mod tests {
             .with_relay_binaries_dir(dir.path().to_path_buf()),
         );
         (registry, dir)
+    }
+
+    #[test]
+    fn backend_status_reuses_cached_executable_probes() {
+        let registry = registry_with_relay(Path::new("/definitely/missing/llm-notch-relay"));
+        assert!(registry.cached_ssh_probe().is_some());
+        assert!(registry.cached_scp_probe().is_some());
+        let status = registry.backend_status();
+        assert_eq!(status.ssh_executable_present, registry.cached_ssh_probe());
     }
 
     #[test]

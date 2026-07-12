@@ -10,7 +10,10 @@ use ts_rs::TS;
 use crate::types::AgentSource;
 
 /// Maximum hook wait before fail-open neutral response (milliseconds).
-pub const DECISION_FAIL_OPEN_TIMEOUT_MS: u64 = 2_000;
+///
+/// Must stay below vendor hook `timeout` values in integration templates so the
+/// desktop broker can surface Allow/Deny controls before the CLI fail-opens.
+pub const DECISION_FAIL_OPEN_TIMEOUT_MS: u64 = 120_000;
 
 /// Neutral stdout for fail-open vendor hooks.
 pub const DECISION_HOOK_NEUTRAL_OUTPUT: &str = "{}";
@@ -129,7 +132,7 @@ mod tests {
 
     #[test]
     fn fail_open_constants_match_wrapper_contract() {
-        assert_eq!(DECISION_FAIL_OPEN_TIMEOUT_MS, 2_000);
+        assert_eq!(DECISION_FAIL_OPEN_TIMEOUT_MS, 120_000);
         assert_eq!(DECISION_HOOK_NEUTRAL_OUTPUT, "{}");
         assert_eq!(DECISION_HOOK_FAIL_OPEN_EXIT_CODE, 0);
     }

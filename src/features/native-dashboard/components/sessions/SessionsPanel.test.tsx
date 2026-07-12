@@ -76,6 +76,28 @@ describe('SessionsPanel', () => {
     expect(onSelectSession).toHaveBeenCalledWith('sess-claude-1')
   })
 
+  it('acknowledges attention queue items when wired', async () => {
+    const user = userEvent.setup()
+    const onAcknowledge = vi.fn()
+
+    render(
+      <SessionsPanel
+        sessions={mockSessions}
+        selectedSessionId="sess-cursor-1"
+        events={mockEvents}
+        adapters={mockAdapters}
+        onSelectSession={vi.fn()}
+        onAcknowledge={onAcknowledge}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /acknowledge refactor auth middleware/i }))
+    expect(onAcknowledge).toHaveBeenCalledWith('sess-cursor-1')
+    expect(
+      within(screen.getByLabelText('Attention queue')).getByText(/approval needed/i),
+    ).toBeInTheDocument()
+  })
+
   it('shows metric strip with quality labels', () => {
     render(
       <SessionsPanel

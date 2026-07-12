@@ -4,6 +4,7 @@
  */
 export const NATIVE_EVENTS = {
   remoteConnectionChanged: 'remote-connection-changed',
+  connectorHealthChanged: 'connector-health-changed',
 } as const
 
 export type NativeEventName = (typeof NATIVE_EVENTS)[keyof typeof NATIVE_EVENTS]

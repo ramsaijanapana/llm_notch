@@ -70,7 +70,7 @@ describe('FakeNativeClient', () => {
     expect(health.adapters.every((entry: ConnectorHealthEntry) => entry.probes.length >= 4)).toBe(
       true,
     )
-    expect(['notInstalled', 'waitingFirstEvent', 'actionNeeded']).toContain(
+    expect(['notInstalled', 'waitingFirstEvent', 'actionNeeded', 'driftDetected']).toContain(
       health.adapters[0]?.status,
     )
   })

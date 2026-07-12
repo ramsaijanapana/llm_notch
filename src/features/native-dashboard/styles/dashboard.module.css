@@ -469,6 +469,17 @@
   color: var(--color-text-muted);
 }
 
+.attentionRow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.attentionRow .listButton {
+  flex: 1;
+  min-width: 0;
+}
+
 .listButton[aria-current="true"] .listSecondary {
   color: #c8c2b6;
 }

@@ -3,4 +3,4 @@
 /**
  * Independent health dimensions evaluated by the connector manager.
  */
-export type HealthProbeAxis = "installation" | "trust" | "traffic" | "helper";
+export type HealthProbeAxis = "installation" | "trust" | "traffic" | "helper" | "process";

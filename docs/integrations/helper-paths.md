@@ -107,9 +107,10 @@ Export-LlmNotchWtCollectorEnv
 
 At startup the Tauri host resolves the helper via `src-tauri/src/runtime/helper_path.rs`:
 
-1. `LLM_NOTCH_HOOK_BIN` when set and the file exists
-2. `app.path().resource_dir()/llm-notch-hook[.exe]` from `externalBin`
-3. `target/debug/llm-notch-hook[.exe]` for local development
+1. `app.path().executable_dir()/llm-notch-hook[.exe]` — sidecar next to the desktop exe (packaged `externalBin`)
+2. `app.path().resource_dir()/llm-notch-hook[.exe]` — bundled resources fallback
+3. `LLM_NOTCH_HOOK_BIN` when set and the file exists (development / CI injection)
+4. `target/debug/llm-notch-hook[.exe]` for local development
 
 The resolved path is logged as `helper` / `helper_exists` in the host initialization line.
 

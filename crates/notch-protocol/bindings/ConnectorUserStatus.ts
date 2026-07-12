@@ -3,4 +3,4 @@
 /**
  * Deterministic user-facing connector status derived from probe results.
  */
-export type ConnectorUserStatus = "notFound" | "notInstalled" | "actionNeeded" | "waitingFirstEvent" | "connected" | "driftDetected" | "error";
+export type ConnectorUserStatus = "notFound" | "notInstalled" | "actionNeeded" | "waitingFirstEvent" | "helperMissing" | "hooksMisconfigured" | "connected" | "driftDetected" | "error";

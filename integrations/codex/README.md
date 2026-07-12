@@ -6,7 +6,7 @@
 
 1. Confirm your Codex build supports lifecycle hooks (`features.hooks`; the legacy `features.codex_hooks` flag is deprecated).
 2. Copy [`hooks.json.template`](./hooks.json.template) to your Codex config directory (commonly `~/.codex/hooks.json` or project `.codex/hooks.json`).
-3. Replace `{{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}}` with the absolute path to `llm-notch-hook-wrapper` after copying `integrations/wrappers/` to a stable location.
+3. Replace `{{LLM_NOTCH_HELPER}}` with the absolute path to the bundled `llm-notch-hook` binary (the connector installer does this automatically).
 4. Open `/hooks` in the Codex CLI and **review + trust** each llm_notch hook definition. llm_notch never automates this step.
 5. Untrusted hooks are skipped — llm_notch shows the integration as `actionNeeded` until trust is complete.
 
@@ -22,7 +22,7 @@
 
 ## Preferred: lifecycle hooks
 
-Copy [`hooks.json.template`](./hooks.json.template) or render programmatically via `notch-adapters-codex::template_hooks_json`. Adjust wrapper paths to absolute locations.
+Copy [`hooks.json.template`](./hooks.json.template) or render programmatically via `notch-adapters-codex::template_hooks_json`. Hook commands invoke the bundled helper directly (`"{{LLM_NOTCH_HELPER}}" hook --source codex ...`).
 
 Equivalent inline TOML lives in [`config.inline-hooks.example.toml`](./config.inline-hooks.example.toml). Prefer **one** representation per config layer (`hooks.json` **or** inline `[hooks]`, not both).
 

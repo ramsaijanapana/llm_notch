@@ -46,6 +46,8 @@ import type {
   OverlayMode,
   RemoteConnectionChangeHandler,
   RemoteConnectionSubscription,
+  ConnectorHealthChangeHandler,
+  ConnectorHealthSubscription,
   SessionEventPage,
   StreamErrorHandler,
   StreamFrameHandler,
@@ -88,6 +90,7 @@ export class TauriNativeClient implements NativeClient {
   private onFrame: StreamFrameHandler | null = null
   private onError: StreamErrorHandler | null = null
   private remoteConnectionUnlisten: (() => void) | null = null
+  private connectorHealthUnlisten: (() => void) | null = null
 
   async bootstrap(): Promise<BootstrapResult> {
     try {
@@ -171,6 +174,32 @@ export class TauriNativeClient implements NativeClient {
       }
     } catch (error) {
       throw toNativeError(error, 'Failed to subscribe to remote connection changes')
+    }
+  }
+
+  async subscribeConnectorHealthChanges(
+    onChange: ConnectorHealthChangeHandler,
+  ): Promise<ConnectorHealthSubscription> {
+    if (this.connectorHealthUnlisten) {
+      throw new NativeClientError(
+        'not-available',
+        'Connector health subscription is already active',
+      )
+    }
+
+    try {
+      const unlisten = await listen(NATIVE_EVENTS.connectorHealthChanged, () => {
+        onChange()
+      })
+      this.connectorHealthUnlisten = unlisten
+
+      return {
+        unsubscribe: async () => {
+          await this.unsubscribeConnectorHealthChanges()
+        },
+      }
+    } catch (error) {
+      throw toNativeError(error, 'Failed to subscribe to connector health changes')
     }
   }
 
@@ -500,6 +529,12 @@ export class TauriNativeClient implements NativeClient {
   private async unsubscribeRemoteConnectionChanges(): Promise<void> {
     const unlisten = this.remoteConnectionUnlisten
     this.remoteConnectionUnlisten = null
+    unlisten?.()
+  }
+
+  private async unsubscribeConnectorHealthChanges(): Promise<void> {
+    const unlisten = this.connectorHealthUnlisten
+    this.connectorHealthUnlisten = null
     unlisten?.()
   }
 

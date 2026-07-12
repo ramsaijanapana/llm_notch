@@ -11,7 +11,7 @@ import {
 import styles from '../styles/dashboard.module.css'
 import type { OnboardingFlowProps } from '../types/contracts'
 import { agentLabel } from '../utils/formatters'
-import { DOCUMENTED_CONNECTOR_PATHS } from '../utils/integrationLabels'
+import { DOCUMENTED_CONNECTOR_PATHS, detectedConnectorSummary, isDetectedConnectorVisible } from '../utils/integrationLabels'
 import { ApplyProgressPanel } from './integrations/ApplyProgressPanel'
 import { DiffReviewPanel } from './integrations/DiffReviewPanel'
 
@@ -169,8 +169,9 @@ export function OnboardingFlow({
                 Detect & connect your agents
               </h2>
               <p className={styles.muted}>
-                One scan checks every supported agent at documented configuration paths. We never
-                browse your disk — only fixed, published locations.
+                One scan checks every supported agent on PATH, known install directories, and
+                documented hook configuration paths. We never browse your disk — only fixed,
+                published locations.
               </p>
             </div>
           </div>
@@ -208,7 +209,7 @@ export function OnboardingFlow({
             {detectLoadState === 'loading' ? (
               <p className={styles.onboardingStatus} role="status">
                 <Loader2 size={14} className={styles.spinIcon} aria-hidden="true" />
-                Scanning documented paths…
+                Scanning PATH, known install dirs, and documented hook paths…
               </p>
             ) : null}
             {detectLoadState === 'error' ? (
@@ -216,26 +217,26 @@ export function OnboardingFlow({
                 {detectError ?? 'Detection failed. You can retry or skip and connect later.'}
               </p>
             ) : null}
-            {detectLoadState === 'ready' && detectedConnectors.length > 0 ? (
+            {detectLoadState === 'ready' && detectedConnectors.some(isDetectedConnectorVisible) ? (
               <div className={styles.detectResults} role="status">
                 <p className={styles.onboardingStatus}>
                   <CheckCircle2 size={14} aria-hidden="true" />
-                  Found {detectedConnectors.length} configuration path
-                  {detectedConnectors.length === 1 ? '' : 's'}
+                  Found {detectedConnectors.filter(isDetectedConnectorVisible).length} agent
+                  {detectedConnectors.filter(isDetectedConnectorVisible).length === 1 ? '' : 's'}
                 </p>
                 <ul className={styles.detectChips}>
-                  {detectedConnectors.map((entry) => (
+                  {detectedConnectors.filter(isDetectedConnectorVisible).map((entry) => (
                     <li key={`${entry.source}-${entry.displayPath}`} className={styles.detectChip}>
-                      {agentLabel(entry.source)}
+                      {agentLabel(entry.source)} — {detectedConnectorSummary(entry)}
                     </li>
                   ))}
                 </ul>
               </div>
             ) : null}
-            {detectLoadState === 'ready' && detectedConnectors.length === 0 ? (
+            {detectLoadState === 'ready' && !detectedConnectors.some(isDetectedConnectorVisible) ? (
               <p className={styles.caveat} role="status">
-                No configuration files found yet. You can continue and connect agents later from
-                Integrations.
+                No installed agent CLIs or hook configs found yet. You can continue and connect
+                agents later from Integrations.
               </p>
             ) : null}
           </>
@@ -472,24 +473,16 @@ export function OnboardingFlow({
                 Back
               </button>
             ) : null}
-            {step === 0 && detectLoadState !== 'ready' ? (
+            {step === 0 && (detectLoadState === 'idle' || detectLoadState === 'error') ? (
               <button
                 type="button"
                 className={styles.buttonPrimary}
                 onClick={onGetStarted}
-                disabled={detectLoadState === 'loading'}
               >
-                {detectLoadState === 'loading' ? (
-                  <>
-                    <Loader2 size={14} className={styles.spinIcon} aria-hidden="true" />
-                    Detecting…
-                  </>
-                ) : (
-                  <>
-                    <Radar size={14} aria-hidden="true" />
-                    Detect all agents
-                  </>
-                )}
+                <>
+                  <Radar size={14} aria-hidden="true" />
+                  {detectLoadState === 'error' ? 'Retry detection' : 'Detect all agents'}
+                </>
               </button>
             ) : null}
             {step === 0 && detectLoadState === 'ready' ? (

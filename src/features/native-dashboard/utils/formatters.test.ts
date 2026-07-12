@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentLabel,
+  attentionLabel,
   formatBytes,
   formatPercent,
   formatRelativeTime,
@@ -22,8 +23,15 @@ describe('native-dashboard formatters', () => {
     expect(agentLabel('antigravityCli')).toBe('Antigravity CLI')
     expect(agentLabel('copilotCli')).toBe('GitHub Copilot CLI')
     expect(routingAgentLabel('antigravity-cli')).toBe('Antigravity CLI')
+    expect(routingAgentLabel('agy')).toBe('Antigravity CLI')
     expect(formatRelativeTime(1_000, 30_000)).toBe('just now')
     expect(formatRelativeTime(1_000, 3_700_000)).toBe('1h ago')
+  })
+
+  it('labels attention kinds consistently with overlay wording', () => {
+    expect(attentionLabel('approval')).toBe('Approval needed')
+    expect(attentionLabel('question')).toBe('Question pending')
+    expect(attentionLabel('permission')).toBe('Permission needed')
   })
 
   it('detects platform modifier keys', () => {

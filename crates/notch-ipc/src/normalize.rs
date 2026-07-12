@@ -143,7 +143,9 @@ fn parse_source(value: &str) -> IpcResult<AgentSource> {
         "claudecode" | "claude_code" | "claude-code" => Ok(AgentSource::ClaudeCode),
         "codex" => Ok(AgentSource::Codex),
         "gemini" | "geminicli" | "gemini-cli" => Ok(AgentSource::Gemini),
-        "antigravitycli" | "antigravity-cli" | "antigravity" => Ok(AgentSource::AntigravityCli),
+        "antigravitycli" | "antigravity-cli" | "antigravity" | "agy" => {
+            Ok(AgentSource::AntigravityCli)
+        }
         "copilotcli" | "copilot-cli" | "copilot" => Ok(AgentSource::CopilotCli),
         "qwen" | "qwen-cli" | "qwencode" => Ok(AgentSource::Qwen),
         "generic" => Ok(AgentSource::Generic),
@@ -336,7 +338,7 @@ mod tests {
 
     #[test]
     fn normalizes_antigravity_source_aliases() {
-        for alias in ["antigravityCli", "antigravity-cli", "antigravity"] {
+        for alias in ["antigravityCli", "antigravity-cli", "antigravity", "agy"] {
             let payload = IngestPayload {
                 source: alias.into(),
                 event: "tool".into(),

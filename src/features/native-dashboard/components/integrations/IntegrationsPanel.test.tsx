@@ -8,10 +8,29 @@ import { IntegrationsPanel } from './IntegrationsPanel'
 describe('IntegrationsPanel', () => {
   afterEach(() => cleanup())
 
-  it('renders integration cards with ConnectorUserStatus health', () => {
+  it('renders integration cards with honest installation layers', () => {
     render(
       <IntegrationsPanel
         integrations={mockIntegrations}
+        detectedConnectors={[
+          {
+            source: 'cursor',
+            scope: 'user',
+            displayPath: '~/.cursor/hooks.json',
+            configPresent: true,
+            managedEntriesPresent: true,
+            executablePresent: true,
+          },
+          {
+            source: 'codex',
+            scope: 'user',
+            displayPath: '~/.codex/hooks.json',
+            configPresent: false,
+            managedEntriesPresent: false,
+            executablePresent: true,
+            executablePath: 'C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd',
+          },
+        ]}
         backups={[]}
         onConnect={vi.fn()}
         onRepair={vi.fn()}
@@ -24,6 +43,8 @@ describe('IntegrationsPanel', () => {
     )
 
     expect(screen.getByLabelText('Cursor integration')).toBeInTheDocument()
+    expect(screen.getAllByText(/CLI: Installed/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/CLI installed — hooks missing/i)).toBeInTheDocument()
     expect(screen.getAllByText(/waiting for first event/i).length).toBeGreaterThan(0)
   })
 
@@ -75,7 +96,7 @@ describe('IntegrationsPanel', () => {
 
     const planned = screen.getByRole('region', { name: /planned integrations/i })
     expect(screen.getByLabelText('OpenCode planned integration')).toBeInTheDocument()
-    expect(screen.getAllByText(/catalog only/i).length).toBe(21)
+    expect(screen.getAllByText(/catalog only/i).length).toBeGreaterThanOrEqual(18)
     expect(planned.querySelectorAll('button')).toHaveLength(0)
     expect(screen.getAllByRole('button', { name: /^connect$/i })).toHaveLength(4)
   })

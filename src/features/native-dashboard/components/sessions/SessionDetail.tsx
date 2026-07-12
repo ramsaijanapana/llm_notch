@@ -3,7 +3,7 @@ import styles from '../../styles/dashboard.module.css'
 import type { OpenContextHandler } from '../../types/contracts'
 import type { DecisionRequest, DecisionResponseRecord } from '../../../../native/contracts'
 import { agentLabel, attentionLabel } from '../../utils/formatters'
-import { findAdapterForSession, isNotifyOnlyAdapter } from '../../utils/sessionHelpers'
+import { findAdapterForSession, isNotifyOnlyAdapter, decisionMatchesSession } from '../../utils/sessionHelpers'
 import { DecisionSurface } from '../decisions/DecisionSurface'
 import { MetricStrip } from './MetricStrip'
 
@@ -40,7 +40,7 @@ export function SessionDetail({
   const adapter = findAdapterForSession(adapters, session)
   const notifyOnly = isNotifyOnlyAdapter(adapter)
   const showDecision =
-    pendingDecision !== undefined && pendingDecision.sessionId === session.id
+    pendingDecision !== undefined && decisionMatchesSession(pendingDecision, session)
 
   return (
     <section className={styles.card} aria-label="Session detail">

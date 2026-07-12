@@ -148,6 +148,12 @@ export interface RemoteConnectionSubscription {
   unsubscribe(): Promise<void>
 }
 
+export type ConnectorHealthChangeHandler = () => void
+
+export interface ConnectorHealthSubscription {
+  unsubscribe(): Promise<void>
+}
+
 export interface NativeClient {
   readonly mode: NativeClientMode
 
@@ -156,6 +162,9 @@ export interface NativeClient {
   subscribeRemoteConnectionChanges(
     onChange: RemoteConnectionChangeHandler,
   ): Promise<RemoteConnectionSubscription>
+  subscribeConnectorHealthChanges(
+    onChange: ConnectorHealthChangeHandler,
+  ): Promise<ConnectorHealthSubscription>
   openDashboard(): Promise<void>
   openSession(sessionId: string): Promise<OpenSessionResult>
   setOverlayMode(mode: OverlayMode): Promise<void>

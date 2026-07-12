@@ -1,11 +1,12 @@
 //! Resolve the `llm-notch-relay` sidecar at runtime.
 //!
 //! Resolution order (first existing file wins):
-//! 1. `LLM_NOTCH_RELAY_BIN` environment override (development / CI injection)
-//! 2. Tauri [`AppHandle::path().resource_dir()`] — packaged `externalBin` from
-//!    `tauri.conf.json` → `binaries/llm-notch-relay` (prepared as
+//! 1. Tauri [`AppHandle::path().executable_dir()`] — sidecar next to the desktop exe
+//!    (packaged `externalBin` from `tauri.conf.json`, prepared as
 //!    `src-tauri/binaries/llm-notch-relay-<target>` by `npm run native:prepare-helper`)
-//! 3. Workspace `target/debug/llm-notch-relay` fallback for local `tauri dev`
+//! 2. Tauri [`AppHandle::path().resource_dir()`] — bundled resources fallback
+//! 3. `LLM_NOTCH_RELAY_BIN` environment override (development / CI injection)
+//! 4. Workspace `target/debug/llm-notch-relay` fallback for local `tauri dev`
 //!
 //! See [`docs/platform/release-gates.md`](../../../docs/platform/release-gates.md).
 
@@ -57,10 +58,10 @@ pub fn resolve_relay_binaries_directory(app: &AppHandle) -> PathBuf {
 
 /// Resolve the relay binary used for deployment previews and bundled remote relay.
 pub fn resolve_relay_binary_path(app: &AppHandle) -> PathBuf {
-    if let Ok(path) = std::env::var("LLM_NOTCH_RELAY_BIN") {
-        let path = PathBuf::from(path);
-        if path.is_file() {
-            return path;
+    if let Ok(exe_dir) = app.path().executable_dir() {
+        let sidecar = exe_dir.join(bundled_relay_filename());
+        if sidecar.is_file() {
+            return sidecar;
         }
     }
 
@@ -68,6 +69,13 @@ pub fn resolve_relay_binary_path(app: &AppHandle) -> PathBuf {
         let bundled = bundled_relay_in_resource_dir(&resource);
         if bundled.is_file() {
             return bundled;
+        }
+    }
+
+    if let Ok(path) = std::env::var("LLM_NOTCH_RELAY_BIN") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return path;
         }
     }
 

@@ -556,8 +556,8 @@ fn vibe_island_descriptors() -> Vec<IntegrationDescriptor> {
         verified(
             "antigravity-cli",
             "Antigravity CLI",
-            &["antigravity"],
-            &["antigravity"],
+            &["antigravity", "agy"],
+            &["antigravity", "agy"],
             NativeHooks,
             vec![
                 evidence(
@@ -754,6 +754,16 @@ mod tests {
         assert_eq!(catalog.get("Gemini CLI").unwrap().id.as_str(), "gemini-cli");
         assert_eq!(catalog.get("Open AI Codex").unwrap().id.as_str(), "codex");
         assert!(catalog.get("not-a-real-agent").is_none());
+    }
+
+    #[test]
+    fn executable_detection_matches_agy_binary() {
+        let catalog = AgentCatalog::vibe_island_25();
+        for executable in ["agy", "agy.exe", r"C:\tools\agy.exe"] {
+            let matches = catalog.find_by_executable(executable);
+            assert_eq!(matches.len(), 1, "failed for {executable}");
+            assert_eq!(matches[0].id.as_str(), "antigravity-cli");
+        }
     }
 
     #[test]

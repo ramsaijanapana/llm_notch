@@ -49,7 +49,7 @@ describe('OnboardingFlow', () => {
     render(<OnboardingFlow {...baseProps} />)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /detect & connect your agents/i })).toBeInTheDocument()
-    expect(screen.getByText(/documented configuration paths/i)).toBeInTheDocument()
+    expect(screen.getByText(/known install directories/i)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /how detection works/i }))
     expect(screen.getByText(/~\/.cursor\/hooks.json/i)).toBeInTheDocument()
     expect(screen.getByText(/~\/.gemini\/settings.json/i)).toBeInTheDocument()
@@ -105,6 +105,28 @@ describe('OnboardingFlow', () => {
     expect(onSkip).toHaveBeenCalled()
   })
 
+  it('shows CLI-only detection results on step zero', () => {
+    render(
+      <OnboardingFlow
+        {...baseProps}
+        detectLoadState="ready"
+        detectedConnectors={[
+          {
+            source: 'codex',
+            scope: 'user',
+            displayPath: '~/.codex/hooks.json',
+            configPresent: false,
+            managedEntriesPresent: false,
+            executablePresent: true,
+            executablePath: 'C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd',
+          },
+        ]}
+      />,
+    )
+    expect(screen.getByText(/CLI installed.*hooks missing/i)).toBeInTheDocument()
+    expect(screen.queryByText(/antigravity/i)).not.toBeInTheDocument()
+  })
+
   it('shows connect agents step with scope controls', () => {
     render(
       <OnboardingFlow
@@ -117,6 +139,7 @@ describe('OnboardingFlow', () => {
             displayPath: '~/.cursor/hooks.json',
             configPresent: true,
             managedEntriesPresent: false,
+            executablePresent: true,
           },
         ]}
         connectSelections={[

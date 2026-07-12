@@ -3,4 +3,4 @@
 /**
  * Optional machine-readable reason when a probe is not OK.
  */
-export type HealthProbeFailureKind = "agentNotFound" | "notInstalled" | "trustRequired" | "helperUnavailable" | "noTraffic" | "configDrift" | "internalError";
+export type HealthProbeFailureKind = "agentNotFound" | "notInstalled" | "trustRequired" | "helperUnavailable" | "helperPathMissing" | "hooksMisconfigured" | "noTraffic" | "configDrift" | "internalError";

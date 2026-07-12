@@ -138,3 +138,59 @@ fn remove_plan_strips_managed_entries_only() {
     assert!(after["hooks"]["beforeShellExecution"].is_array());
     assert!(after["hooks"].get("sessionStart").is_none());
 }
+
+#[test]
+fn repair_replaces_drifted_codex_commands() {
+    let dir = TempDir::new().expect("tempdir");
+    let hooks = dir.path().join(".codex/hooks.json");
+    std::fs::create_dir_all(hooks.parent().unwrap()).expect("mkdir");
+    let drifted = r#"{
+      "hooks": {
+        "SessionStart": [{
+          "matcher": "startup|resume",
+          "hooks": [{
+            "type": "command",
+            "command": "sh C:\\old\\llm-notch-hook.exe --source codex --vendor-event SessionStart",
+            "timeout": 2
+          }]
+        }],
+        "PreToolUse": [{
+          "matcher": "Bash",
+          "hooks": [{
+            "type": "command",
+            "command": "/usr/bin/python3 policy.py"
+          }]
+        }]
+      }
+    }"#;
+    std::fs::write(&hooks, drifted).expect("write");
+
+    let helper = dir.path().join("llm-notch-hook.exe");
+    std::fs::write(&helper, b"").expect("touch helper");
+    let mut config = test_config(&dir);
+    config.helper_path = helper.clone();
+
+    let manager = ConnectorManager::new(config).expect("manager");
+    let preview = manager
+        .preview_repair(AgentSource::Codex, ConnectorScope::User)
+        .expect("preview");
+    assert!(!preview.files[0].diff_text.is_empty());
+    manager.apply(&preview.plan_id, None).expect("apply");
+
+    let after: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&hooks).expect("read")).expect("json");
+    let command = after["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+        .as_str()
+        .expect("command");
+    assert!(!command.starts_with("sh "));
+    assert!(command.contains(" hook --source codex --vendor-event SessionStart"));
+    assert!(command.contains("llm-notch-hook.exe"));
+    let pre_groups = after["hooks"]["PreToolUse"].as_array().expect("groups");
+    assert_eq!(pre_groups.len(), 2);
+    assert!(
+        pre_groups.iter().any(|group| {
+            group["hooks"][0]["command"].as_str() == Some("/usr/bin/python3 policy.py")
+        }),
+        "foreign PreToolUse hook must be preserved"
+    );
+}

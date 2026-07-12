@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+notch-agent-catalog.workspace = true
 notch-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true

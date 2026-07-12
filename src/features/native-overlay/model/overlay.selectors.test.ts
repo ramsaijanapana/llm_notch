@@ -4,7 +4,9 @@ import {
   countAttentionSessions,
   deriveHealthBeaconTone,
   getCombinedCpuReading,
+  getCompactStatusHint,
   getConnectionBanner,
+  resolveConnectionBannerText,
   selectAttentionSessions,
   selectCompactDots,
   sortSessionsForPeek,
@@ -51,10 +53,35 @@ describe('overlay.selectors', () => {
     expect(getConnectionBanner('empty')).toMatch(/No active agent sessions/)
     expect(getConnectionBanner('ipcError')).toMatch(/Connection to agent core lost/)
     expect(getConnectionBanner('coreError')).toMatch(/Agent core error/)
-    expect(getConnectionBanner('stale')).toMatch(/stale/)
+    expect(getConnectionBanner('stale')).toMatch(/Resyncing stream/)
     expect(getConnectionBanner('warmingUp')).toMatch(/warming up/)
     expect(getConnectionBanner('metricsUnavailable')).toMatch(/Metrics unavailable/)
     expect(getConnectionBanner('live')).toBeNull()
+  })
+
+  it('prefers custom resync and error messages in banner resolution', () => {
+    expect(
+      resolveConnectionBannerText('stale', { staleMessage: 'Sequence gap at frame 42' }),
+    ).toBe('Sequence gap at frame 42')
+    expect(
+      resolveConnectionBannerText('ipcError', { errorMessage: 'Stream channel closed' }),
+    ).toBe('Stream channel closed')
+  })
+
+  it('shows compact status hints when disconnected even with cached sessions', () => {
+    const snapshot = createSnapshot()
+    expect(
+      getCompactStatusHint('ipcError', snapshot.sessions.length, {
+        errorMessage: 'Stream channel closed',
+      }),
+    ).toBe('Stream channel closed')
+    expect(
+      getCompactStatusHint('stale', snapshot.sessions.length, {
+        staleMessage: 'Resyncing native stream after sequence gap.',
+      }),
+    ).toBe('Resyncing native stream after sequence gap.')
+    expect(getCompactStatusHint('live', snapshot.sessions.length)).toBeNull()
+    expect(getCompactStatusHint('empty', 0)).toMatch(/No active agent sessions/)
   })
 
   it('reads combined CPU from aggregate metrics', () => {

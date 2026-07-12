@@ -15,6 +15,8 @@ pub enum HealthProbeAxis {
     Trust,
     Traffic,
     Helper,
+    /// Positive-only process discovery evidence; does not affect user-facing status.
+    Process,
 }
 
 /// Outcome for a single probe axis.
@@ -36,6 +38,8 @@ pub enum HealthProbeFailureKind {
     NotInstalled,
     TrustRequired,
     HelperUnavailable,
+    HelperPathMissing,
+    HooksMisconfigured,
     NoTraffic,
     ConfigDrift,
     InternalError,
@@ -65,6 +69,8 @@ pub enum ConnectorUserStatus {
     NotInstalled,
     ActionNeeded,
     WaitingFirstEvent,
+    HelperMissing,
+    HooksMisconfigured,
     Connected,
     DriftDetected,
     Error,
@@ -74,8 +80,13 @@ pub enum ConnectorUserStatus {
 ///
 /// Priority follows the first failing axis: installation → trust → helper → traffic,
 /// with drift and error fallbacks documented in `docs/parity/CONTRACT_FREEZE.md`.
+/// The `process` axis is diagnostic-only and is excluded from this mapping.
 pub fn map_probes_to_user_status(probes: &[HealthProbeResult]) -> ConnectorUserStatus {
-    let probe = |axis: HealthProbeAxis| probes.iter().find(|entry| entry.axis == axis);
+    let actionable: Vec<_> = probes
+        .iter()
+        .filter(|entry| entry.axis != HealthProbeAxis::Process)
+        .collect();
+    let probe = |axis: HealthProbeAxis| actionable.iter().find(|entry| entry.axis == axis);
 
     if let Some(installation) = probe(HealthProbeAxis::Installation) {
         match installation.outcome {
@@ -103,7 +114,13 @@ pub fn map_probes_to_user_status(probes: &[HealthProbeResult]) -> ConnectorUserS
         probe(HealthProbeAxis::Helper).map(|entry| entry.outcome),
         Some(HealthProbeOutcome::Fail)
     ) {
-        return ConnectorUserStatus::Error;
+        return match probe(HealthProbeAxis::Helper).and_then(|entry| entry.failure_kind) {
+            Some(HealthProbeFailureKind::HelperPathMissing) => ConnectorUserStatus::HelperMissing,
+            Some(HealthProbeFailureKind::HooksMisconfigured) => {
+                ConnectorUserStatus::HooksMisconfigured
+            }
+            _ => ConnectorUserStatus::Error,
+        };
     }
 
     if matches!(
@@ -115,12 +132,13 @@ pub fn map_probes_to_user_status(probes: &[HealthProbeResult]) -> ConnectorUserS
 
     if probes
         .iter()
+        .filter(|entry| entry.axis != HealthProbeAxis::Process)
         .any(|entry| entry.outcome == HealthProbeOutcome::Warn)
     {
         return ConnectorUserStatus::DriftDetected;
     }
 
-    if probes
+    if actionable
         .iter()
         .all(|entry| entry.outcome == HealthProbeOutcome::Ok)
     {
@@ -214,10 +232,76 @@ mod tests {
     }
 
     #[test]
+    fn process_probe_does_not_change_user_status() {
+        let probes = vec![
+            probe(
+                HealthProbeAxis::Installation,
+                HealthProbeOutcome::Fail,
+                Some(HealthProbeFailureKind::AgentNotFound),
+            ),
+            probe(HealthProbeAxis::Process, HealthProbeOutcome::Ok, None),
+        ];
+        assert_eq!(
+            map_probes_to_user_status(&probes),
+            ConnectorUserStatus::NotFound
+        );
+    }
+
+    #[test]
+    fn maps_helper_path_missing_before_traffic() {
+        let probes = vec![
+            probe(HealthProbeAxis::Installation, HealthProbeOutcome::Ok, None),
+            probe(HealthProbeAxis::Trust, HealthProbeOutcome::Ok, None),
+            probe(
+                HealthProbeAxis::Helper,
+                HealthProbeOutcome::Fail,
+                Some(HealthProbeFailureKind::HelperPathMissing),
+            ),
+            probe(
+                HealthProbeAxis::Traffic,
+                HealthProbeOutcome::Fail,
+                Some(HealthProbeFailureKind::NoTraffic),
+            ),
+        ];
+        assert_eq!(
+            map_probes_to_user_status(&probes),
+            ConnectorUserStatus::HelperMissing
+        );
+    }
+
+    #[test]
+    fn maps_hooks_misconfigured_before_traffic() {
+        let probes = vec![
+            probe(HealthProbeAxis::Installation, HealthProbeOutcome::Ok, None),
+            probe(HealthProbeAxis::Trust, HealthProbeOutcome::Ok, None),
+            probe(
+                HealthProbeAxis::Helper,
+                HealthProbeOutcome::Fail,
+                Some(HealthProbeFailureKind::HooksMisconfigured),
+            ),
+            probe(
+                HealthProbeAxis::Traffic,
+                HealthProbeOutcome::Fail,
+                Some(HealthProbeFailureKind::NoTraffic),
+            ),
+        ];
+        assert_eq!(
+            map_probes_to_user_status(&probes),
+            ConnectorUserStatus::HooksMisconfigured
+        );
+    }
+
+    #[test]
     fn health_status_round_trips_camel_case() {
         let value = serde_json::to_value(ConnectorUserStatus::WaitingFirstEvent).unwrap();
         assert_eq!(value, "waitingFirstEvent");
         let decoded: ConnectorUserStatus = serde_json::from_value(value).unwrap();
         assert_eq!(decoded, ConnectorUserStatus::WaitingFirstEvent);
+
+        let helper_missing = serde_json::to_value(ConnectorUserStatus::HelperMissing).unwrap();
+        assert_eq!(helper_missing, "helperMissing");
+        let hooks_misconfigured =
+            serde_json::to_value(ConnectorUserStatus::HooksMisconfigured).unwrap();
+        assert_eq!(hooks_misconfigured, "hooksMisconfigured");
     }
 }

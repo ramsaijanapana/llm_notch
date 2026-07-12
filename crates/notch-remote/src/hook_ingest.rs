@@ -182,7 +182,7 @@ fn normalize_source(value: &str) -> String {
         "claudecode" | "claude_code" | "claude-code" => "claudeCode".into(),
         "codex" => "codex".into(),
         "gemini" | "geminicli" | "gemini-cli" => "gemini".into(),
-        "antigravitycli" | "antigravity-cli" | "antigravity" => "antigravityCli".into(),
+        "antigravitycli" | "antigravity-cli" | "antigravity" | "agy" => "antigravityCli".into(),
         "copilotcli" | "copilot-cli" | "copilot" => "copilotCli".into(),
         "qwen" | "qwen-cli" | "qwencode" => "qwen".into(),
         "generic" => "generic".into(),
@@ -338,6 +338,7 @@ mod tests {
         for (input, expected) in [
             ("antigravityCli", "antigravityCli"),
             ("antigravity-cli", "antigravityCli"),
+            ("agy", "antigravityCli"),
             ("copilot", "copilotCli"),
             ("qwen", "qwen"),
         ] {

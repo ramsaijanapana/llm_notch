@@ -1,6 +1,11 @@
 import styles from '../../styles/dashboard.module.css'
 import type { IntegrationsPanelProps } from '../../types/contracts'
 import { agentLabel, formatRelativeTime } from '../../utils/formatters'
+import {
+  bestDetectedConnector,
+  connectorInstallationLayers,
+  effectiveConnectorStatusLabel,
+} from '../../utils/integrationLabels'
 import { EmptyState } from '../shared/EmptyState'
 import { LoadingState } from '../shared/LoadingState'
 import { ApplyProgressPanel } from './ApplyProgressPanel'
@@ -11,6 +16,7 @@ import { DiffReviewPanel } from './DiffReviewPanel'
 export function IntegrationsPanel({
   integrations,
   catalog = [],
+  detectedConnectors = [],
   backups,
   pendingPlan,
   applyProgress,
@@ -62,6 +68,9 @@ export function IntegrationsPanel({
               const { adapter, status, statusDetail, lastEventAtMs, managedEntriesPresent } =
                 integration
               const source = adapter.source
+              const detected = bestDetectedConnector(detectedConnectors, source)
+              const layers = connectorInstallationLayers(detected, status, lastEventAtMs)
+              const statusLabel = effectiveConnectorStatusLabel(status, detected)
 
               return (
                 <article
@@ -70,7 +79,20 @@ export function IntegrationsPanel({
                   aria-label={`${agentLabel(source)} integration`}
                 >
                   <h3 className={styles.cardTitle}>{agentLabel(source)}</h3>
-                  <ConnectorHealthBadge source={source} status={status} detail={statusDetail} />
+                  <ConnectorHealthBadge
+                    source={source}
+                    status={status}
+                    statusLabel={statusLabel}
+                    detail={statusDetail}
+                    detected={detected}
+                  />
+                  <section className={styles.capabilityGrid} aria-label="Installation state">
+                    <span>CLI: {layers.cli}</span>
+                    <span>Hook config: {layers.hookConfig}</span>
+                    <span>llm_notch hooks: {layers.managedHooks}</span>
+                    <span>Process: {layers.process}</span>
+                    <span>Events: {layers.traffic}</span>
+                  </section>
                   <p className={styles.muted}>
                     Last event:{' '}
                     {lastEventAtMs ? formatRelativeTime(lastEventAtMs, nowMs) : 'No events yet'}

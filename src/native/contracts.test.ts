@@ -27,5 +27,21 @@ describe('contract freeze v2 helpers', () => {
       { axis: 'helper', outcome: 'ok' },
     ]
     expect(mapProbesToUserStatus(waiting)).toBe('waitingFirstEvent')
+
+    const helperMissing: HealthProbeResult[] = [
+      { axis: 'installation', outcome: 'ok' },
+      { axis: 'trust', outcome: 'ok' },
+      { axis: 'helper', outcome: 'fail', failureKind: 'helperPathMissing' },
+      { axis: 'traffic', outcome: 'fail', failureKind: 'noTraffic' },
+    ]
+    expect(mapProbesToUserStatus(helperMissing)).toBe('helperMissing')
+
+    const hooksMisconfigured: HealthProbeResult[] = [
+      { axis: 'installation', outcome: 'ok' },
+      { axis: 'trust', outcome: 'ok' },
+      { axis: 'helper', outcome: 'fail', failureKind: 'hooksMisconfigured' },
+      { axis: 'traffic', outcome: 'fail', failureKind: 'noTraffic' },
+    ]
+    expect(mapProbesToUserStatus(hooksMisconfigured)).toBe('hooksMisconfigured')
   })
 })

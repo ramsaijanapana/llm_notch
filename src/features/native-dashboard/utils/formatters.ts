@@ -13,6 +13,7 @@ const AGENT_LABELS: Record<AgentSource, string> = {
   codex: 'Codex',
   gemini: 'Gemini CLI',
   antigravityCli: 'Antigravity CLI',
+  agy: 'Antigravity CLI',
   copilotCli: 'GitHub Copilot CLI',
   qwen: 'Qwen Code',
   generic: 'Generic',
@@ -21,15 +22,16 @@ const AGENT_LABELS: Record<AgentSource, string> = {
 
 const ROUTING_AGENT_LABELS: Record<string, string> = {
   'antigravity-cli': 'Antigravity CLI',
+  agy: 'Antigravity CLI',
   'copilot-cli': 'GitHub Copilot CLI',
   'qwen-cli': 'Qwen Code',
 }
 
 const ATTENTION_LABELS: Record<AttentionKind, string> = {
   none: 'None',
-  approval: 'Approval',
-  question: 'Question',
-  permission: 'Permission',
+  approval: 'Approval needed',
+  question: 'Question pending',
+  permission: 'Permission needed',
   error: 'Error',
 }
 

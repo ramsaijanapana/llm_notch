@@ -1,4 +1,4 @@
-import type { AppSnapshot } from '../../native/contracts'
+import type { AppSnapshot, DecisionRequest } from '../../native/contracts'
 
 export type OverlayMode = 'compact' | 'peek'
 
@@ -35,4 +35,9 @@ export interface OverlayShellProps {
   nowMs?: number | undefined
   onOpenDashboard?: (() => void) | undefined
   onAcknowledge?: ((sessionId: string) => void) | undefined
+  pendingDecision?: DecisionRequest | undefined
+  decisionControlsEnabled?: boolean | undefined
+  onDecisionAllow?: (() => void) | undefined
+  onDecisionDeny?: (() => void) | undefined
+  emptyMessage?: string | null | undefined
 }

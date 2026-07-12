@@ -1,9 +1,9 @@
 //! Codex hooks.json template rendering with absolute-path placeholders.
 
 /// Placeholder replaced with the signed helper binary after install review.
-pub const HELPER_PATH_PLACEHOLDER: &str = "{{LLM_NOTCH_HELPER_ABSOLUTE_PATH}}";
+pub const HELPER_PATH_PLACEHOLDER: &str = "{{LLM_NOTCH_HELPER}}";
 
-/// Placeholder replaced with the copied wrapper script after install review.
+/// Placeholder replaced with the copied wrapper script after install review (Unix manual installs).
 pub const WRAPPER_PATH_PLACEHOLDER: &str = "{{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}}";
 
 const MANAGED_EVENTS: &[(&str, Option<&str>)] = &[
@@ -15,9 +15,11 @@ const MANAGED_EVENTS: &[(&str, Option<&str>)] = &[
     ("Stop", None),
 ];
 
-/// Render a wrapper command string for a Codex lifecycle hook event.
+/// Render a managed hook command for a Codex lifecycle event.
 pub fn render_hook_command(vendor_event: &str) -> String {
-    format!("sh {WRAPPER_PATH_PLACEHOLDER} --source codex --vendor-event {vendor_event}")
+    format!(
+        "\"{HELPER_PATH_PLACEHOLDER}\" hook --source codex --vendor-event {vendor_event}"
+    )
 }
 
 /// Build the shipped Codex `hooks.json` template with path placeholders.
@@ -38,7 +40,7 @@ pub fn template_hooks_json() -> serde_json::Value {
     }
 
     serde_json::json!({
-        "_comment": "TEMPLATE ONLY — requires explicit user trust via Codex /hooks. Enable with: codex -c features.hooks=true (features.codex_hooks is deprecated). Replace placeholders with absolute paths before copying.",
+        "_comment": "TEMPLATE ONLY — requires explicit user trust via Codex /hooks. Enable with: codex -c features.hooks=true (features.codex_hooks is deprecated). {{LLM_NOTCH_HELPER}} is replaced with the bundled helper absolute path at install time.",
         "hooks": hooks
     })
 }
@@ -52,10 +54,15 @@ fn managed_handler(vendor_event: &str) -> serde_json::Value {
         _ => None,
     };
 
+    let timeout = if vendor_event == "PermissionRequest" {
+        120
+    } else {
+        2
+    };
     let mut handler = serde_json::json!({
         "type": "command",
         "command": render_hook_command(vendor_event),
-        "timeout": 2
+        "timeout": timeout
     });
     if let Some(message) = status {
         handler["statusMessage"] = message.into();
@@ -74,7 +81,7 @@ matcher = "startup|resume"
 
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = "{{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event SessionStart"
+command = "\"{{LLM_NOTCH_HELPER}}\" hook --source codex --vendor-event SessionStart"
 timeout = 2
 statusMessage = "llm_notch: session observe"
 "#
@@ -93,15 +100,26 @@ mod tests {
             .expect("hooks");
         assert!(hooks.contains_key("PermissionRequest"));
         let encoded = template.to_string();
-        assert!(encoded.contains(WRAPPER_PATH_PLACEHOLDER));
+        assert!(encoded.contains(HELPER_PATH_PLACEHOLDER));
+        assert!(!encoded.contains("sh "));
         assert!(encoded.contains("features.hooks"));
         assert!(!encoded.contains("codex_hooks=true"));
     }
 
     #[test]
-    fn render_hook_command_uses_wrapper_placeholder() {
+    fn render_hook_command_uses_helper_placeholder() {
         let command = render_hook_command("Stop");
-        assert!(command.contains(WRAPPER_PATH_PLACEHOLDER));
+        assert!(command.contains(HELPER_PATH_PLACEHOLDER));
+        assert!(!command.starts_with("sh "));
         assert!(command.contains("--vendor-event Stop"));
+    }
+
+    #[test]
+    fn shipped_template_json_matches_rust_template_events() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../integrations/codex/hooks.json.template");
+        let raw = std::fs::read_to_string(path).expect("read template json");
+        let file: serde_json::Value = serde_json::from_str(&raw).expect("parse template json");
+        assert_eq!(file["hooks"], template_hooks_json()["hooks"]);
     }
 }

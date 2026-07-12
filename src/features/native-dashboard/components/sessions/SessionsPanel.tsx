@@ -24,6 +24,7 @@ export function SessionsPanel({
   onDecisionAllow,
   onDecisionDeny,
   onDecisionAnswer,
+  onAcknowledge,
   loadState = 'ready',
   emptyMessage = 'No agent sessions yet. Start an integration to see live sessions here.',
 }: SessionsPanelProps) {
@@ -48,6 +49,7 @@ export function SessionsPanel({
           sessions={attention}
           selectedSessionId={selectedSessionId}
           onSelectSession={onSelectSession}
+          onAcknowledge={onAcknowledge}
         />
         <SessionList
           title="Active sessions"

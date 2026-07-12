@@ -16,7 +16,8 @@ pub enum AgentSource {
     #[serde(
         alias = "antigravity-cli",
         alias = "antigravity",
-        alias = "antigravitycli"
+        alias = "antigravitycli",
+        alias = "agy"
     )]
     AntigravityCli,
     #[serde(alias = "copilot-cli", alias = "copilot", alias = "copilotcli")]

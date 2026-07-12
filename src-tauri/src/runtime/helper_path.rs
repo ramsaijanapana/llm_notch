@@ -1,11 +1,13 @@
 //! Resolve the `llm-notch-hook` sidecar at runtime.
 //!
 //! Resolution order (first existing file wins):
-//! 1. `LLM_NOTCH_HOOK_BIN` environment override (development / CI injection)
-//! 2. Tauri [`AppHandle::path().resource_dir()`] — packaged `externalBin` from
-//!    `tauri.conf.json` → `binaries/llm-notch-hook` (prepared as
+//! 1. Tauri [`AppHandle::path().executable_dir()`] — sidecar next to the desktop exe
+//!    (packaged `externalBin` from `tauri.conf.json`, prepared as
 //!    `src-tauri/binaries/llm-notch-hook-<target>` by `npm run native:prepare-helper`)
-//! 3. Workspace `target/debug/llm-notch-hook` fallback for local `tauri dev`
+//! 2. Tauri [`AppHandle::path().resource_dir()`] — bundled resources fallback
+//! 3. `LLM_NOTCH_HOOK_BIN` environment override (development / CI injection)
+//! 4. Default per-user install location (`%LOCALAPPDATA%\\Programs\\llm_notch\\` on Windows)
+//! 5. Workspace `target/debug/llm-notch-hook` fallback for local `tauri dev`
 //!
 //! See [`docs/integrations/helper-paths.md`](../../../docs/integrations/helper-paths.md).
 
@@ -29,10 +31,10 @@ pub fn bundled_helper_in_resource_dir(resource_dir: &Path) -> PathBuf {
 
 /// Resolve the hook helper path for connector management and health probes.
 pub fn resolve_helper_path(app: &AppHandle) -> PathBuf {
-    if let Ok(path) = std::env::var("LLM_NOTCH_HOOK_BIN") {
-        let path = PathBuf::from(path);
-        if path.is_file() {
-            return path;
+    if let Ok(exe_dir) = app.path().executable_dir() {
+        let sidecar = exe_dir.join(bundled_helper_filename());
+        if sidecar.is_file() {
+            return sidecar;
         }
     }
 
@@ -40,6 +42,19 @@ pub fn resolve_helper_path(app: &AppHandle) -> PathBuf {
         let bundled = bundled_helper_in_resource_dir(&resource);
         if bundled.is_file() {
             return bundled;
+        }
+    }
+
+    if let Ok(path) = std::env::var("LLM_NOTCH_HOOK_BIN") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return path;
+        }
+    }
+
+    if let Some(installed) = default_installed_helper_path() {
+        if installed.is_file() {
+            return installed;
         }
     }
 
@@ -52,6 +67,23 @@ pub fn resolve_helper_path(app: &AppHandle) -> PathBuf {
     }
 
     target_helper
+}
+
+/// Default per-user install location for the packaged desktop app (Windows NSIS/MSI).
+fn default_installed_helper_path() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        std::env::var_os("LOCALAPPDATA").map(|local| {
+            PathBuf::from(local)
+                .join("Programs")
+                .join("llm_notch")
+                .join(bundled_helper_filename())
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
 }
 
 #[cfg(test)]

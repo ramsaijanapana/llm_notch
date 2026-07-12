@@ -120,16 +120,19 @@ export function deriveHealthBeaconTone(
   return 'healthy'
 }
 
-export function getConnectionBanner(connectionState: OverlayConnectionState): string | null {
+export function getConnectionBanner(
+  connectionState: OverlayConnectionState,
+  emptyMessage?: string | null | undefined,
+): string | null {
   switch (connectionState) {
     case 'empty':
-      return 'No active agent sessions'
+      return emptyMessage ?? 'No active agent sessions'
     case 'ipcError':
       return 'Connection to agent core lost'
     case 'coreError':
       return 'Agent core error'
     case 'stale':
-      return 'Data may be stale'
+      return 'Resyncing stream'
     case 'warmingUp':
       return 'Metrics warming up'
     case 'metricsUnavailable':
@@ -137,6 +140,63 @@ export function getConnectionBanner(connectionState: OverlayConnectionState): st
     case 'live':
       return null
   }
+}
+
+export function resolveConnectionBannerText(
+  connectionState: OverlayConnectionState,
+  options?: {
+    emptyMessage?: string | null | undefined
+    staleMessage?: string | undefined
+    errorMessage?: string | undefined
+  },
+): string | null {
+  const { emptyMessage, staleMessage, errorMessage } = options ?? {}
+  const banner = getConnectionBanner(connectionState, emptyMessage)
+  if (connectionState === 'stale' && staleMessage) {
+    return staleMessage
+  }
+  if ((connectionState === 'ipcError' || connectionState === 'coreError') && errorMessage) {
+    return errorMessage
+  }
+  return banner
+}
+
+export type CompactHintTone = 'error' | 'warning' | 'muted'
+
+export function getCompactHintTone(connectionState: OverlayConnectionState): CompactHintTone {
+  if (connectionState === 'ipcError' || connectionState === 'coreError') {
+    return 'error'
+  }
+  if (connectionState === 'stale') {
+    return 'warning'
+  }
+  return 'muted'
+}
+
+export function getCompactStatusHint(
+  connectionState: OverlayConnectionState,
+  sessionCount: number,
+  options?: {
+    emptyMessage?: string | null | undefined
+    staleMessage?: string | undefined
+    errorMessage?: string | undefined
+  },
+): string | null {
+  const text = resolveConnectionBannerText(connectionState, options)
+  if (!text) {
+    return null
+  }
+  if (sessionCount === 0) {
+    return text
+  }
+  if (
+    connectionState === 'ipcError' ||
+    connectionState === 'coreError' ||
+    connectionState === 'stale'
+  ) {
+    return text
+  }
+  return null
 }
 
 export function getCombinedCpuReading(snapshot: AppSnapshot | undefined): CombinedCpuReading {
@@ -218,8 +278,11 @@ export function compactAriaLabel(params: {
   sessionCount: number
   cpuLabel: string
   connectionState: OverlayConnectionState
+  emptyMessage?: string | null | undefined
 }): string {
-  const banner = getConnectionBanner(params.connectionState)
+  const banner = resolveConnectionBannerText(params.connectionState, {
+    emptyMessage: params.emptyMessage,
+  })
   const parts = [
     'Agent overlay compact view.',
     params.attentionCount > 0

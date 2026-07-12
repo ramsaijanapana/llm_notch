@@ -44,10 +44,15 @@ fn stop_group(vendor_event: &str) -> Value {
 }
 
 fn command_handler(vendor_event: &str) -> Value {
+    let timeout = if vendor_event == "PermissionRequest" {
+        120
+    } else {
+        2
+    };
     json!({
         "type": "command",
         "command": render_hook_command(vendor_event),
-        "timeout": 2,
+        "timeout": timeout,
     })
 }
 

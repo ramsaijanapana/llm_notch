@@ -56,7 +56,7 @@
           {
             "type": "command",
             "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source claudeCode --vendor-event PermissionRequest --hook-mode",
-            "timeout": 2
+            "timeout": 120
           }
         ]
       }

@@ -585,12 +585,15 @@ impl HostState {
                     };
                     let (ingest, completion) = pending.into_parts();
                     let state = Arc::clone(&self);
+                    let presentation = Arc::clone(&self);
                     let result = match tauri::async_runtime::spawn_blocking(move || state.ingest_normalized(ingest)).await {
                         Ok(result) => result,
                         Err(error) => Err(format!("normalized ingest task failed: {error}")),
                     };
                     if let Err(error) = &result {
                         warn!(%error, "normalized ingest rejected");
+                    } else {
+                        presentation.sync_presentation();
                     }
                     let _ = completion.send(result);
                 }
@@ -1072,7 +1075,7 @@ fn parse_ipc_source(raw: &str) -> AgentSource {
         "claudeCode" => AgentSource::ClaudeCode,
         "codex" => AgentSource::Codex,
         "gemini" => AgentSource::Gemini,
-        "antigravityCli" | "antigravity-cli" | "antigravity" => AgentSource::AntigravityCli,
+        "antigravityCli" | "antigravity-cli" | "antigravity" | "agy" => AgentSource::AntigravityCli,
         "copilotCli" | "copilot-cli" | "copilot" => AgentSource::CopilotCli,
         "qwen" | "qwen-cli" | "qwencode" => AgentSource::Qwen,
         "generic" => AgentSource::Generic,

@@ -46,9 +46,9 @@ pub fn entry_fingerprint(entry: &ManagedHookEntry) -> String {
     )
 }
 
-/// Returns true when `command` references the llm_notch Codex wrapper for `event`.
+/// Returns true when `command` references the llm_notch Codex helper for `event`.
 pub fn is_managed_command(event: &str, command: &str) -> bool {
-    command.contains("llm-notch-hook-wrapper")
+    command.contains("llm-notch-hook")
         && command.contains("--source codex")
         && command.contains("--vendor-event")
         && command.contains(event)
@@ -127,7 +127,7 @@ mod tests {
                 }]
             }
         });
-        let entries = codex_managed_entries("sh /hooks/llm-notch-hook-wrapper.sh");
+        let entries = codex_managed_entries("\"{{LLM_NOTCH_HELPER}}\" hook");
         merge_hooks_json(&mut target, &entries);
         let groups = target["hooks"]["PreToolUse"].as_array().expect("groups");
         assert_eq!(groups.len(), 2);
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn merge_is_idempotent() {
         let mut target = json!({ "hooks": {} });
-        let entries = codex_managed_entries("sh /hooks/llm-notch-hook-wrapper.sh");
+        let entries = codex_managed_entries("\"{{LLM_NOTCH_HELPER}}\" hook");
         merge_hooks_json(&mut target, &entries);
         merge_hooks_json(&mut target, &entries);
         let session_groups = target["hooks"]["SessionStart"]

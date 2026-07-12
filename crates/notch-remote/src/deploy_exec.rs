@@ -3,6 +3,8 @@ use std::process::Command;
 
 use thiserror::Error;
 
+use crate::process::configure_no_window;
+
 use crate::{
     DeploymentPlan, DeploymentStep, RemoteArchitecture, RemoteHostConfig, RemoteOs, RemoteTarget,
 };
@@ -292,8 +294,7 @@ fn run_command(
     args: &[String],
     missing_error: DeployTransportError,
 ) -> Result<String, DeployTransportError> {
-    let output = Command::new(executable)
-        .args(args)
+    let output = configure_no_window(&mut Command::new(executable).args(args))
         .output()
         .map_err(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {

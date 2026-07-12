@@ -1,12 +1,14 @@
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use notch_connectors::{ConnectorConfig, ConnectorError as ManagerError, ConnectorManager};
 use notch_protocol::{
-    AdapterCapabilities, AgentSource, ConnectorApplyError, ConnectorApplyResult,
+    AdapterCapabilities, AgentSession, AgentSource, ConnectorApplyError, ConnectorApplyResult,
     ConnectorHealthEntry, ConnectorHealthReport, ConnectorPlanPreview, ConnectorScope,
 };
 use parking_lot::Mutex;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tracing::warn;
 
 use crate::commands::error::CommandError;
 use crate::commands::validation::{validate_agent_source, validate_plan_id};
@@ -16,7 +18,10 @@ use crate::state::HostState;
 
 type SharedManager = Arc<Mutex<ConnectorManager>>;
 
+pub const CONNECTOR_HEALTH_CHANGED_EVENT: &str = "connector-health-changed";
+
 static MANAGER: OnceLock<SharedManager> = OnceLock::new();
+static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
 fn manager(app: &AppHandle) -> Result<SharedManager, CommandError> {
     if let Some(existing) = MANAGER.get() {
@@ -41,9 +46,19 @@ fn connector_config(app: &AppHandle) -> Result<ConnectorConfig, CommandError> {
         integrations_root,
         app_data_dir,
         helper_path: resolve_helper_path(app),
-        workspace_root: std::env::current_dir().ok(),
+        workspace_root: resolve_workspace_root(),
         user_scope_root: None,
     })
+}
+
+fn resolve_workspace_root() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("LLM_NOTCH_WORKSPACE") {
+        let path = PathBuf::from(path);
+        if path.is_dir() {
+            return Some(path);
+        }
+    }
+    None
 }
 
 fn map_connector_error(error: ManagerError) -> CommandError {
@@ -208,10 +223,40 @@ pub fn list_connector_backups(
     Ok(manager.lock().list_backups())
 }
 
+/// Initializes the connector manager before IPC ingest starts and seeds traffic
+/// timestamps from persisted sessions so health probes survive restart.
+pub fn initialize_connector_manager(
+    app: &AppHandle,
+    sessions: &[AgentSession],
+) -> Result<(), CommandError> {
+    let shared = manager(app)?;
+    let traffic = sessions
+        .iter()
+        .filter(|session| session.source != AgentSource::Unknown)
+        .map(|session| (session.source, session.last_event_at_ms))
+        .collect::<Vec<_>>();
+    shared.lock().seed_traffic_from_sessions(&traffic);
+    let _ = APP_HANDLE.set(app.clone());
+    Ok(())
+}
+
+fn emit_connector_health_changed() {
+    let Some(app) = APP_HANDLE.get() else {
+        return;
+    };
+    if let Err(error) = app.emit(CONNECTOR_HEALTH_CHANGED_EVENT, ()) {
+        warn!(%error, "connector health changed emit failed");
+    }
+}
+
 /// Records IPC ingest traffic for connector health probes (Lane 8 hook).
 pub fn record_connector_traffic(source: AgentSource, at_ms: i64) {
+    if source == AgentSource::Unknown {
+        return;
+    }
     if let Some(shared) = MANAGER.get() {
         shared.lock().record_event(source, at_ms);
+        emit_connector_health_changed();
     }
 }
 

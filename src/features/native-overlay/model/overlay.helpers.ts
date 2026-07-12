@@ -19,6 +19,7 @@ export function formatAgentSource(source: AgentSource): string {
     case 'gemini':
       return 'Gemini CLI'
     case 'antigravityCli':
+    case 'agy':
       return 'Antigravity CLI'
     case 'copilotCli':
       return 'GitHub Copilot CLI'

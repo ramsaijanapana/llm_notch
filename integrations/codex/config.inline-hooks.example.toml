@@ -17,7 +17,7 @@ matcher = "startup|resume"
 
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event SessionStart"
+command = "\"{{LLM_NOTCH_HELPER}}\" hook --source codex --vendor-event SessionStart"
 timeout = 2
 statusMessage = "llm_notch: session observe"
 
@@ -26,9 +26,9 @@ matcher = ".*"
 
 [[hooks.PermissionRequest.hooks]]
 type = "command"
-command = "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event PermissionRequest"
-timeout = 2
+command = "\"{{LLM_NOTCH_HELPER}}\" hook --source codex --vendor-event PermissionRequest"
+timeout = 120
 statusMessage = "llm_notch: permission observe"
 
-# Windows override example (optional per handler):
-# command_windows = 'pwsh -NoProfile -File {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} -Source codex -VendorEvent PermissionRequest'
+# Unix manual install may still use the shell wrapper:
+# command = "sh {{LLM_NOTCH_WRAPPER_ABSOLUTE_PATH}} --source codex --vendor-event PermissionRequest"

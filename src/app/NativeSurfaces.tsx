@@ -20,6 +20,9 @@ import {
   SessionsPanel,
   SettingsPanel,
 } from '../features/native-dashboard'
+import { bestDetectedConnector } from '../features/native-dashboard/utils/integrationLabels'
+import { deriveSessionsEmptyMessage, findSessionForDecision } from '../features/native-dashboard/utils/sessionHelpers'
+import { useIntegrationHealth } from '../features/native-dashboard/hooks/useIntegrationHealth'
 import dashboardStyles from '../features/native-dashboard/styles/dashboard.module.css'
 import { applyRemoteConnectionStatus } from '../features/native-dashboard/utils/remoteHosts'
 import {
@@ -58,6 +61,7 @@ import { useNativeState } from '../state/NativeStateProvider.tsx'
 
 const SHORTCUT_LABEL = 'CmdOrCtrl+Shift+Space'
 const ONBOARDING_KEY = 'llm-notch:onboarding-complete:v1'
+const DECISION_POLL_INTERVAL_MS = 500
 
 const EMPTY_SETTINGS: PublicSettings = {
   overlayEnabled: true,
@@ -121,9 +125,10 @@ function deriveOverlayConnection(
   if (connection === 'disconnected') return 'ipcError'
   if (connection === 'incompatible-protocol') return 'coreError'
   if (connection === 'resyncing') return 'stale'
-  if (connection === 'loading') return 'warmingUp'
-  if (!snapshot || snapshot.sessions.length === 0) return 'empty'
-  if (!snapshot.aggregate) return 'metricsUnavailable'
+  const sessionCount = snapshot?.sessions.length ?? 0
+  if (connection === 'loading' && sessionCount === 0) return 'warmingUp'
+  if (sessionCount === 0) return 'empty'
+  if (!snapshot?.aggregate) return 'metricsUnavailable'
   if (snapshot.aggregate.quality.cpu === 'warmingUp') return 'warmingUp'
   return 'live'
 }
@@ -157,10 +162,65 @@ function useCurrentSnapshot(): AppSnapshot | undefined {
 
 export function NativeOverlaySurface() {
   const { state, client, prefersReducedMotion } = useNativeState()
+  const { health } = useIntegrationHealth(client)
   const snapshot = useCurrentSnapshot()
   const [mode, setMode] = useState<OverlayMode>('compact')
   const [cpuHistory, setCpuHistory] = useState<OverlayCpuSample[]>([])
+  const [pendingDecisions, setPendingDecisions] = useState<DecisionRequest[]>([])
   const aggregate = snapshot?.aggregate
+  const sessions = snapshot?.sessions ?? []
+  const sessionsEmptyMessage = useMemo(
+    () => deriveSessionsEmptyMessage(state.adapters, health),
+    [health, state.adapters],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    const refreshPendingDecisions = () => {
+      void client
+        .getPendingDecisions()
+        .then((requests) => {
+          if (!cancelled) setPendingDecisions(requests)
+        })
+        .catch(() => {
+          if (!cancelled) setPendingDecisions([])
+        })
+    }
+    refreshPendingDecisions()
+    const interval = window.setInterval(refreshPendingDecisions, DECISION_POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [client])
+
+  const overlayDecision = useMemo(
+    () =>
+      pendingDecisions.find(
+        (request) => request.hasActionablePayload && findSessionForDecision(sessions, request),
+      ),
+    [pendingDecisions, sessions],
+  )
+  const overlayAdapter = overlayDecision
+    ? state.adapters.find((adapter) => adapter.source === overlayDecision.source)
+    : undefined
+  const overlayDecisionControlsEnabled =
+    overlayDecision !== undefined &&
+    overlayAdapter?.decisionResponse === true &&
+    overlayDecision.hasActionablePayload
+
+  useEffect(() => {
+    if (overlayDecision?.hasActionablePayload) {
+      setMode('peek')
+    }
+  }, [overlayDecision?.id, overlayDecision?.hasActionablePayload])
+
+  const respondToOverlayDecision = (
+    response: import('../native/contracts.ts').DecisionResponse,
+  ) => {
+    if (!overlayDecision) return
+    void client.respondDecision(overlayDecision.id, response).catch(() => {})
+  }
 
   useEffect(() => {
     if (!aggregate) return
@@ -204,6 +264,11 @@ export function NativeOverlaySurface() {
         onAcknowledge={(sessionId) => {
           void client.acknowledgeLocalAttention(sessionId).catch(() => {})
         }}
+        pendingDecision={overlayDecision}
+        decisionControlsEnabled={overlayDecisionControlsEnabled}
+        onDecisionAllow={() => respondToOverlayDecision({ type: 'action', action: 'allow' })}
+        onDecisionDeny={() => respondToOverlayDecision({ type: 'action', action: 'deny' })}
+        emptyMessage={sessionsEmptyMessage}
       />
     </div>
   )
@@ -430,7 +495,7 @@ export function NativeDashboardSurface() {
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>(0)
   const [detectedConnectors, setDetectedConnectors] = useState<DetectedConnector[]>([])
   const [detectLoadState, setDetectLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>(
-    'idle',
+    'loading',
   )
   const [detectError, setDetectError] = useState<string>()
   const [connectSelections, setConnectSelections] = useState<ConnectFileSelection[]>([])
@@ -569,7 +634,7 @@ export function NativeDashboardSurface() {
         })
     }
     refreshPendingDecisions()
-    const interval = window.setInterval(refreshPendingDecisions, 5_000)
+    const interval = window.setInterval(refreshPendingDecisions, DECISION_POLL_INTERVAL_MS)
     const onFocus = () => refreshPendingDecisions()
     window.addEventListener('focus', onFocus)
     return () => {
@@ -578,6 +643,15 @@ export function NativeDashboardSurface() {
       window.removeEventListener('focus', onFocus)
     }
   }, [client])
+
+  useEffect(() => {
+    const nextDecision = pendingDecisions.find((request) => request.hasActionablePayload)
+    if (!nextDecision) return
+    const session = findSessionForDecision(sessions, nextDecision)
+    if (session && state.selectedSessionId !== session.id) {
+      dispatch({ type: 'SET_SELECTED_SESSION', sessionId: session.id })
+    }
+  }, [dispatch, pendingDecisions, sessions, state.selectedSessionId])
 
   useEffect(() => {
     let cancelled = false
@@ -639,6 +713,7 @@ export function NativeDashboardSurface() {
 
   useEffect(() => {
     let cancelled = false
+    setDetectLoadState('loading')
     void client.listAgentCatalog().then((catalog) => {
       if (!cancelled) setAgentCatalog(catalog)
     })
@@ -673,6 +748,30 @@ export function NativeDashboardSurface() {
           setActionError(error instanceof Error ? error.message : 'Health check failed')
       })
     void client
+      .detectConnectors()
+      .then((detected) => {
+        if (!cancelled) {
+          setDetectedConnectors(detected)
+          setConnectSelections(
+            detected
+              .filter((entry) => entry.scope === 'user')
+              .filter((entry) => entry.configPresent || entry.executablePresent)
+              .map((entry) => ({
+                source: entry.source,
+                displayPath: entry.displayPath,
+                selected: true,
+              })),
+          )
+          setDetectLoadState('ready')
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setDetectLoadState('error')
+          setDetectError(error instanceof Error ? error.message : 'Detection failed')
+        }
+      })
+    void client
       .listConnectorBackups()
       .then((entries) => {
         if (!cancelled) setBackups(entries)
@@ -686,11 +785,17 @@ export function NativeDashboardSurface() {
   }, [client])
 
   const loadState: DashboardLoadState =
-    state.connection === 'loading' || state.connection === 'resyncing'
+    state.connection === 'loading' ||
+    (state.connection === 'resyncing' && sessions.length === 0)
       ? 'loading'
       : state.connection === 'disconnected' || state.connection === 'incompatible-protocol'
         ? 'error'
         : 'ready'
+
+  const sessionsEmptyMessage = useMemo(
+    () => deriveSessionsEmptyMessage(state.adapters, health, detectedConnectors),
+    [detectedConnectors, health, state.adapters],
+  )
 
   const displays = state.displays
   const selectedDisplayMissing =
@@ -711,7 +816,7 @@ export function NativeDashboardSurface() {
     .filter((adapter) => adapter.source !== 'unknown' && adapter.source !== 'generic')
     .map((adapter) => {
       const healthEntry = health?.adapters.find((entry) => entry.source === adapter.source)
-      const detected = detectedConnectors.find((entry) => entry.source === adapter.source)
+      const detected = bestDetectedConnector(detectedConnectors, adapter.source)
       const sourceSessions = sessions.filter((session) => session.source === adapter.source)
       const lastEventAtMs = sourceSessions.reduce<number | undefined>(
         (latest, session) =>
@@ -725,6 +830,8 @@ export function NativeDashboardSurface() {
         lastEventAtMs,
         managedEntriesPresent:
           detected?.managedEntriesPresent ?? healthEntry?.status === 'connected',
+        executablePresent: detected?.executablePresent,
+        configPresent: detected?.configPresent,
       }
     })
 
@@ -771,14 +878,57 @@ export function NativeDashboardSurface() {
       .catch(() => setBackups([]))
   }
 
-  const refreshHealth = () => {
+  const refreshHealth = useCallback(() => {
     void client
       .getIntegrationHealth()
       .then(setHealth)
       .catch((error: unknown) => {
         setActionError(error instanceof Error ? error.message : 'Health check failed')
       })
-  }
+  }, [client])
+
+  useEffect(() => {
+    let cancelled = false
+    let subscription: { unsubscribe: () => Promise<void> } | null = null
+
+    void client
+      .subscribeConnectorHealthChanges(() => {
+        if (cancelled) return
+        refreshHealth()
+      })
+      .then((activeSubscription) => {
+        if (cancelled) {
+          void activeSubscription.unsubscribe()
+          return
+        }
+        subscription = activeSubscription
+      })
+      .catch(() => {
+        // Connector health events are optional in preview builds.
+      })
+
+    return () => {
+      cancelled = true
+      if (subscription) {
+        void subscription.unsubscribe()
+      }
+    }
+  }, [client, refreshHealth])
+
+  const latestSessionEventAtMs = useMemo(
+    () =>
+      sessions.reduce<number | undefined>(
+        (latest, session) =>
+          latest === undefined ? session.lastEventAtMs : Math.max(latest, session.lastEventAtMs),
+        undefined,
+      ),
+    [sessions],
+  )
+
+  useEffect(() => {
+    if (latestSessionEventAtMs === undefined) return
+    refreshHealth()
+  }, [latestSessionEventAtMs, refreshHealth])
 
   const runDetection = () => {
     setDetectLoadState('loading')
@@ -788,11 +938,14 @@ export function NativeDashboardSurface() {
       .then((detected) => {
         setDetectedConnectors(detected)
         setConnectSelections(
-          detected.map((entry) => ({
-            source: entry.source,
-            displayPath: entry.displayPath,
-            selected: entry.scope === 'user',
-          })),
+          detected
+            .filter((entry) => entry.scope === 'user')
+            .filter((entry) => entry.configPresent || entry.executablePresent)
+            .map((entry) => ({
+              source: entry.source,
+              displayPath: entry.displayPath,
+              selected: true,
+            })),
         )
         setDetectLoadState('ready')
       })
@@ -926,7 +1079,10 @@ export function NativeDashboardSurface() {
       })
   }
 
-  const selectedDecision = pendingDecisions[0]
+  const selectedDecision =
+    pendingDecisions.find(
+      (request) => request.hasActionablePayload && findSessionForDecision(sessions, request),
+    ) ?? pendingDecisions[0]
   const selectedDecisionRecord = selectedDecision ? decisionRecords[selectedDecision.id] : undefined
 
   const historyRange = state.historyRange as MetricsHistoryRange
@@ -1100,7 +1256,15 @@ export function NativeDashboardSurface() {
                   ? respondToDecision(selectedDecision.id, { type: 'answer', text })
                   : undefined
               }
+              onAcknowledge={(sessionId) => {
+                void client.acknowledgeLocalAttention(sessionId).catch((error: unknown) => {
+                  setActionError(
+                    error instanceof Error ? error.message : 'Attention acknowledge failed',
+                  )
+                })
+              }}
               loadState={sessions.length === 0 && loadState === 'ready' ? 'empty' : loadState}
+              emptyMessage={sessionsEmptyMessage}
             />
           }
           metricsPanel={
@@ -1125,6 +1289,7 @@ export function NativeDashboardSurface() {
             <IntegrationsPanel
               integrations={integrationCards}
               catalog={agentCatalog}
+              detectedConnectors={detectedConnectors}
               backups={backups}
               pendingPlan={pendingPlan}
               applyProgress={applyProgress}

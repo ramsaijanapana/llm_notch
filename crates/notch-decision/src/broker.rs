@@ -1,6 +1,6 @@
 //! Decision broker core: idempotent waits, expiry, and honest delivery states.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -44,6 +44,7 @@ pub struct DecisionBroker {
     active: Mutex<HashMap<String, ActiveDecision>>,
     waiters: Mutex<HashMap<String, Arc<Notify>>>,
     now_ms: fn() -> i64,
+    wait_timeout_ms: u64,
 }
 
 impl DecisionBroker {
@@ -53,6 +54,7 @@ impl DecisionBroker {
             active: Mutex::new(HashMap::new()),
             waiters: Mutex::new(HashMap::new()),
             now_ms: || chrono::Utc::now().timestamp_millis(),
+            wait_timeout_ms: DECISION_FAIL_OPEN_TIMEOUT_MS,
         })
     }
 
@@ -62,6 +64,7 @@ impl DecisionBroker {
             active: Mutex::new(HashMap::new()),
             waiters: Mutex::new(HashMap::new()),
             now_ms: || chrono::Utc::now().timestamp_millis(),
+            wait_timeout_ms: DECISION_FAIL_OPEN_TIMEOUT_MS,
         })
     }
 
@@ -72,13 +75,30 @@ impl DecisionBroker {
             active: Mutex::new(HashMap::new()),
             waiters: Mutex::new(HashMap::new()),
             now_ms,
+            wait_timeout_ms: 50,
         })
     }
 
     pub fn list_pending(&self) -> Result<Vec<DecisionRequest>, BrokerError> {
-        self.store
-            .list_pending_requests((self.now_ms)())
-            .map_err(|err| BrokerError::Store(err.to_string()))
+        let now = (self.now_ms)();
+        let mut pending = self
+            .store
+            .list_pending_requests(now)
+            .map_err(|err| BrokerError::Store(err.to_string()))?;
+        let mut seen: HashSet<String> = pending.iter().map(|request| request.id.clone()).collect();
+        for active in self.active.lock().values() {
+            if !matches!(active.internal_state, InternalDeliveryState::Pending) {
+                continue;
+            }
+            if now >= active.expires_at_ms {
+                continue;
+            }
+            if seen.insert(active.request.id.clone()) {
+                pending.push(active.request.clone());
+            }
+        }
+        pending.sort_by_key(|request| request.created_at_ms);
+        Ok(pending)
     }
 
     pub async fn handle_wait(&self, pending: PendingDecisionWait) -> DecisionReplyPayload {
@@ -93,11 +113,11 @@ impl DecisionBroker {
             }
         }
 
-        let expires_at_ms = payload.created_at_ms + DECISION_FAIL_OPEN_TIMEOUT_MS as i64;
+        let expires_at_ms = payload.created_at_ms + self.wait_timeout_ms as i64;
         let session_id = payload
             .session_id
             .clone()
-            .unwrap_or_else(|| payload.external_session_id.clone());
+            .unwrap_or_else(|| internal_session_id(payload.source, &payload.external_session_id));
         let request = DecisionRequest {
             id: nonce.clone(),
             session_id,
@@ -141,7 +161,7 @@ impl DecisionBroker {
         self.active.lock().insert(nonce.clone(), active);
 
         let wait = notify.notified();
-        let timeout = tokio::time::sleep(Duration::from_millis(DECISION_FAIL_OPEN_TIMEOUT_MS));
+        let timeout = tokio::time::sleep(Duration::from_millis(self.wait_timeout_ms));
         tokio::pin!(wait);
         tokio::pin!(timeout);
 
@@ -446,6 +466,19 @@ fn build_stdout_for_active(
     )
 }
 
+/// Deterministic internal session id aligned with `notch-core::session_id_for`.
+fn internal_session_id(source: notch_protocol::AgentSource, external_session_id: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    format!("{source:?}").hash(&mut hasher);
+    external_session_id.hash(&mut hasher);
+    let hash = hasher.finish();
+    format!("s-{hash:016x}")
+        .chars()
+        .take(notch_protocol::MAX_SESSION_ID_LEN)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,6 +510,53 @@ mod tests {
                 created_at_ms: 1_000,
             },
         }
+    }
+
+    #[test]
+    fn internal_session_id_matches_core_contract() {
+        let id = internal_session_id(AgentSource::ClaudeCode, "ext-1");
+        assert!(id.starts_with('s'));
+        assert!(id.len() <= notch_protocol::MAX_SESSION_ID_LEN);
+        assert_eq!(
+            internal_session_id(AgentSource::ClaudeCode, "ext-1"),
+            internal_session_id(AgentSource::ClaudeCode, "ext-1")
+        );
+        assert_ne!(
+            internal_session_id(AgentSource::ClaudeCode, "ext-1"),
+            internal_session_id(AgentSource::ClaudeCode, "ext-2")
+        );
+    }
+
+    #[test]
+    fn list_pending_includes_in_memory_active_waits() {
+        static NOW: AtomicI64 = AtomicI64::new(1_000);
+        let broker = DecisionBroker::with_clock(|| NOW.load(Ordering::Relaxed)).expect("broker");
+        broker.active.lock().insert(
+            "memory-only".into(),
+            ActiveDecision {
+                request: DecisionRequest {
+                    id: "memory-only".into(),
+                    session_id: internal_session_id(AgentSource::ClaudeCode, "ext-1"),
+                    source: AgentSource::ClaudeCode,
+                    kind: DecisionKind::Permission,
+                    summary: "Allow?".into(),
+                    has_actionable_payload: true,
+                    created_at_ms: 1_000,
+                    expires_at_ms: Some(5_000),
+                },
+                internal_state: InternalDeliveryState::Pending,
+                vendor_event: "PermissionRequest".into(),
+                external_session_id: "ext-1".into(),
+                respondable_hook: Some("permissionRequest".into()),
+                tool_name: None,
+                connection_id: "conn".into(),
+                vendor_context: None,
+                expires_at_ms: 5_000,
+            },
+        );
+        let pending = broker.list_pending().expect("list");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, "memory-only");
     }
 
     #[tokio::test]

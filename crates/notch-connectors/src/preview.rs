@@ -38,7 +38,11 @@ pub fn build_preview(
     let baseline_sha256 = sha256_hex(baseline_text.as_bytes());
 
     let (merged_value, foreign_entries_preserved) = match operation {
-        PlanOperation::Install | PlanOperation::Repair => adapter.merge(&baseline_value, &template),
+        PlanOperation::Install => adapter.merge(&baseline_value, &template),
+        PlanOperation::Repair => {
+            let (baseline, _) = adapter.remove_managed(&baseline_value);
+            adapter.merge(&baseline, &template)
+        }
         PlanOperation::Remove => adapter.remove_managed(&baseline_value),
         PlanOperation::Rollback => {
             return Err(ConnectorError::InvalidRequest(

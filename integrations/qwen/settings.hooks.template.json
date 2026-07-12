@@ -48,7 +48,7 @@
             "type": "command",
             "name": "llm-notch-permission-request",
             "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source qwen --vendor-event PermissionRequest --hook-mode",
-            "timeout": 2000
+            "timeout": 120000
           }
         ]
       }

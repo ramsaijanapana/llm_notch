@@ -1,4 +1,4 @@
-import type { AgentSession, AppSnapshot } from '../../../native/contracts'
+import type { AgentSession, AppSnapshot, DecisionRequest } from '../../../native/contracts'
 import {
   formatAgentSource,
   formatAttentionKind,
@@ -12,8 +12,8 @@ import {
   formatThroughput,
 } from '../model/overlay.helpers'
 import {
-  getConnectionBanner,
   getFooterMetrics,
+  resolveConnectionBannerText,
   selectAttentionSessions,
   sortSessionsForPeek,
 } from '../model/overlay.selectors'
@@ -28,6 +28,11 @@ export interface PeekPanelProps {
   errorMessage?: string | undefined
   onOpenDashboard?: (() => void) | undefined
   onAcknowledge?: ((sessionId: string) => void) | undefined
+  pendingDecision?: DecisionRequest | undefined
+  decisionControlsEnabled?: boolean | undefined
+  onDecisionAllow?: (() => void) | undefined
+  onDecisionDeny?: (() => void) | undefined
+  emptyMessage?: string | null | undefined
 }
 
 function sessionStatusClass(session: AgentSession): string {
@@ -75,19 +80,21 @@ export function PeekPanel({
   errorMessage,
   onOpenDashboard,
   onAcknowledge,
+  pendingDecision,
+  decisionControlsEnabled = false,
+  onDecisionAllow,
+  onDecisionDeny,
+  emptyMessage,
 }: PeekPanelProps) {
   const sessions = snapshot?.sessions ?? []
   const attentionSessions = selectAttentionSessions(sessions)
   const orderedSessions = sortSessionsForPeek(sessions)
-  const banner = getConnectionBanner(connectionState)
   const footer = getFooterMetrics(snapshot)
-
-  const bannerText =
-    connectionState === 'stale' && staleMessage
-      ? staleMessage
-      : (connectionState === 'ipcError' || connectionState === 'coreError') && errorMessage
-        ? errorMessage
-        : banner
+  const bannerText = resolveConnectionBannerText(connectionState, {
+    emptyMessage,
+    staleMessage,
+    errorMessage,
+  })
 
   const showQualityNote = footer.attributionLabel !== undefined || footer.ioLabel !== undefined
 
@@ -115,6 +122,39 @@ export function PeekPanel({
       ) : null}
 
       <div className={styles.peekBody}>
+        {pendingDecision && decisionControlsEnabled ? (
+          <div className={styles.attentionSection} data-testid="decision-section">
+            <p className={styles.sectionLabel}>Needs decision</p>
+            <div className={styles.decisionPrompt} data-testid="overlay-decision-prompt">
+              <div className={styles.attentionCopy}>
+                <p className={styles.attentionTitle}>
+                  {pendingDecision.kind === 'question' ? 'Question' : 'Permission'} —{' '}
+                  {formatAgentSource(pendingDecision.source)}
+                </p>
+                <p className={styles.attentionMeta}>{pendingDecision.summary}</p>
+              </div>
+              {pendingDecision.kind !== 'question' ? (
+                <div className={styles.decisionActions}>
+                  <button
+                    type="button"
+                    className={`${styles.actionButton} ${styles.actionPrimary}`}
+                    onClick={onDecisionAllow}
+                  >
+                    Allow
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.actionButton}
+                    onClick={onDecisionDeny}
+                  >
+                    Deny
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         {attentionSessions.length > 0 ? (
           <div className={styles.attentionSection} data-testid="attention-section">
             <p className={styles.sectionLabel}>Needs attention</p>

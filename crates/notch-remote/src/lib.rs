@@ -3,6 +3,7 @@
 mod config;
 mod deploy;
 mod deploy_exec;
+mod process;
 pub mod event_spool;
 pub mod hook_ingest;
 mod protocol;
@@ -31,6 +32,7 @@ pub use relay_artifact::{
     sidecar_filename_for_target,
 };
 pub use session::{RelaySession, RelaySessionError, RelaySessionSnapshot, RemoteRelayManager};
+pub use process::{configure_no_window, hidden_command};
 pub use transport::{
     DEFAULT_REMOTE_BIN_DIRECTORY, DEFAULT_REMOTE_RUNTIME_DIRECTORY, DirectRelayTransport,
     OpenSshTransport, RemoteConnection, RemoteTransport, TransportError,

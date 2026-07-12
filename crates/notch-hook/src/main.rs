@@ -112,18 +112,17 @@ async fn main() -> ExitCode {
         };
 
         let request_id = Uuid::new_v4().simple().to_string();
-        match deliver_payload(&request_id, &payload, &delivery_target).await {
+        match deliver_with_optional_transient_spool(
+            &request_id,
+            &payload,
+            &delivery_target,
+            is_vendor_mode(&mode),
+            None,
+        )
+        .await
+        {
             Ok(()) => ExitCode::SUCCESS,
-            Err(err) => {
-                debug!(?err, "deliver failed");
-                if is_vendor_mode(&mode) && is_transient_delivery_error(&err) {
-                    if let Err(spool_error) = spool_payload(&request_id, &payload) {
-                        debug!(?spool_error, "transient event could not be spooled");
-                    }
-                    return ExitCode::SUCCESS;
-                }
-                emit_failure(&mode, err)
-            }
+            Err(err) => emit_failure(&mode, err),
         }
     }
 }
@@ -138,6 +137,42 @@ async fn deliver_payload(
     }
     let client = IngestClient::discover()?;
     deliver_with_client(&client, request_id, payload).await
+}
+
+async fn deliver_with_optional_transient_spool(
+    request_id: &str,
+    payload: &IngestPayload,
+    target: &DeliveryTarget,
+    spool_on_transient: bool,
+    fallback_spool_dir: Option<&Path>,
+) -> Result<(), IpcError> {
+    match deliver_payload(request_id, payload, target).await {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            debug!(?err, "deliver failed");
+            if spool_on_transient && is_transient_delivery_error(&err) {
+                if let Err(spool_error) =
+                    attempt_transient_spool_fallback(request_id, payload, fallback_spool_dir)
+                {
+                    debug!(?spool_error, "transient event could not be spooled");
+                }
+                Ok(())
+            } else {
+                Err(err)
+            }
+        }
+    }
+}
+
+fn attempt_transient_spool_fallback(
+    request_id: &str,
+    payload: &IngestPayload,
+    fallback_spool_dir: Option<&Path>,
+) -> Result<(), IpcError> {
+    match fallback_spool_dir {
+        Some(runtime_dir) => spool_payload_in(runtime_dir, request_id, payload),
+        None => spool_payload(request_id, payload),
+    }
 }
 
 async fn deliver_with_client(
@@ -270,24 +305,27 @@ fn parse_hook_mode(args: &[String]) -> Result<HookMode, IpcError> {
         index += 1;
     }
     let source = source.ok_or_else(|| IpcError::FrameRejected("--source required".into()))?;
-    if !matches!(
-        source.as_str(),
-        "cursor"
-            | "claudeCode"
-            | "codex"
-            | "gemini"
-            | "qwen"
-            | "antigravityCli"
-            | "copilotCli"
-            | "generic"
-    ) {
-        return Err(IpcError::FrameRejected("unsupported hook source".into()));
-    }
+    let source = normalize_vendor_hook_source(&source)
+        .ok_or_else(|| IpcError::FrameRejected("unsupported hook source".into()))?;
     Ok(HookMode::Vendor {
-        source,
+        source: source.into(),
         vendor_event: vendor_event
             .ok_or_else(|| IpcError::FrameRejected("--vendor-event required".into()))?,
     })
+}
+
+fn normalize_vendor_hook_source(source: &str) -> Option<&'static str> {
+    match source.to_ascii_lowercase().as_str() {
+        "cursor" => Some("cursor"),
+        "claudecode" | "claude_code" | "claude-code" => Some("claudeCode"),
+        "codex" => Some("codex"),
+        "gemini" | "geminicli" | "gemini-cli" => Some("gemini"),
+        "qwen" | "qwen-cli" | "qwencode" => Some("qwen"),
+        "antigravitycli" | "antigravity-cli" | "antigravity" | "agy" => Some("antigravityCli"),
+        "copilotcli" | "copilot-cli" | "copilot" => Some("copilotCli"),
+        "generic" => Some("generic"),
+        _ => None,
+    }
 }
 
 async fn run_vendor_hook(
@@ -303,7 +341,7 @@ async fn run_vendor_hook(
     let payload = vendor_hook_payload(source, vendor_event, &value)?;
     let payload = prepare_hook_payload(payload)?;
     let request_id = Uuid::new_v4().simple().to_string();
-    deliver_payload(&request_id, &payload, target).await?;
+    deliver_with_optional_transient_spool(&request_id, &payload, target, true, None).await?;
     Ok(DECISION_HOOK_NEUTRAL_OUTPUT.into())
 }
 
@@ -985,6 +1023,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn vendor_hook_transient_delivery_failure_spools_event() {
+        let spool_dir = tempfile::tempdir().unwrap();
+        let payload = prepare_hook_payload(
+            vendor_hook_payload(
+                "cursor",
+                "SessionStart",
+                &serde_json::json!({"session_id": "offline"}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let request_id = "vendor-offline-1";
+        let target = DeliveryTarget {
+            spool_runtime_dir: None,
+        };
+
+        deliver_with_optional_transient_spool(
+            request_id,
+            &payload,
+            &target,
+            true,
+            Some(spool_dir.path()),
+        )
+        .await
+        .expect("vendor hook should fail open after transient delivery failure");
+
+        let spool = EventSpool::new(spool_dir.path()).unwrap();
+        assert_eq!(spool.list_frames().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
     async fn helper_delivery_reaches_authenticated_server() {
         let directory = tempfile::tempdir().expect("temp runtime");
         let mut server = notch_ipc::start_ingest_server(notch_ipc::IngestServerConfig {
@@ -1305,5 +1374,16 @@ mod tests {
         assert_eq!(payload.terminal_session_id.as_deref(), Some("0"));
         assert_eq!(payload.tab_id.as_deref(), Some("2"));
         assert_eq!(payload.pane_id.as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn antigravity_source_aliases_normalize_for_hook_mode() {
+        for alias in ["agy", "antigravity", "antigravity-cli", "antigravityCli"] {
+            assert_eq!(
+                normalize_vendor_hook_source(alias),
+                Some("antigravityCli"),
+                "alias {alias}"
+            );
+        }
     }
 }

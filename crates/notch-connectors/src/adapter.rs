@@ -326,24 +326,47 @@ fn rewrite_command(command: &str, helper_path: &Path, helper: &str) -> String {
         return command.replace(HELPER_PLACEHOLDER, &quoted_helper);
     }
     if command.contains(WRAPPER_PLACEHOLDER) {
-        return command.replace(WRAPPER_PLACEHOLDER, &quoted_helper);
+        return materialize_wrapper_command(command, &quoted_helper);
     }
     if command.contains(WRAPPER_ABSOLUTE_PLACEHOLDER) {
-        return command.replace(WRAPPER_ABSOLUTE_PLACEHOLDER, &quoted_helper);
+        return materialize_wrapper_command(command, &quoted_helper);
     }
 
     if let Some(idx) = command.find("--source") {
         let suffix = command[idx..].trim();
-        if cfg!(windows) {
-            format!("{quoted_helper} {suffix}")
-        } else {
-            format!("{quoted_helper} {suffix}")
-        }
-    } else if command.contains("llm-notch-hook-wrapper") {
+        return format!("{quoted_helper} hook {suffix}");
+    }
+
+    if command.contains("llm-notch-hook-wrapper") {
         format!("{quoted_helper}")
     } else {
         helper_path.display().to_string()
     }
+}
+
+fn materialize_wrapper_command(command: &str, quoted_helper: &str) -> String {
+    let mut materialized = command
+        .replace(WRAPPER_ABSOLUTE_PLACEHOLDER, quoted_helper)
+        .replace(WRAPPER_PLACEHOLDER, quoted_helper);
+    if cfg!(windows) {
+        materialized = strip_windows_sh_prefix(&materialized);
+    }
+    if !materialized.contains(" hook ") && materialized.contains("--source") {
+        if let Some(idx) = materialized.find("--source") {
+            let suffix = materialized[idx..].trim();
+            return format!("{quoted_helper} hook {suffix}");
+        }
+    }
+    materialized
+}
+
+/// Codex templates prefix wrapper paths with `sh`; Windows runs the helper directly.
+fn strip_windows_sh_prefix(command: &str) -> String {
+    let trimmed = command.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("sh ") {
+        return rest.trim_start().to_string();
+    }
+    command.to_string()
 }
 
 #[cfg(test)]
@@ -461,5 +484,38 @@ mod tests {
             .expect("command");
         assert!(command.contains("llm-notch-hook.exe"));
         assert!(command.contains("--source cursor"));
+    }
+
+    #[test]
+    fn materialize_codex_template_uses_hook_subcommand_without_sh() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
+        let helper = PathBuf::from(r"C:\Program Files\llm_notch\llm-notch-hook.exe");
+        let registry = AdapterRegistry::new(root.clone(), helper.clone());
+        let adapter = registry.get(AgentSource::Codex).expect("codex");
+        let materialized =
+            materialize_template(&adapter.load_template().expect("template"), &helper);
+        let command = materialized["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+            .as_str()
+            .expect("command");
+        assert!(
+            !command.starts_with("sh "),
+            "Windows Codex commands must not use sh: {command}"
+        );
+        assert!(
+            command.contains(" hook --source codex --vendor-event SessionStart"),
+            "expected hook subcommand: {command}"
+        );
+        assert!(
+            command.contains("llm-notch-hook.exe"),
+            "expected helper path in command: {command}"
+        );
+    }
+
+    #[test]
+    fn strip_windows_sh_prefix_removes_leading_sh() {
+        assert_eq!(
+            strip_windows_sh_prefix("sh \"C:\\helper.exe\" --source codex"),
+            "\"C:\\helper.exe\" --source codex"
+        );
     }
 }

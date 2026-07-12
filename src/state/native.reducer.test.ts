@@ -162,6 +162,49 @@ describe('nativeReducer', () => {
     expect(state.sessions['sess-cursor-refactor']?.latestMetric).toBeUndefined()
   })
 
+  it('keeps snapshot sessions in sync with session upserts and removes', () => {
+    const snapshot = createPreviewSnapshot()
+    let state = nativeReducer(createInitialNativeState('preview'), {
+      type: 'APPLY_BOOTSTRAP',
+      snapshot,
+      lastSequence: 1,
+      events: [],
+    })
+    const liveSession = snapshot.sessions[0]
+    if (!liveSession) throw new Error('preview session missing')
+
+    state = nativeReducer(state, {
+      type: 'APPLY_FRAME',
+      frame: {
+        sequence: 2,
+        emittedAtMs: Date.now(),
+        payload: {
+          type: 'sessionUpsert',
+          session: {
+            ...liveSession,
+            id: 'sess-live-upsert',
+            label: 'Live upsert',
+          },
+        },
+      },
+    })
+
+    expect(state.sessionOrder).toContain('sess-live-upsert')
+    expect(state.snapshot?.sessions.some((session) => session.id === 'sess-live-upsert')).toBe(true)
+
+    state = nativeReducer(state, {
+      type: 'APPLY_FRAME',
+      frame: {
+        sequence: 3,
+        emittedAtMs: Date.now(),
+        payload: { type: 'sessionRemove', sessionId: 'sess-live-upsert' },
+      },
+    })
+
+    expect(state.sessionOrder).not.toContain('sess-live-upsert')
+    expect(state.snapshot?.sessions.some((session) => session.id === 'sess-live-upsert')).toBe(false)
+  })
+
   it('merges and clears authoritative per-session metrics', () => {
     const snapshot = createPreviewSnapshot()
     let state = nativeReducer(createInitialNativeState('preview'), {

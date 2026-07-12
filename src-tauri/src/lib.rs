@@ -361,6 +361,14 @@ pub fn run() {
                 warn!(%error, "could not synchronize autostart state");
             }
 
+            let initial_snapshot = host.snapshot();
+            if let Err(error) = commands::integration::initialize_connector_manager(
+                app.handle(),
+                &initial_snapshot.sessions,
+            ) {
+                warn!(%error, "connector manager initialization failed");
+            }
+
             host.start_background();
             host.start_remote_relay_supervisor(
                 app.handle().clone(),
@@ -376,7 +384,6 @@ pub fn run() {
             });
             let helper_path = runtime::helper_path::resolve_helper_path(app.handle());
             let relay_path = runtime::relay_path::resolve_relay_binary_path(app.handle());
-            let initial_snapshot = host.snapshot();
             info!(
                 protocol_version = notch_protocol::PROTOCOL_VERSION,
                 captured_at_ms = initial_snapshot.captured_at_ms,

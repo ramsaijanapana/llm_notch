@@ -11,7 +11,7 @@ use crate::adapter::{AdapterRegistry, PlanOperation};
 use crate::apply::apply_plan;
 use crate::detect::{DetectedConnector, detect_all, detect_source};
 use crate::error::ConnectorError;
-use crate::health::{helper_exists, probe_connector};
+use crate::health::probe_connector;
 use crate::journal::Journal;
 use crate::path_security::ScopeRoot;
 use crate::plan::{PlanStore, now_ms};
@@ -165,7 +165,6 @@ impl ConnectorManager {
     ) -> Result<ConnectorHealthReport, ConnectorError> {
         let now = now_ms();
         let detected = self.detect_all()?;
-        let helper_ok = helper_exists(&self.config.helper_path);
         let entries = adapters
             .iter()
             .filter_map(|capabilities| {
@@ -173,16 +172,17 @@ impl ConnectorManager {
                 if matches!(source, AgentSource::Generic | AgentSource::Unknown) {
                     return None;
                 }
-                let entry = detected
-                    .iter()
-                    .find(|item| item.source == source)
-                    .cloned()
-                    .unwrap_or(DetectedConnector {
+                let entry = best_detected(&detected, source).cloned().unwrap_or(DetectedConnector {
                         source,
                         scope: ConnectorScope::User,
                         display_path: String::new(),
                         config_present: false,
                         managed_entries_present: false,
+                        executable_present: false,
+                        executable_path: None,
+                        process_running: false,
+                        running_process_name: None,
+                        managed_commands: Vec::new(),
                     });
                 let last_event = self
                     .last_event_at
@@ -193,7 +193,7 @@ impl ConnectorManager {
                     &self.registry,
                     &entry,
                     capabilities.clone(),
-                    helper_ok,
+                    &self.config.helper_path,
                     last_event,
                     now,
                 ))
@@ -214,13 +214,25 @@ impl ConnectorManager {
         let detected = self
             .detect_source(source)?
             .into_iter()
-            .find(|entry| entry.scope == ConnectorScope::User)
+            .max_by_key(|entry| {
+                (
+                    entry.config_present,
+                    entry.managed_entries_present,
+                    entry.executable_present,
+                    entry.process_running,
+                )
+            })
             .unwrap_or(DetectedConnector {
                 source,
                 scope: ConnectorScope::User,
                 display_path: String::new(),
                 config_present: false,
                 managed_entries_present: false,
+                executable_present: false,
+                executable_path: None,
+                process_running: false,
+                running_process_name: None,
+                managed_commands: Vec::new(),
             });
         let last_event = self
             .last_event_at
@@ -231,16 +243,28 @@ impl ConnectorManager {
             &self.registry,
             &detected,
             capabilities,
-            helper_exists(&self.config.helper_path),
+            &self.config.helper_path,
             last_event,
             now,
         ))
     }
 
     pub fn record_event(&self, source: AgentSource, at_ms: i64) {
+        if matches!(source, AgentSource::Unknown) {
+            return;
+        }
         self.last_event_at
             .lock()
-            .insert(format!("{source:?}"), at_ms);
+            .entry(format!("{source:?}"))
+            .and_modify(|existing| *existing = (*existing).max(at_ms))
+            .or_insert(at_ms);
+    }
+
+    /// Reconstructs in-memory traffic timestamps from persisted session rows.
+    pub fn seed_traffic_from_sessions(&self, sessions: &[(AgentSource, i64)]) {
+        for (source, at_ms) in sessions {
+            self.record_event(*source, *at_ms);
+        }
     }
 
     pub fn list_backups(&self) -> Vec<notch_protocol::BackupJournalEntry> {
@@ -297,6 +321,16 @@ impl ConnectorManager {
             }
         }
     }
+}
+
+fn best_detected<'a>(detected: &'a [DetectedConnector], source: AgentSource) -> Option<&'a DetectedConnector> {
+    detected.iter().filter(|entry| entry.source == source).max_by_key(|entry| {
+        (
+            entry.config_present,
+            entry.managed_entries_present,
+            entry.executable_present,
+        )
+    })
 }
 
 pub type SharedConnectorManager = Arc<ConnectorManager>;

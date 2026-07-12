@@ -1,6 +1,7 @@
 import type {
   AgentSource,
   ConnectorUserStatus,
+  DetectedConnector,
   ExternalTrustAction,
 } from '../../../../native/contracts'
 import styles from '../../styles/dashboard.module.css'
@@ -8,7 +9,7 @@ import type { IntegrationCardState } from '../../types/contracts'
 import {
   connectorStatusBadgeTone,
   connectorStatusGuidance,
-  connectorStatusLabel,
+  effectiveConnectorStatusLabel,
 } from '../../utils/integrationLabels'
 
 const BADGE_CLASS = {
@@ -21,23 +22,28 @@ const BADGE_CLASS = {
 type ConnectorHealthBadgeProps = {
   source: AgentSource
   status: ConnectorUserStatus
+  statusLabel?: string | undefined
   detail?: string | undefined
+  detected?: DetectedConnector | undefined
   externalTrustActions?: ExternalTrustAction[] | undefined
 }
 
 export function ConnectorHealthBadge({
   source,
   status,
+  statusLabel,
   detail,
+  detected,
   externalTrustActions = [],
 }: ConnectorHealthBadgeProps) {
   const tone = connectorStatusBadgeTone(status)
-  const guidance = detail ?? connectorStatusGuidance(source, status, externalTrustActions)
+  const label = statusLabel ?? effectiveConnectorStatusLabel(status, detected)
+  const guidance = detail ?? connectorStatusGuidance(source, status, externalTrustActions, detected)
 
   return (
     <div>
       <p className={styles.muted}>
-        Health: <span className={BADGE_CLASS[tone]}>{connectorStatusLabel(status)}</span>
+        Health: <span className={BADGE_CLASS[tone]}>{label}</span>
       </p>
       {guidance ? (
         <p className={styles.caveat} role="status">

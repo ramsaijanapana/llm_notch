@@ -102,6 +102,8 @@ export interface IntegrationCardState {
   statusDetail?: string | undefined
   lastEventAtMs?: number | undefined
   managedEntriesPresent: boolean
+  executablePresent?: boolean | undefined
+  configPresent?: boolean | undefined
 }
 
 export interface ConnectFileSelection {
@@ -199,6 +201,7 @@ export interface SessionsPanelProps {
   onDecisionAllow?: (() => void) | undefined
   onDecisionDeny?: (() => void) | undefined
   onDecisionAnswer?: ((text: string) => void) | undefined
+  onAcknowledge?: ((sessionId: string) => void) | undefined
   loadState?: DashboardLoadState | undefined
   emptyMessage?: string | undefined
 }
@@ -223,6 +226,7 @@ export interface MetricsPanelProps {
 export interface IntegrationsPanelProps {
   integrations: IntegrationCardState[]
   catalog?: AgentCatalogEntry[] | undefined
+  detectedConnectors?: DetectedConnector[] | undefined
   backups: BackupJournalEntry[]
   pendingPlan?: PendingPlanReview | undefined
   applyProgress?: ApplyProgressEntry[] | undefined

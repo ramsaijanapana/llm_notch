@@ -3,6 +3,8 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use thiserror::Error;
 
+use crate::process::configure_no_window;
+
 use crate::hook_ingest::{RelayHookPayload, validate_hook_payload};
 use crate::{
     ConnectionState, MAX_REMOTE_FRAME_BYTES, RelayControl, RelayFrame, RelayHello,
@@ -125,8 +127,7 @@ impl RemoteTransport for OpenSshTransport {
             args.extend(["--event-spool".into(), event_spool_dir.clone()]);
         }
 
-        let mut child = Command::new(&self.executable)
-            .args(args)
+        let mut child = configure_no_window(&mut Command::new(&self.executable).args(args))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -211,6 +212,7 @@ impl RemoteTransport for DirectRelayTransport {
         host.validate()
             .map_err(|error| TransportError::Protocol(error.to_string()))?;
         let mut command = Command::new(&self.executable);
+        configure_no_window(&mut command);
         command.args([
             "--host-id",
             &host.id,

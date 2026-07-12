@@ -2614,6 +2614,7 @@ dependencies = [
  "directories",
  "hex",
  "libc",
+ "notch-agent-catalog",
  "notch-protocol",
  "parking_lot",
  "serde",

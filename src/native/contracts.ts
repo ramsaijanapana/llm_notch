@@ -25,7 +25,7 @@ export const CONNECTOR_PLAN_TTL_MS = 300_000 as const
 export const MAX_DECISION_SUMMARY_LEN = 512 as const
 export const MAX_DECISION_ANSWER_LEN = 4_096 as const
 
-export const DECISION_FAIL_OPEN_TIMEOUT_MS = 2_000 as const
+export const DECISION_FAIL_OPEN_TIMEOUT_MS = 120_000 as const
 export const DECISION_HOOK_NEUTRAL_OUTPUT = '{}' as const
 export const DECISION_HOOK_FAIL_OPEN_EXIT_CODE = 0 as const
 
@@ -37,6 +37,7 @@ export type AgentSource =
   | 'codex'
   | 'gemini'
   | 'antigravityCli'
+  | 'agy'
   | 'copilotCli'
   | 'qwen'
   | 'generic'
@@ -434,7 +435,7 @@ export interface StreamFrame {
 
 // --- Contract freeze v2 (connector, health, decision, purge, migration) ---
 
-export type HealthProbeAxis = 'installation' | 'trust' | 'traffic' | 'helper'
+export type HealthProbeAxis = 'installation' | 'trust' | 'traffic' | 'helper' | 'process'
 
 export type HealthProbeOutcome = 'ok' | 'warn' | 'fail'
 
@@ -443,6 +444,8 @@ export type HealthProbeFailureKind =
   | 'notInstalled'
   | 'trustRequired'
   | 'helperUnavailable'
+  | 'helperPathMissing'
+  | 'hooksMisconfigured'
   | 'noTraffic'
   | 'configDrift'
   | 'internalError'
@@ -459,6 +462,8 @@ export type ConnectorUserStatus =
   | 'notInstalled'
   | 'actionNeeded'
   | 'waitingFirstEvent'
+  | 'helperMissing'
+  | 'hooksMisconfigured'
   | 'connected'
   | 'driftDetected'
   | 'error'
@@ -637,6 +642,11 @@ export interface DetectedConnector {
   displayPath: string
   configPresent: boolean
   managedEntriesPresent: boolean
+  executablePresent: boolean
+  executablePath?: string
+  /** Honest OS process scan evidence; does not imply a verified session. */
+  processRunning?: boolean
+  runningProcessName?: string
 }
 
 /** Maps wire `AttributionQuality.unknown` to user-facing "Not attributed". */
@@ -658,7 +668,8 @@ export function attributionQualityLabel(quality: AttributionQuality): string {
 
 /** Deterministic user-facing status from orthogonal probe results. */
 export function mapProbesToUserStatus(probes: HealthProbeResult[]): ConnectorUserStatus {
-  const probe = (axis: HealthProbeAxis) => probes.find((entry) => entry.axis === axis)
+  const actionable = probes.filter((entry) => entry.axis !== 'process')
+  const probe = (axis: HealthProbeAxis) => actionable.find((entry) => entry.axis === axis)
 
   const installation = probe('installation')
   if (installation?.outcome === 'fail') {
@@ -674,7 +685,14 @@ export function mapProbesToUserStatus(probes: HealthProbeResult[]): ConnectorUse
   }
 
   if (probe('helper')?.outcome === 'fail') {
-    return 'error'
+    switch (probe('helper')?.failureKind) {
+      case 'helperPathMissing':
+        return 'helperMissing'
+      case 'hooksMisconfigured':
+        return 'hooksMisconfigured'
+      default:
+        return 'error'
+    }
   }
 
   const traffic = probe('traffic')
@@ -682,11 +700,11 @@ export function mapProbesToUserStatus(probes: HealthProbeResult[]): ConnectorUse
     return 'waitingFirstEvent'
   }
 
-  if (probes.some((entry) => entry.outcome === 'warn')) {
+  if (actionable.some((entry) => entry.outcome === 'warn')) {
     return 'driftDetected'
   }
 
-  if (probes.length > 0 && probes.every((entry) => entry.outcome === 'ok')) {
+  if (actionable.length > 0 && actionable.every((entry) => entry.outcome === 'ok')) {
     return 'connected'
   }
 
