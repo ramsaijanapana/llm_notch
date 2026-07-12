@@ -158,6 +158,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn verified_terminal_metadata_allows_exact_pane_target() {
         let mut session = session_with_root(notch_protocol::AgentSource::Generic);
         session.verified_terminal = Some(VerifiedTerminalContext {

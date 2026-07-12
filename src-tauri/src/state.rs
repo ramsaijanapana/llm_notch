@@ -1367,7 +1367,7 @@ mod tests {
             .ingest_relay_session_event(&RelaySessionEventIngest {
                 host_id: "dev-box".into(),
                 external_session_id: "remote-session-attn".into(),
-                source: "cursor".into(),
+                source: "claude-code".into(),
                 summary: "Approve shell command".into(),
                 occurred_at_ms: 1_700_000_000_200,
                 kind: Some(SessionEventKind::Attention),

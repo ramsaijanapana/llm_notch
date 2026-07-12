@@ -264,6 +264,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn verified_ancestry_without_window_or_pane_ids_caps_at_app_activation() {
         let discovery = discover_verified_process(
             &ProcessIdentity {
@@ -281,6 +282,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn verified_wt_metadata_enables_exact_pane_discovery() {
         let discovery = discover_verified_process(
             &ProcessIdentity {
@@ -298,6 +300,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn resolve_session_carries_verified_terminal_into_locator() {
         let mut session = sample_session(
             AgentSource::Generic,

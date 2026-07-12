@@ -148,6 +148,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn terminal_locator_uses_verified_process_identity() {
         let locator = ContextLocator::encode(
             HostKind::WindowsTerminal,
@@ -166,6 +167,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn locator_verified_metadata_enables_exact_pane_activation_mapping() {
         let verified = VerifiedTerminalContext {
             terminal_session_id: Some("0".into()),
@@ -220,6 +222,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn verified_wt_metadata_enables_exact_pane_discovery() {
         use notch_platform::{ProcessDescriptor, VerifiedTerminalMetadata, current_navigator};
 

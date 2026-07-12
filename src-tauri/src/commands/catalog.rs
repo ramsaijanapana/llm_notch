@@ -27,7 +27,15 @@ mod tests {
             .collect();
         assert_eq!(
             verified,
-            HashSet::from(["claude-code", "codex", "cursor", "gemini-cli"])
+            HashSet::from([
+                "antigravity-cli",
+                "claude-code",
+                "codex",
+                "copilot",
+                "cursor",
+                "gemini-cli",
+                "qwen"
+            ])
         );
     }
 }
