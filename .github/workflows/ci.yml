@@ -17,6 +17,8 @@ jobs:
   rust-fmt-check:
     name: Rust fmt / check / test (Windows)
     runs-on: windows-latest
+    env:
+      RUSTFLAGS: "-C link-arg=/MANIFEST:EMBED -C link-arg=/MANIFESTINPUT=${{ github.workspace }}/src-tauri/windows-test.manifest.xml"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -32,11 +34,7 @@ jobs:
       - run: cargo check --workspace --all-targets
       - run: cargo test --workspace --lib --exclude llm-notch-desktop
       - run: cargo test -p llm-notch-desktop --lib
-        env:
-          RUSTFLAGS: "-C link-arg=/MANIFEST:EMBED -C link-arg=/MANIFESTINPUT=${{ github.workspace }}/src-tauri/windows-test.manifest.xml"
       - run: cargo test -p llm-notch-desktop --test native_windows
-        env:
-          RUSTFLAGS: "-C link-arg=/MANIFEST:EMBED -C link-arg=/MANIFESTINPUT=${{ github.workspace }}/src-tauri/windows-test.manifest.xml"
 
   rust-macos:
     name: Rust check / test (macOS)
