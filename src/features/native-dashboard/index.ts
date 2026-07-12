@@ -4,9 +4,9 @@ export { DecisionSurface } from './components/decisions/DecisionSurface'
 export { IntegrationsPanel } from './components/integrations/IntegrationsPanel'
 export { MetricsPanel } from './components/metrics/MetricsPanel'
 export { OnboardingFlow } from './components/OnboardingFlow'
-export { SessionsPanel } from './components/sessions/SessionsPanel'
-export { RemotePanel } from './components/remote/RemotePanel'
 export { RemoteConnectionBadge } from './components/remote/RemoteConnectionBadge'
+export { RemotePanel } from './components/remote/RemotePanel'
+export { SessionsPanel } from './components/sessions/SessionsPanel'
 export { SettingsPanel } from './components/settings/SettingsPanel'
 export { AgentStatusRail } from './components/shared/AgentStatusRail'
 export { EmptyState } from './components/shared/EmptyState'
@@ -66,8 +66,8 @@ export {
 export {
   connectorStatusGuidance,
   connectorStatusLabel,
-  decisionDeliveryLabel,
   DOCUMENTED_CONNECTOR_PATHS,
+  decisionDeliveryLabel,
 } from './utils/integrationLabels'
 
 export {

@@ -1,9 +1,17 @@
-import type { AdapterCapabilities, AgentSession } from '../../../../native/contracts'
+import type {
+  AdapterCapabilities,
+  AgentSession,
+  DecisionRequest,
+  DecisionResponseRecord,
+} from '../../../../native/contracts'
 import styles from '../../styles/dashboard.module.css'
 import type { OpenContextHandler } from '../../types/contracts'
-import type { DecisionRequest, DecisionResponseRecord } from '../../../../native/contracts'
 import { agentLabel, attentionLabel } from '../../utils/formatters'
-import { findAdapterForSession, isNotifyOnlyAdapter, decisionMatchesSession } from '../../utils/sessionHelpers'
+import {
+  decisionMatchesSession,
+  findAdapterForSession,
+  isNotifyOnlyAdapter,
+} from '../../utils/sessionHelpers'
 import { DecisionSurface } from '../decisions/DecisionSurface'
 import { MetricStrip } from './MetricStrip'
 

@@ -16,9 +16,7 @@ export function applyRemoteConnectionStatus(
     availability: status.availability,
     connectionState: status.connectionState,
     message: status.message ?? null,
-    ...(status.connectionState === 'streaming'
-      ? { lastConnectedAtMs: nowMs }
-      : {}),
+    ...(status.connectionState === 'streaming' ? { lastConnectedAtMs: nowMs } : {}),
   }
 
   return [...hosts.slice(0, index), nextHost, ...hosts.slice(index + 1)]

@@ -137,14 +137,13 @@ export function quotaObservedSummary(
         typeof quota.freshness === 'string',
     )
     .map((quota) => quota.freshness)
-  const freshness =
-    freshnessValues.includes('stale')
-      ? 'stale'
-      : freshnessValues.includes('fresh')
-        ? 'fresh'
-        : nowMs - observedAtMs > QUOTA_STALE_AFTER_MS
-          ? 'stale'
-          : 'fresh'
+  const freshness = freshnessValues.includes('stale')
+    ? 'stale'
+    : freshnessValues.includes('fresh')
+      ? 'fresh'
+      : nowMs - observedAtMs > QUOTA_STALE_AFTER_MS
+        ? 'stale'
+        : 'fresh'
 
   return { observedAtMs, freshness }
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   attributionQualityLabel,
-  mapProbesToUserStatus,
   type HealthProbeResult,
+  mapProbesToUserStatus,
 } from './contracts.ts'
 
 describe('contract freeze v2 helpers', () => {

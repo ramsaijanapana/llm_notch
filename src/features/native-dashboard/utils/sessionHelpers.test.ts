@@ -34,21 +34,13 @@ describe('decisionMatchesSession', () => {
   })
 
   it('matches external session ids for legacy broker payloads', () => {
-    expect(
-      decisionMatchesSession(
-        { ...decision, sessionId: 'claude-session-42' },
-        session,
-      ),
-    ).toBe(true)
+    expect(decisionMatchesSession({ ...decision, sessionId: 'claude-session-42' }, session)).toBe(
+      true,
+    )
   })
 
   it('rejects unrelated sessions', () => {
-    expect(
-      decisionMatchesSession(
-        { ...decision, sessionId: 'other-session' },
-        session,
-      ),
-    ).toBe(false)
+    expect(decisionMatchesSession({ ...decision, sessionId: 'other-session' }, session)).toBe(false)
   })
 })
 

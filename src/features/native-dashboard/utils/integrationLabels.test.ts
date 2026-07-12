@@ -5,9 +5,9 @@ import {
   connectorInstallationLayers,
   connectorStatusGuidance,
   connectorStatusLabel,
+  DOCUMENTED_CONNECTOR_PATHS,
   decisionDeliveryLabel,
   detectedConnectorSummary,
-  DOCUMENTED_CONNECTOR_PATHS,
   effectiveConnectorStatusLabel,
   isDetectedConnectorVisible,
 } from './integrationLabels'
@@ -139,11 +139,13 @@ describe('integrationLabels', () => {
     expect(effectiveConnectorStatusLabel('notInstalled', detected)).toBe(
       'CLI installed — hooks missing',
     )
-    expect(effectiveConnectorStatusLabel('driftDetected', {
-      ...detected,
-      source: 'cursor',
-      configPresent: true,
-    })).toBe('Hooks need repair')
+    expect(
+      effectiveConnectorStatusLabel('driftDetected', {
+        ...detected,
+        source: 'cursor',
+        configPresent: true,
+      }),
+    ).toBe('Hooks need repair')
   })
 
   it('provides Cursor hooks guidance', () => {

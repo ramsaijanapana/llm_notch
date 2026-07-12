@@ -9,9 +9,7 @@ import {
 
 const now = FIXED_NOW_MS
 
-function remoteSession(
-  overrides: Partial<AgentSession> & Pick<AgentSession, 'id'>,
-): AgentSession {
+function remoteSession(overrides: Partial<AgentSession> & Pick<AgentSession, 'id'>): AgentSession {
   return {
     source: 'cursor',
     externalSessionId: overrides.id,

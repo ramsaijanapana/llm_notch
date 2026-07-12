@@ -284,7 +284,9 @@ export interface SettingsPanelProps {
   soundImportError?: string | undefined
   soundImportBusy?: boolean | undefined
   onImportSoundPack?: ((file: File) => void) | undefined
-  onPreviewSoundTheme?: ((themeId: string, event: import('../../../native/contracts').SoundEvent) => void) | undefined
+  onPreviewSoundTheme?:
+    | ((themeId: string, event: import('../../../native/contracts').SoundEvent) => void)
+    | undefined
   soundPlaybackSupported?: boolean | undefined
   purgeScope?: import('../../../native/contracts').PurgeScope | undefined
   onPurgeScopeChange?: PurgeScopeChangeHandler | undefined

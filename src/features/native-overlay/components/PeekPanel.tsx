@@ -142,11 +142,7 @@ export function PeekPanel({
                   >
                     Allow
                   </button>
-                  <button
-                    type="button"
-                    className={styles.actionButton}
-                    onClick={onDecisionDeny}
-                  >
+                  <button type="button" className={styles.actionButton} onClick={onDecisionDeny}>
                     Deny
                   </button>
                 </div>

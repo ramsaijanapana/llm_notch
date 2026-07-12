@@ -83,34 +83,31 @@ export function NativeStateProvider({
     }
 
     const startSubscription = async (): Promise<void> => {
-      const subscription = await clientRef.current.subscribe(
-        (frame) => {
-          const acceptance = evaluateStreamSequence(frame, lastSequenceRef.current)
+      const subscription = await clientRef.current.subscribe((frame) => {
+        const acceptance = evaluateStreamSequence(frame, lastSequenceRef.current)
 
-          if (acceptance.kind === 'gap') {
-            dispatch({
-              type: 'SET_RESYNC_REASON',
-              reason: `sequence gap: expected ${acceptance.expected}, received ${acceptance.received}`,
-            })
-            void resync()
-            return
-          }
+        if (acceptance.kind === 'gap') {
+          dispatch({
+            type: 'SET_RESYNC_REASON',
+            reason: `sequence gap: expected ${acceptance.expected}, received ${acceptance.received}`,
+          })
+          void resync()
+          return
+        }
 
-          if (acceptance.kind === 'duplicate') {
-            return
-          }
+        if (acceptance.kind === 'duplicate') {
+          return
+        }
 
-          if (frame.payload.type === 'resyncRequired') {
-            dispatch({ type: 'SET_RESYNC_REASON', reason: frame.payload.reason })
-            void resync()
-            return
-          }
+        if (frame.payload.type === 'resyncRequired') {
+          dispatch({ type: 'SET_RESYNC_REASON', reason: frame.payload.reason })
+          void resync()
+          return
+        }
 
-          lastSequenceRef.current = acceptance.nextSequence
-          dispatch({ type: 'APPLY_FRAME', frame })
-        },
-        handleStreamError,
-      )
+        lastSequenceRef.current = acceptance.nextSequence
+        dispatch({ type: 'APPLY_FRAME', frame })
+      }, handleStreamError)
 
       subscriptionRef.current = subscription
     }

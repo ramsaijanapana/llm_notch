@@ -48,7 +48,9 @@ describe('OnboardingFlow', () => {
     const user = userEvent.setup()
     render(<OnboardingFlow {...baseProps} />)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /detect & connect your agents/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /detect & connect your agents/i }),
+    ).toBeInTheDocument()
     expect(screen.getByText(/known install directories/i)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /how detection works/i }))
     expect(screen.getByText(/~\/.cursor\/hooks.json/i)).toBeInTheDocument()
@@ -72,23 +74,30 @@ describe('OnboardingFlow', () => {
     const onFinish = vi.fn()
 
     const { rerender } = render(
-      <OnboardingFlow
-        {...baseProps}
-        detectLoadState="ready"
-        onNext={onNext}
-        onFinish={onFinish}
-      />,
+      <OnboardingFlow {...baseProps} detectLoadState="ready" onNext={onNext} onFinish={onFinish} />,
     )
     await user.click(screen.getByRole('button', { name: /continue/i }))
     expect(onNext).toHaveBeenCalled()
 
     rerender(
-      <OnboardingFlow {...baseProps} step={1} detectLoadState="ready" onNext={onNext} onFinish={onFinish} />,
+      <OnboardingFlow
+        {...baseProps}
+        step={1}
+        detectLoadState="ready"
+        onNext={onNext}
+        onFinish={onFinish}
+      />,
     )
     expect(screen.getByRole('combobox', { name: /^display$/i })).toBeInTheDocument()
 
     rerender(
-      <OnboardingFlow {...baseProps} step={4} detectLoadState="ready" onNext={onNext} onFinish={onFinish} />,
+      <OnboardingFlow
+        {...baseProps}
+        step={4}
+        detectLoadState="ready"
+        onNext={onNext}
+        onFinish={onFinish}
+      />,
     )
     await user.click(screen.getByRole('button', { name: /finish/i }))
     expect(onFinish).toHaveBeenCalled()
@@ -152,6 +161,6 @@ describe('OnboardingFlow', () => {
       />,
     )
     expect(screen.getByRole('heading', { name: /connect agents/i })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /user scope/i })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: /user scope/i })).toBeChecked()
   })
 })

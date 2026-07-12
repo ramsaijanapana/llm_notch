@@ -44,11 +44,7 @@ export function CompactIsland({
   const { visible, overflowCount } = selectCompactDots(sessions)
   const cpuReading = getCombinedCpuReading(snapshot)
   const cpuLabel = formatCpuPercent(cpuReading.value, cpuReading.availability)
-  const beaconTone = deriveHealthBeaconTone(
-    connectionState,
-    attentionCount,
-    resourceAlertCount,
-  )
+  const beaconTone = deriveHealthBeaconTone(connectionState, attentionCount, resourceAlertCount)
   const statusHint = getCompactStatusHint(connectionState, sessions.length, {
     emptyMessage,
     staleMessage,

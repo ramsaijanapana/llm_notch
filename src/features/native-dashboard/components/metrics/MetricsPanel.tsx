@@ -163,9 +163,7 @@ export function MetricsPanel({
                 Updated {formatRelativeTime(quotaObserved.observedAtMs, nowMs)}
                 <span
                   className={
-                    quotaObserved.freshness === 'stale'
-                      ? styles.badgeWarning
-                      : styles.badgeSuccess
+                    quotaObserved.freshness === 'stale' ? styles.badgeWarning : styles.badgeSuccess
                   }
                 >
                   {quotaObserved.freshness === 'stale' ? 'Stale' : 'Fresh'}

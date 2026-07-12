@@ -1,17 +1,13 @@
+import { CheckCircle2, Loader2, Monitor, Radar, ShieldCheck, Sparkles, Zap } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
-import {
-  CheckCircle2,
-  Loader2,
-  Monitor,
-  Radar,
-  ShieldCheck,
-  Sparkles,
-  Zap,
-} from 'lucide-react'
 import styles from '../styles/dashboard.module.css'
 import type { OnboardingFlowProps } from '../types/contracts'
 import { agentLabel } from '../utils/formatters'
-import { DOCUMENTED_CONNECTOR_PATHS, detectedConnectorSummary, isDetectedConnectorVisible } from '../utils/integrationLabels'
+import {
+  DOCUMENTED_CONNECTOR_PATHS,
+  detectedConnectorSummary,
+  isDetectedConnectorVisible,
+} from '../utils/integrationLabels'
 import { ApplyProgressPanel } from './integrations/ApplyProgressPanel'
 import { DiffReviewPanel } from './integrations/DiffReviewPanel'
 
@@ -298,29 +294,33 @@ export function OnboardingFlow({
               optional for team-shared configuration. Every supported agent is preselected.
             </p>
             <div className={styles.scopeToggle} role="radiogroup" aria-label="Connector scope">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={connectScope === 'user'}
-                className={
-                  connectScope === 'user' ? styles.scopeOptionActive : styles.scopeOption
-                }
-                onClick={() => onConnectScopeChange('user')}
+              <label
+                className={connectScope === 'user' ? styles.scopeOptionActive : styles.scopeOption}
               >
+                <input
+                  type="radio"
+                  name="connect-scope"
+                  className="sr-only"
+                  checked={connectScope === 'user'}
+                  onChange={() => onConnectScopeChange('user')}
+                />
                 User scope
                 <span className={styles.scopeHint}>Recommended</span>
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={connectScope === 'project'}
+              </label>
+              <label
                 className={
                   connectScope === 'project' ? styles.scopeOptionActive : styles.scopeOption
                 }
-                onClick={() => onConnectScopeChange('project')}
               >
+                <input
+                  type="radio"
+                  name="connect-scope"
+                  className="sr-only"
+                  checked={connectScope === 'project'}
+                  onChange={() => onConnectScopeChange('project')}
+                />
                 Project scope
-              </button>
+              </label>
             </div>
             <fieldset className={styles.fieldsetReset}>
               <legend className={styles.metricLabel}>Connect agents</legend>
@@ -474,15 +474,9 @@ export function OnboardingFlow({
               </button>
             ) : null}
             {step === 0 && (detectLoadState === 'idle' || detectLoadState === 'error') ? (
-              <button
-                type="button"
-                className={styles.buttonPrimary}
-                onClick={onGetStarted}
-              >
-                <>
-                  <Radar size={14} aria-hidden="true" />
-                  {detectLoadState === 'error' ? 'Retry detection' : 'Detect all agents'}
-                </>
+              <button type="button" className={styles.buttonPrimary} onClick={onGetStarted}>
+                <Radar size={14} aria-hidden="true" />
+                {detectLoadState === 'error' ? 'Retry detection' : 'Detect all agents'}
               </button>
             ) : null}
             {step === 0 && detectLoadState === 'ready' ? (

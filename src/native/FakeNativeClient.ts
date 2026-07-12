@@ -11,6 +11,7 @@ import type {
   DecisionResponse,
   DecisionResponseRecord,
   DetectedConnector,
+  ImportSoundPackRequest,
   PublicSettings,
   QuotaSnapshotView,
   RemoteBackendStatus,
@@ -20,13 +21,12 @@ import type {
   RemoteHostConfigInput,
   RemoteHostView,
   SoundEvent,
-  SoundRouting,
-  SoundRoutingPreview,
+  SoundPackValidation,
   SoundPlayRequest,
   SoundPlayResult,
+  SoundRouting,
+  SoundRoutingPreview,
   SoundTheme,
-  SoundPackValidation,
-  ImportSoundPackRequest,
   StreamFrame,
 } from './contracts.ts'
 import { PROTOCOL_VERSION } from './contracts.ts'
@@ -43,8 +43,10 @@ import { resolveNativePreviewScenario } from './previewRouting.ts'
 import { coalesceStreamFrames } from './streamProcessor.ts'
 import type {
   BootstrapResult,
+  ConnectorHealthChangeHandler,
   ConnectorHealthEntry,
   ConnectorHealthReport,
+  ConnectorHealthSubscription,
   HealthProbeResult,
   NativeClient,
   NativeDisplayOption,
@@ -54,8 +56,6 @@ import type {
   OverlayMode,
   RemoteConnectionChangeHandler,
   RemoteConnectionSubscription,
-  ConnectorHealthChangeHandler,
-  ConnectorHealthSubscription,
   SessionEventPage,
   StreamErrorHandler,
   StreamFrameHandler,
@@ -65,11 +65,7 @@ import type {
 const METRIC_TICK_MS = 1_000
 
 function validateRemoteHostConfigInput(config: RemoteHostConfigInput): void {
-  if (
-    !config.id ||
-    config.id.length > 64 ||
-    !/^[a-zA-Z0-9_-]+$/.test(config.id)
-  ) {
+  if (!config.id || config.id.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(config.id)) {
     throw new NativeClientError('remote-host-invalid', 'remote host id is invalid')
   }
   if (
@@ -573,7 +569,8 @@ export class FakeNativeClient implements NativeClient {
   async getRemoteBackendStatus(): Promise<RemoteBackendStatus> {
     return {
       availability: 'unavailable',
-      message: 'SSH relay backend is not available in this build. Relay lifecycle is owned by notch-remote.',
+      message:
+        'SSH relay backend is not available in this build. Relay lifecycle is owned by notch-remote.',
     }
   }
 
@@ -610,7 +607,8 @@ export class FakeNativeClient implements NativeClient {
       hostId,
       availability: 'unavailable',
       connectionState: 'disconnected',
-      message: 'SSH relay backend is not available in this build. Relay lifecycle is owned by notch-remote.',
+      message:
+        'SSH relay backend is not available in this build. Relay lifecycle is owned by notch-remote.',
     }
   }
 

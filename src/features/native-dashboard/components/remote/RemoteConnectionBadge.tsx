@@ -1,9 +1,6 @@
 import type { RemoteConnectionState } from '../../../../native/contracts'
 import styles from '../../styles/dashboard.module.css'
-import {
-  remoteConnectionBadgeTone,
-  remoteConnectionStateLabel,
-} from '../../utils/remoteLabels'
+import { remoteConnectionBadgeTone, remoteConnectionStateLabel } from '../../utils/remoteLabels'
 
 const BADGE_CLASS = {
   info: styles.badgeInfo,

@@ -97,9 +97,7 @@ export function connectorInstallationLayers(
       : 'Installed'
     : 'Not found'
 
-  const hookConfig = detected?.configPresent
-    ? `Present (${detected.displayPath})`
-    : 'Not found'
+  const hookConfig = detected?.configPresent ? `Present (${detected.displayPath})` : 'Not found'
 
   let managedHooks = 'Not installed'
   if (detected?.managedEntriesPresent) {

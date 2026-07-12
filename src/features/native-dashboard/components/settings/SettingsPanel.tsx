@@ -1,5 +1,10 @@
+import type {
+  AgentSource,
+  PurgeScope,
+  SoundEvent,
+  SoundRouting,
+} from '../../../../native/contracts'
 import styles from '../../styles/dashboard.module.css'
-import type { AgentSource, PurgeScope, SoundEvent, SoundRouting } from '../../../../native/contracts'
 import type { SettingsPanelProps } from '../../types/contracts'
 import { routingAgentLabel, soundEventLabel } from '../../utils/formatters'
 import { LoadingState } from '../shared/LoadingState'
@@ -272,8 +277,8 @@ export function SettingsPanel({
             checked={settings.alertSoundEnabled ?? false}
             onChange={(event) => onSettingsChange({ alertSoundEnabled: event.target.checked })}
           />
-          Play alert sound for attention, lifecycle, and sustained resource alerts (never
-          activates windows)
+          Play alert sound for attention, lifecycle, and sustained resource alerts (never activates
+          windows)
         </label>
         <fieldset className={`${styles.actions} ${styles.fieldsetReset}`}>
           <legend className={styles.cardTitle}>Purge scope</legend>
@@ -318,8 +323,8 @@ export function SettingsPanel({
         {purgeConfirmOpen ? (
           <div className={styles.confirmDialog} role="alertdialog" aria-label="Confirm purge">
             <p className={styles.muted}>
-              Delete selected local data using the purge scope above? Connector backup files stay
-              on disk unless you check “Include connector backups” above. This cannot be undone.
+              Delete selected local data using the purge scope above? Connector backup files stay on
+              disk unless you check “Include connector backups” above. This cannot be undone.
             </p>
             <div className={styles.actions}>
               <button type="button" className={styles.button} onClick={onPurgeCancel}>
@@ -352,9 +357,7 @@ export function SettingsPanel({
             max={100}
             step={5}
             value={Math.round(routing.volume * 100)}
-            onChange={(event) =>
-              updateSoundRouting({ volume: Number(event.target.value) / 100 })
-            }
+            onChange={(event) => updateSoundRouting({ volume: Number(event.target.value) / 100 })}
           />
         </div>
         <label className={styles.checkboxRow}>
@@ -497,9 +500,7 @@ export function SettingsPanel({
               onChange={(event) =>
                 onSettingsChange({
                   selectedSoundThemeId:
-                    event.target.value === DEFAULT_SOUND_THEME_VALUE
-                      ? ''
-                      : event.target.value,
+                    event.target.value === DEFAULT_SOUND_THEME_VALUE ? '' : event.target.value,
                 })
               }
             >

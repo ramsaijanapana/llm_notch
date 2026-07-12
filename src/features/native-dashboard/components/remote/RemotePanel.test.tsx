@@ -1,19 +1,13 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  FIXED_NOW_MS,
-  mockRemoteBackendStatus,
-  mockRemoteHosts,
-} from '../../fixtures/testFixtures'
 import type { AgentSession } from '../../../../native/contracts'
+import { FIXED_NOW_MS, mockRemoteBackendStatus, mockRemoteHosts } from '../../fixtures/testFixtures'
 import { RemotePanel } from './RemotePanel'
 
 const now = FIXED_NOW_MS
 
-function remoteSession(
-  overrides: Partial<AgentSession> & Pick<AgentSession, 'id'>,
-): AgentSession {
+function remoteSession(overrides: Partial<AgentSession> & Pick<AgentSession, 'id'>): AgentSession {
   return {
     source: 'cursor',
     externalSessionId: overrides.id,

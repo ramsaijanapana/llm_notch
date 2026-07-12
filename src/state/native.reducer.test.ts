@@ -202,7 +202,9 @@ describe('nativeReducer', () => {
     })
 
     expect(state.sessionOrder).not.toContain('sess-live-upsert')
-    expect(state.snapshot?.sessions.some((session) => session.id === 'sess-live-upsert')).toBe(false)
+    expect(state.snapshot?.sessions.some((session) => session.id === 'sess-live-upsert')).toBe(
+      false,
+    )
   })
 
   it('merges and clears authoritative per-session metrics', () => {

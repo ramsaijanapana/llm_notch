@@ -20,11 +20,14 @@ import {
   SessionsPanel,
   SettingsPanel,
 } from '../features/native-dashboard'
-import { bestDetectedConnector } from '../features/native-dashboard/utils/integrationLabels'
-import { deriveSessionsEmptyMessage, findSessionForDecision } from '../features/native-dashboard/utils/sessionHelpers'
 import { useIntegrationHealth } from '../features/native-dashboard/hooks/useIntegrationHealth'
 import dashboardStyles from '../features/native-dashboard/styles/dashboard.module.css'
+import { bestDetectedConnector } from '../features/native-dashboard/utils/integrationLabels'
 import { applyRemoteConnectionStatus } from '../features/native-dashboard/utils/remoteHosts'
+import {
+  deriveSessionsEmptyMessage,
+  findSessionForDecision,
+} from '../features/native-dashboard/utils/sessionHelpers'
 import {
   type OverlayConnectionState,
   type OverlayCpuSample,
@@ -213,7 +216,7 @@ export function NativeOverlaySurface() {
     if (overlayDecision?.hasActionablePayload) {
       setMode('peek')
     }
-  }, [overlayDecision?.id, overlayDecision?.hasActionablePayload])
+  }, [overlayDecision?.hasActionablePayload])
 
   const respondToOverlayDecision = (
     response: import('../native/contracts.ts').DecisionResponse,
@@ -522,7 +525,8 @@ export function NativeDashboardSurface() {
           setRemoteHosts([])
           setRemoteBackendStatus({
             availability: 'unavailable',
-            message: error instanceof Error ? error.message : 'Remote backend status failed to load',
+            message:
+              error instanceof Error ? error.message : 'Remote backend status failed to load',
           })
           setRemoteLoadState('error')
         }
@@ -785,8 +789,7 @@ export function NativeDashboardSurface() {
   }, [client])
 
   const loadState: DashboardLoadState =
-    state.connection === 'loading' ||
-    (state.connection === 'resyncing' && sessions.length === 0)
+    state.connection === 'loading' || (state.connection === 'resyncing' && sessions.length === 0)
       ? 'loading'
       : state.connection === 'disconnected' || state.connection === 'incompatible-protocol'
         ? 'error'
@@ -1438,8 +1441,7 @@ export function NativeDashboardSurface() {
                   .then((result) => {
                     if (!result.played || result.backendId === 'stub') {
                       setSoundImportError(
-                        result.reason ??
-                          'Native sound playback is unavailable on this platform',
+                        result.reason ?? 'Native sound playback is unavailable on this platform',
                       )
                       return
                     }

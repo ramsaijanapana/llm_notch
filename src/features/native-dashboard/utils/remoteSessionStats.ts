@@ -10,9 +10,7 @@ export interface RemoteHostIngestSummary {
   lastEventAtMs: number | null
 }
 
-export function remoteHostIdFromWorkspaceLabel(
-  workspaceLabel: string | undefined,
-): string | null {
+export function remoteHostIdFromWorkspaceLabel(workspaceLabel: string | undefined): string | null {
   if (!workspaceLabel?.startsWith(REMOTE_WORKSPACE_PREFIX)) {
     return null
   }

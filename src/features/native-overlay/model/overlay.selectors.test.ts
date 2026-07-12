@@ -60,12 +60,12 @@ describe('overlay.selectors', () => {
   })
 
   it('prefers custom resync and error messages in banner resolution', () => {
-    expect(
-      resolveConnectionBannerText('stale', { staleMessage: 'Sequence gap at frame 42' }),
-    ).toBe('Sequence gap at frame 42')
-    expect(
-      resolveConnectionBannerText('ipcError', { errorMessage: 'Stream channel closed' }),
-    ).toBe('Stream channel closed')
+    expect(resolveConnectionBannerText('stale', { staleMessage: 'Sequence gap at frame 42' })).toBe(
+      'Sequence gap at frame 42',
+    )
+    expect(resolveConnectionBannerText('ipcError', { errorMessage: 'Stream channel closed' })).toBe(
+      'Stream channel closed',
+    )
   })
 
   it('shows compact status hints when disconnected even with cached sessions', () => {

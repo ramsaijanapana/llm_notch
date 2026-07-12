@@ -2,10 +2,7 @@ import { useState } from 'react'
 import styles from '../../styles/dashboard.module.css'
 import type { RemoteHostConfigInput, RemotePanelProps } from '../../types/contracts'
 import { formatRelativeTime } from '../../utils/formatters'
-import {
-  remoteBackendGuidance,
-  remoteDeploymentStepLabel,
-} from '../../utils/remoteLabels'
+import { remoteBackendGuidance, remoteDeploymentStepLabel } from '../../utils/remoteLabels'
 import { summarizeRemoteIngestByHost } from '../../utils/remoteSessionStats'
 import { EmptyState } from '../shared/EmptyState'
 import { LoadingState } from '../shared/LoadingState'
@@ -41,10 +38,7 @@ export function RemotePanel({
 }: RemotePanelProps & { nowMs?: number }) {
   const [hostForm, setHostForm] = useState<RemoteHostConfigInput>(DEFAULT_HOST_FORM)
   const backendUnavailable = backendStatus.availability === 'unavailable'
-  const backendGuidance = remoteBackendGuidance(
-    backendStatus.availability,
-    backendStatus.message,
-  )
+  const backendGuidance = remoteBackendGuidance(backendStatus.availability, backendStatus.message)
   const ingestByHost = summarizeRemoteIngestByHost(sessions)
 
   if (loadState === 'loading') {
@@ -121,9 +115,7 @@ export function RemotePanel({
             className={styles.input}
             value={hostForm.id}
             disabled={!hostConfigActionsAvailable}
-            onChange={(event) =>
-              setHostForm((current) => ({ ...current, id: event.target.value }))
-            }
+            onChange={(event) => setHostForm((current) => ({ ...current, id: event.target.value }))}
             placeholder="dev-box"
           />
         </div>
@@ -312,8 +304,8 @@ export function RemotePanel({
             </p>
           ) : (
             <ol className={styles.list}>
-              {pendingDeployPlan.steps.map((step, index) => (
-                <li key={`${pendingDeployPlan.hostId}-${index}`}>
+              {pendingDeployPlan.steps.map((step) => (
+                <li key={`${pendingDeployPlan.hostId}-${JSON.stringify(step)}`}>
                   {remoteDeploymentStepLabel(step)}
                 </li>
               ))}

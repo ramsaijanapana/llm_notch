@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { NativeClient } from '../../../native/types.ts'
-import type { IntegrationHealthReport } from '../../../native/types.ts'
+import type { IntegrationHealthReport, NativeClient } from '../../../native/types.ts'
 
 export function useIntegrationHealth(client: NativeClient) {
   const [health, setHealth] = useState<IntegrationHealthReport | null>(null)

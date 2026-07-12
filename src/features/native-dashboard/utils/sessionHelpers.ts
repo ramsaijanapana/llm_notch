@@ -113,13 +113,8 @@ export function isNotifyOnlyAdapter(adapter: AdapterCapabilities | undefined): b
   return !adapter.decisionResponse
 }
 
-export function decisionMatchesSession(
-  decision: DecisionRequest,
-  session: AgentSession,
-): boolean {
-  return (
-    decision.sessionId === session.id || decision.sessionId === session.externalSessionId
-  )
+export function decisionMatchesSession(decision: DecisionRequest, session: AgentSession): boolean {
+  return decision.sessionId === session.id || decision.sessionId === session.externalSessionId
 }
 
 export function findSessionForDecision(
