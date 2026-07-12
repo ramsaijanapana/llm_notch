@@ -3,9 +3,9 @@
 mod config;
 mod deploy;
 mod deploy_exec;
-mod process;
 pub mod event_spool;
 pub mod hook_ingest;
+mod process;
 mod protocol;
 mod reconnect;
 mod relay_artifact;
@@ -22,6 +22,7 @@ pub use deploy_exec::{
 };
 pub use event_spool::EventSpoolReader;
 pub use hook_ingest::{HookIngestError, RelayHookPayload, normalize_hook_payload};
+pub use process::{configure_no_window, hidden_command};
 pub use protocol::{
     MAX_REMOTE_FRAME_BYTES, PROTOCOL_VERSION, RelayControl, RelayFrame, RelayHello, RelayPayload,
     ResumeCursor,
@@ -32,7 +33,6 @@ pub use relay_artifact::{
     sidecar_filename_for_target,
 };
 pub use session::{RelaySession, RelaySessionError, RelaySessionSnapshot, RemoteRelayManager};
-pub use process::{configure_no_window, hidden_command};
 pub use transport::{
     DEFAULT_REMOTE_BIN_DIRECTORY, DEFAULT_REMOTE_RUNTIME_DIRECTORY, DirectRelayTransport,
     OpenSshTransport, RemoteConnection, RemoteTransport, TransportError,

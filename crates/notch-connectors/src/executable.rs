@@ -76,7 +76,9 @@ fn known_search_dirs() -> Vec<PathBuf> {
     }
     #[cfg(target_os = "macos")]
     {
-        dirs.push(PathBuf::from("/Applications/Cursor.app/Contents/Resources/app/bin"));
+        dirs.push(PathBuf::from(
+            "/Applications/Cursor.app/Contents/Resources/app/bin",
+        ));
         if let Some(home) = std::env::var_os("HOME") {
             let home = PathBuf::from(home);
             dirs.push(home.join(".local").join("bin"));

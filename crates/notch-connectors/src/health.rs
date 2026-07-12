@@ -201,7 +201,10 @@ fn helper_probe_for_managed_hooks(
                 configured.display()
             )),
         },
-        ConfiguredHelperValidation::PathMismatch { configured, expected } => HealthProbeResult {
+        ConfiguredHelperValidation::PathMismatch {
+            configured,
+            expected,
+        } => HealthProbeResult {
             axis: HealthProbeAxis::Helper,
             outcome: HealthProbeOutcome::Fail,
             failure_kind: Some(HealthProbeFailureKind::HooksMisconfigured),
@@ -257,9 +260,10 @@ fn process_probe(detected: &DetectedConnector) -> Option<HealthProbeResult> {
     if !detected.process_running {
         return None;
     }
-    let detail = detected.running_process_name.as_ref().map(|name| {
-        format!("Agent process running ({name}); session not verified by hooks")
-    });
+    let detail = detected
+        .running_process_name
+        .as_ref()
+        .map(|name| format!("Agent process running ({name}); session not verified by hooks"));
     Some(HealthProbeResult {
         axis: HealthProbeAxis::Process,
         outcome: HealthProbeOutcome::Ok,
@@ -346,10 +350,7 @@ mod tests {
         );
         let detected = detected_with_command(&command);
         let entry = probe_connector(
-            &AdapterRegistry::new(
-                std::path::PathBuf::from("."),
-                helper.clone(),
-            ),
+            &AdapterRegistry::new(std::path::PathBuf::from("."), helper.clone()),
             &detected,
             AdapterCapabilities::template(AgentSource::Cursor),
             &helper,
@@ -433,10 +434,12 @@ mod tests {
             .find(|probe| probe.axis == HealthProbeAxis::Process)
             .expect("process probe");
         assert_eq!(process.outcome, HealthProbeOutcome::Ok);
-        assert!(process
-            .detail
-            .as_ref()
-            .is_some_and(|detail| detail.contains("cursor")));
+        assert!(
+            process
+                .detail
+                .as_ref()
+                .is_some_and(|detail| detail.contains("cursor"))
+        );
     }
 
     #[test]

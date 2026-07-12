@@ -17,9 +17,7 @@ const MANAGED_EVENTS: &[(&str, Option<&str>)] = &[
 
 /// Render a managed hook command for a Codex lifecycle event.
 pub fn render_hook_command(vendor_event: &str) -> String {
-    format!(
-        "\"{HELPER_PATH_PLACEHOLDER}\" hook --source codex --vendor-event {vendor_event}"
-    )
+    format!("\"{HELPER_PATH_PLACEHOLDER}\" hook --source codex --vendor-event {vendor_event}")
 }
 
 /// Build the shipped Codex `hooks.json` template with path placeholders.

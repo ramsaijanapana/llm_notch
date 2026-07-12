@@ -111,10 +111,7 @@ fn extract_executable_token(command: &str) -> Option<&str> {
     }
 
     let lower = command.to_ascii_lowercase();
-    if lower.starts_with("sh ")
-        || lower.starts_with("pwsh ")
-        || lower.starts_with("powershell ")
-    {
+    if lower.starts_with("sh ") || lower.starts_with("pwsh ") || lower.starts_with("powershell ") {
         return command.split_whitespace().nth(1).map(unquote_token);
     }
 
@@ -154,7 +151,9 @@ pub fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
 pub enum ConfiguredHelperValidation {
     Ok,
     UnresolvedPlaceholder,
-    PathMissing { configured: PathBuf },
+    PathMissing {
+        configured: PathBuf,
+    },
     PathMismatch {
         configured: PathBuf,
         expected: PathBuf,
@@ -804,7 +803,9 @@ mod tests {
         let command = r#""C:\Program Files\llm_notch\llm-notch-hook.exe" hook --source cursor --vendor-event sessionStart --hook-mode"#;
         assert_eq!(
             extract_invocation_path_from_command(command),
-            Some(PathBuf::from(r"C:\Program Files\llm_notch\llm-notch-hook.exe"))
+            Some(PathBuf::from(
+                r"C:\Program Files\llm_notch\llm-notch-hook.exe"
+            ))
         );
     }
 

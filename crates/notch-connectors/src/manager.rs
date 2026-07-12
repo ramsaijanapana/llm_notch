@@ -172,18 +172,21 @@ impl ConnectorManager {
                 if matches!(source, AgentSource::Generic | AgentSource::Unknown) {
                     return None;
                 }
-                let entry = best_detected(&detected, source).cloned().unwrap_or(DetectedConnector {
-                        source,
-                        scope: ConnectorScope::User,
-                        display_path: String::new(),
-                        config_present: false,
-                        managed_entries_present: false,
-                        executable_present: false,
-                        executable_path: None,
-                        process_running: false,
-                        running_process_name: None,
-                        managed_commands: Vec::new(),
-                    });
+                let entry =
+                    best_detected(&detected, source)
+                        .cloned()
+                        .unwrap_or(DetectedConnector {
+                            source,
+                            scope: ConnectorScope::User,
+                            display_path: String::new(),
+                            config_present: false,
+                            managed_entries_present: false,
+                            executable_present: false,
+                            executable_path: None,
+                            process_running: false,
+                            running_process_name: None,
+                            managed_commands: Vec::new(),
+                        });
                 let last_event = self
                     .last_event_at
                     .lock()
@@ -323,14 +326,20 @@ impl ConnectorManager {
     }
 }
 
-fn best_detected<'a>(detected: &'a [DetectedConnector], source: AgentSource) -> Option<&'a DetectedConnector> {
-    detected.iter().filter(|entry| entry.source == source).max_by_key(|entry| {
-        (
-            entry.config_present,
-            entry.managed_entries_present,
-            entry.executable_present,
-        )
-    })
+fn best_detected<'a>(
+    detected: &'a [DetectedConnector],
+    source: AgentSource,
+) -> Option<&'a DetectedConnector> {
+    detected
+        .iter()
+        .filter(|entry| entry.source == source)
+        .max_by_key(|entry| {
+            (
+                entry.config_present,
+                entry.managed_entries_present,
+                entry.executable_present,
+            )
+        })
 }
 
 pub type SharedConnectorManager = Arc<ConnectorManager>;

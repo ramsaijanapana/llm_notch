@@ -4,11 +4,11 @@ use std::sync::Arc;
 
 use notch_core::SqliteRepository;
 use notch_remote::{
-    hidden_command, ConnectionState, DEFAULT_REMOTE_BIN_DIRECTORY, DEFAULT_REMOTE_RUNTIME_DIRECTORY,
+    ConnectionState, DEFAULT_REMOTE_BIN_DIRECTORY, DEFAULT_REMOTE_RUNTIME_DIRECTORY,
     DeployTransport, DeploymentExecutor, DeploymentPlan, DeploymentStep, OpenSshDeployTransport,
     OpenSshTransport, ReconnectPolicy, RelayArtifactError, RelayFrame, RelayPayload, RelaySession,
     RelaySessionError, RemoteArchitecture, RemoteHostConfig, RemoteOs, RemoteRelayManager,
-    RemoteTarget, ResumeCursor, SshHostKeyPolicy, remote_hook_spool_guidance,
+    RemoteTarget, ResumeCursor, SshHostKeyPolicy, hidden_command, remote_hook_spool_guidance,
     resolve_relay_artifact,
 };
 use parking_lot::Mutex;

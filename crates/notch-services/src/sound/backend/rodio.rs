@@ -21,7 +21,10 @@ struct RodioBackend {
 
 #[cfg(target_os = "macos")]
 enum WorkerCommand {
-    Play(PlaybackRequest, std::sync::mpsc::SyncSender<Result<(), SoundError>>),
+    Play(
+        PlaybackRequest,
+        std::sync::mpsc::SyncSender<Result<(), SoundError>>,
+    ),
     StopAll(std::sync::mpsc::SyncSender<Result<(), SoundError>>),
 }
 
