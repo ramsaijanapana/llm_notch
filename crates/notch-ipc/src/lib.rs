@@ -21,11 +21,11 @@ mod client;
 mod server;
 
 pub use auth::AuthToken;
+pub use client::IngestClient;
 pub use collector::{
     ENV_PANE_ID, ENV_TAB_ID, ENV_TERMINAL_SESSION_ID, ENV_WINDOW_HANDLE, ENV_WT_SESSION,
     enrich_ingest_with_collector_env, verified_terminal_from_ingest,
 };
-pub use client::IngestClient;
 pub use descriptor::{
     RuntimeDescriptor, connect_path_for, default_runtime_dir, descriptor_path_for, find_descriptor,
     find_descriptor_in, socket_path_for,

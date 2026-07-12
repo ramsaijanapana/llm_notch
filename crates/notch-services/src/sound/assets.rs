@@ -101,7 +101,9 @@ pub fn validate_theme_id(theme_id: &str) -> Result<(), SoundError> {
 pub fn load_installed_theme(themes_root: &Path, theme_id: &str) -> Result<SoundTheme, SoundError> {
     validate_theme_id(theme_id)?;
     if crate::sound_pack::is_reserved_theme_id(theme_id) {
-        return Err(SoundError::Backend(format!("unknown sound theme {theme_id}")));
+        return Err(SoundError::Backend(format!(
+            "unknown sound theme {theme_id}"
+        )));
     }
     let theme_dir = themes_root.join(theme_id);
     let manifest_path = theme_dir.join("theme.json");
@@ -210,15 +212,16 @@ mod tests {
         let theme = sample_theme();
         let entries = pack_entries(&theme, b"RIFF");
         let zip = build_zip(&entries);
-        validate_and_install_pack_bytes(&zip, dir.path(), &reserved_theme_ids())
-            .expect("install");
+        validate_and_install_pack_bytes(&zip, dir.path(), &reserved_theme_ids()).expect("install");
 
         let loaded = load_installed_theme(dir.path(), "community.test-pack").expect("theme");
         let asset = loaded.events.get(&SoundEvent::Completed).expect("asset");
         let resolved = resolve_playback_asset(dir.path(), &loaded, asset).expect("resolved");
         assert!(matches!(resolved, ResolvedAudio::File(_)));
         if let ResolvedAudio::File(path) = resolved {
-            assert!(path.ends_with("sounds/completed.wav") || path.ends_with("sounds\\completed.wav"));
+            assert!(
+                path.ends_with("sounds/completed.wav") || path.ends_with("sounds\\completed.wav")
+            );
             let theme_dir = dir.path().join("community.test-pack");
             let canonical_theme = theme_dir.canonicalize().expect("canonical theme");
             assert!(path.starts_with(&canonical_theme));
@@ -231,12 +234,9 @@ mod tests {
         let theme = sample_theme();
         let entries = pack_entries(&theme, b"RIFF");
         let zip = build_zip(&entries);
-        validate_and_install_pack_bytes(&zip, dir.path(), &reserved_theme_ids())
-            .expect("install");
+        validate_and_install_pack_bytes(&zip, dir.path(), &reserved_theme_ids()).expect("install");
 
-        let asset_path = dir
-            .path()
-            .join("community.test-pack/sounds/completed.wav");
+        let asset_path = dir.path().join("community.test-pack/sounds/completed.wav");
         let mut file = std::fs::OpenOptions::new()
             .append(true)
             .open(&asset_path)

@@ -306,7 +306,10 @@ impl HostState {
 
     /// Ingests a relay `SessionEvent` frame into AppCore and the stream hub.
     /// Does not fabricate events — only persists what the remote relay reported.
-    pub fn ingest_relay_session_event(&self, event: &RelaySessionEventIngest) -> Result<(), String> {
+    pub fn ingest_relay_session_event(
+        &self,
+        event: &RelaySessionEventIngest,
+    ) -> Result<(), String> {
         let source = parse_ipc_source(&event.source);
         if source == AgentSource::Unknown {
             return Err(format!(

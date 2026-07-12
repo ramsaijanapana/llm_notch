@@ -7,9 +7,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use zip::ZipArchive;
 
-use crate::sound::{
-    MAX_ASSET_BYTES, MAX_THEME_BYTES, SoundError, SoundTheme, builtin_8_bit_theme,
-};
+use crate::sound::{MAX_ASSET_BYTES, MAX_THEME_BYTES, SoundError, SoundTheme, builtin_8_bit_theme};
 
 pub const PACK_SCHEMA_VERSION: u16 = 1;
 pub const THEME_MANIFEST_NAME: &str = "theme.json";
@@ -255,21 +253,24 @@ fn normalize_archive_path(raw: &str) -> Result<String, SoundPackError> {
         return Err(SoundPackError::UnsafeEntryPath(raw.into()));
     }
     let parts: Vec<&str> = replaced.split('/').collect();
-    if parts.iter().any(|part| part.is_empty() || *part == "." || *part == "..") {
+    if parts
+        .iter()
+        .any(|part| part.is_empty() || *part == "." || *part == "..")
+    {
         return Err(SoundPackError::UnsafeEntryPath(raw.into()));
     }
     Ok(parts.join("/"))
 }
 
 fn parse_theme_manifest(bytes: &[u8]) -> Result<SoundTheme, SoundPackError> {
-    serde_json::from_slice(bytes)
-        .map_err(|error| SoundPackError::InvalidTheme(SoundError::InvalidManifest(error.to_string())))
+    serde_json::from_slice(bytes).map_err(|error| {
+        SoundPackError::InvalidTheme(SoundError::InvalidManifest(error.to_string()))
+    })
 }
 
 fn parse_integrity_manifest(bytes: &[u8]) -> Result<SoundPackIntegrity, SoundPackError> {
-    let integrity: SoundPackIntegrity = serde_json::from_slice(bytes).map_err(|_| {
-        SoundPackError::MissingIntegrity
-    })?;
+    let integrity: SoundPackIntegrity =
+        serde_json::from_slice(bytes).map_err(|_| SoundPackError::MissingIntegrity)?;
     if integrity.schema_version != PACK_SCHEMA_VERSION {
         return Err(SoundPackError::UnsupportedSchema(integrity.schema_version));
     }
@@ -405,12 +406,10 @@ pub mod fixtures {
         let mut buffer = Cursor::new(Vec::new());
         {
             let mut writer = zip::ZipWriter::new(&mut buffer);
-            let options = SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Stored);
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
             for (path, bytes) in entries {
-                writer
-                    .start_file(path, options)
-                    .expect("start zip entry");
+                writer.start_file(path, options).expect("start zip entry");
                 writer.write_all(bytes).expect("write zip entry");
             }
             writer.finish().expect("finish zip");

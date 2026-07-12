@@ -59,7 +59,8 @@ mod tests {
     fn activation_stub_reports_honest_none_on_unknown_platform() {
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            let locator = ContextLocator::encode(HostKind::Cursor, None, None, None).expect("encode");
+            let locator =
+                ContextLocator::encode(HostKind::Cursor, None, None, None).expect("encode");
             let outcome = activate(&locator, ContextOpenTier::AppActivate);
             assert!(!outcome.activated);
             assert_eq!(outcome.achieved_tier, ContextOpenTier::None);

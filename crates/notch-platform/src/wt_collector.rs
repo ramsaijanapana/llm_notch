@@ -181,16 +181,13 @@ mod tests {
             .iter()
             .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
             .collect();
-        move |name: &str| {
-            map.get(name)
-                .cloned()
-                .ok_or(std::env::VarError::NotPresent)
-        }
+        move |name: &str| map.get(name).cloned().ok_or(std::env::VarError::NotPresent)
     }
 
     #[test]
     fn empty_env_yields_empty_snapshot() {
-        let snapshot = collect_wt_metadata(|_| Err(std::env::VarError::NotPresent), Default::default());
+        let snapshot =
+            collect_wt_metadata(|_| Err(std::env::VarError::NotPresent), Default::default());
         assert_eq!(snapshot, WtCollectorSnapshot::default());
         assert!(!snapshot.has_navigation_metadata());
     }
@@ -227,10 +224,7 @@ mod tests {
     #[test]
     fn tab_and_pane_pass_through_without_invention() {
         let snapshot = collect_wt_metadata(
-            env_map(&[
-                ("LLM_NOTCH_TAB_ID", "2"),
-                ("LLM_NOTCH_PANE_ID", "1"),
-            ]),
+            env_map(&[("LLM_NOTCH_TAB_ID", "2"), ("LLM_NOTCH_PANE_ID", "1")]),
             Default::default(),
         );
         assert_eq!(snapshot.tab_id.as_deref(), Some("2"));

@@ -2,8 +2,8 @@
 
 use notch_platform::{
     HostActivationBridge, NavigationDisposition, NavigationOutcome, NavigationTier,
-    ProcessDescriptor, TerminalHost, TerminalLocator, TerminalNavigator,
-    VerifiedTerminalMetadata, current_activation_bridge, current_navigator, hwnd_for_pid,
+    ProcessDescriptor, TerminalHost, TerminalLocator, TerminalNavigator, VerifiedTerminalMetadata,
+    current_activation_bridge, current_navigator, hwnd_for_pid,
 };
 use notch_protocol::ContextOpenTier;
 

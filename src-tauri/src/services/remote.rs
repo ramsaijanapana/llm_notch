@@ -6,11 +6,11 @@ use std::sync::Arc;
 use notch_core::SqliteRepository;
 use notch_remote::{
     ConnectionState, DEFAULT_REMOTE_BIN_DIRECTORY, DEFAULT_REMOTE_RUNTIME_DIRECTORY,
-    DeployTransport, DeploymentExecutor, DeploymentPlan, DeploymentStep,
-    OpenSshDeployTransport, OpenSshTransport, ReconnectPolicy, RelayArtifactError,
-    RelayFrame, RelayPayload, RelaySession, RelaySessionError, RemoteArchitecture, RemoteHostConfig,
-    RemoteOs, RemoteRelayManager, RemoteTarget, ResumeCursor, SshHostKeyPolicy,
-    remote_hook_spool_guidance, resolve_relay_artifact,
+    DeployTransport, DeploymentExecutor, DeploymentPlan, DeploymentStep, OpenSshDeployTransport,
+    OpenSshTransport, ReconnectPolicy, RelayArtifactError, RelayFrame, RelayPayload, RelaySession,
+    RelaySessionError, RemoteArchitecture, RemoteHostConfig, RemoteOs, RemoteRelayManager,
+    RemoteTarget, ResumeCursor, SshHostKeyPolicy, remote_hook_spool_guidance,
+    resolve_relay_artifact,
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -113,10 +113,18 @@ pub struct RemoteBackendStatus {
 #[serde(rename_all = "camelCase", tag = "type", deny_unknown_fields)]
 pub enum RemoteDeploymentStepView {
     ProbeTarget,
-    CreatePrivateDirectory { remote_directory: String },
-    UploadTemporary { remote_path: String },
-    VerifySha256 { expected_sha256: String },
-    ActivateAtomically { remote_path: String },
+    CreatePrivateDirectory {
+        remote_directory: String,
+    },
+    UploadTemporary {
+        remote_path: String,
+    },
+    VerifySha256 {
+        expected_sha256: String,
+    },
+    ActivateAtomically {
+        remote_path: String,
+    },
     StartStdioRelay {
         remote_path: String,
         event_spool_dir: String,
@@ -275,7 +283,9 @@ impl DesktopRemoteRegistry {
                     }
                 }
                 Ok(_) => tracing::warn!(host_id = %id, "skipping remote host with mismatched id"),
-                Err(error) => tracing::warn!(host_id = %id, %error, "skipping unparsable remote host"),
+                Err(error) => {
+                    tracing::warn!(host_id = %id, %error, "skipping unparsable remote host")
+                }
             }
         }
     }
@@ -284,8 +294,8 @@ impl DesktopRemoteRegistry {
         let Some(repository) = self.repository.as_ref() else {
             return Ok(());
         };
-        let config_json =
-            serde_json::to_string(config).map_err(|error| format!("host serialization failed: {error}"))?;
+        let config_json = serde_json::to_string(config)
+            .map_err(|error| format!("host serialization failed: {error}"))?;
         repository
             .upsert_remote_host(
                 &config.id,
@@ -317,7 +327,10 @@ impl DesktopRemoteRegistry {
         Ok(())
     }
 
-    pub fn upsert_host_input(&mut self, input: RemoteHostConfigInput) -> Result<RemoteHostView, String> {
+    pub fn upsert_host_input(
+        &mut self,
+        input: RemoteHostConfigInput,
+    ) -> Result<RemoteHostView, String> {
         let config = host_config_from_input(input)?;
         self.upsert_host(config.clone())?;
         let backend = self.backend_status();
@@ -347,10 +360,9 @@ impl DesktopRemoteRegistry {
         };
         let message = match availability {
             RemoteAvailability::Available => None,
-            RemoteAvailability::Unavailable => Some(backend_unavailable_message(
-                ssh_present,
-                relay_present,
-            )),
+            RemoteAvailability::Unavailable => {
+                Some(backend_unavailable_message(ssh_present, relay_present))
+            }
         };
         RemoteBackendStatus {
             availability,
@@ -369,19 +381,12 @@ impl DesktopRemoteRegistry {
         self.hosts
             .values()
             .map(|config| {
-                let snapshot = snapshots
-                    .iter()
-                    .find(|entry| entry.host_id == config.id);
+                let snapshot = snapshots.iter().find(|entry| entry.host_id == config.id);
                 let last_connected_at_ms = self
                     .session_watch
                     .get(&config.id)
                     .and_then(|watch| watch.last_connected_at_ms);
-                host_view(
-                    config,
-                    backend.availability,
-                    snapshot,
-                    last_connected_at_ms,
-                )
+                host_view(config, backend.availability, snapshot, last_connected_at_ms)
             })
             .collect()
     }
@@ -414,7 +419,8 @@ impl DesktopRemoteRegistry {
         }
         if !probe_scp_executable(&self.config.scp_executable) {
             return Err(
-                "SCP is unavailable; install OpenSSH scp before executing remote deployment.".into(),
+                "SCP is unavailable; install OpenSSH scp before executing remote deployment."
+                    .into(),
             );
         }
         let host = self
@@ -423,10 +429,8 @@ impl DesktopRemoteRegistry {
             .ok_or_else(|| format!("remote host `{host_id}` is not configured"))?
             .clone();
         let plan = self.build_deployment_plan(host_id)?;
-        let transport = OpenSshDeployTransport::new(
-            &self.config.ssh_executable,
-            &self.config.scp_executable,
-        );
+        let transport =
+            OpenSshDeployTransport::new(&self.config.ssh_executable, &self.config.scp_executable);
         self.execute_deploy_with_transport(&host, &plan, &transport)
     }
 
@@ -460,10 +464,8 @@ impl DesktopRemoteRegistry {
             .hosts
             .get(host_id)
             .ok_or_else(|| format!("remote host `{host_id}` is not configured"))?;
-        let transport = OpenSshDeployTransport::new(
-            &self.config.ssh_executable,
-            &self.config.scp_executable,
-        );
+        let transport =
+            OpenSshDeployTransport::new(&self.config.ssh_executable, &self.config.scp_executable);
         self.build_deployment_plan_with_transport(host, &transport)
     }
 
@@ -519,9 +521,7 @@ impl DesktopRemoteRegistry {
                     .map_err(|error| error.to_string())?,
             );
             let session = RelaySession::new(host, transport);
-            self.manager
-                .register(session)
-                .map_err(map_session_error)?;
+            self.manager.register(session).map_err(map_session_error)?;
         }
         let session = self
             .manager
@@ -569,34 +569,27 @@ impl DesktopRemoteRegistry {
             let Some(session) = self.manager.get_mut(&host_id) else {
                 continue;
             };
-            let watch = self
-                .session_watch
-                .entry(host_id.clone())
-                .or_default();
+            let watch = self.session_watch.entry(host_id.clone()).or_default();
             let connection_state = session.snapshot().state;
 
             match connection_state {
-                ConnectionState::Streaming => {
-                    match session.receive() {
-                        Ok(Some(frame)) => {
-                            match handle_relay_frame(&host_id, session, frame) {
-                                Ok(Some(event)) => result.session_events.push(event),
-                                Ok(None) => {}
-                                Err(error) => {
-                                    tracing::warn!(host_id = %host_id, %error, "relay frame handling failed");
-                                }
-                            }
-                        }
-                        Ok(None) => {
-                            tracing::info!(host_id = %host_id, "relay session ended");
-                            schedule_reconnect(watch, now_ms);
-                        }
-                        Err(RelaySessionError::NotActive(_)) => {}
+                ConnectionState::Streaming => match session.receive() {
+                    Ok(Some(frame)) => match handle_relay_frame(&host_id, session, frame) {
+                        Ok(Some(event)) => result.session_events.push(event),
+                        Ok(None) => {}
                         Err(error) => {
-                            tracing::warn!(host_id = %host_id, %error, "relay receive failed");
+                            tracing::warn!(host_id = %host_id, %error, "relay frame handling failed");
                         }
+                    },
+                    Ok(None) => {
+                        tracing::info!(host_id = %host_id, "relay session ended");
+                        schedule_reconnect(watch, now_ms);
                     }
-                }
+                    Err(RelaySessionError::NotActive(_)) => {}
+                    Err(error) => {
+                        tracing::warn!(host_id = %host_id, %error, "relay receive failed");
+                    }
+                },
                 ConnectionState::Disconnected => {
                     if now_ms >= watch.next_reconnect_at_ms {
                         let jitter = reconnect_jitter_basis_points(&host_id);
@@ -608,14 +601,18 @@ impl DesktopRemoteRegistry {
                                 tracing::info!(host_id = %host_id, "relay session reconnected");
                             }
                             Ok(false) => {}
-                            Err(RelaySessionError::RequiresRestart) | Err(RelaySessionError::NotActive(_)) => {}
-                            Err(RelaySessionError::Transport(_)) | Err(RelaySessionError::AlreadyActive(_)) => {
+                            Err(RelaySessionError::RequiresRestart)
+                            | Err(RelaySessionError::NotActive(_)) => {}
+                            Err(RelaySessionError::Transport(_))
+                            | Err(RelaySessionError::AlreadyActive(_)) => {
                                 schedule_reconnect(watch, now_ms);
                             }
                         }
                     }
                 }
-                ConnectionState::Failed | ConnectionState::Connecting | ConnectionState::Authenticating => {}
+                ConnectionState::Failed
+                | ConnectionState::Connecting
+                | ConnectionState::Authenticating => {}
                 ConnectionState::Backoff { .. } => {}
             }
 
@@ -657,10 +654,7 @@ impl DesktopRemoteRegistry {
                 message: Some(format!("remote host `{host_id}` is not configured")),
             };
         };
-        let snapshot = self
-            .manager
-            .get_mut(host_id)
-            .map(RelaySession::snapshot);
+        let snapshot = self.manager.get_mut(host_id).map(RelaySession::snapshot);
         let view = host_view(host, backend.availability, snapshot.as_ref(), None);
         RemoteConnectionStatusView {
             host_id: view.config.id,
@@ -952,12 +946,14 @@ fn map_relay_artifact_error(error: RelayArtifactError) -> String {
             expected_path,
         } => format!(
             "no relay artifact for {target:?}; cross-compile with `npm run native:prepare-helper -- --target {}` and place the sidecar at {}",
-            notch_remote::rust_triple_for_target(target)
-                .unwrap_or("unknown"),
+            notch_remote::rust_triple_for_target(target).unwrap_or("unknown"),
             expected_path.display()
         ),
         RelayArtifactError::Unreadable { path, message } => {
-            format!("relay artifact is unreadable at {}: {message}", path.display())
+            format!(
+                "relay artifact is unreadable at {}: {message}",
+                path.display()
+            )
         }
     }
 }
@@ -1017,11 +1013,7 @@ mod tests {
     fn relay_binaries_dir_for_tests() -> PathBuf {
         std::env::var("CARGO_BIN_EXE_llm-notch-relay")
             .ok()
-            .and_then(|relay_exe| {
-                PathBuf::from(relay_exe)
-                    .parent()
-                    .map(Path::to_path_buf)
-            })
+            .and_then(|relay_exe| PathBuf::from(relay_exe).parent().map(Path::to_path_buf))
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries"))
     }
 
@@ -1059,7 +1051,9 @@ mod tests {
         }
     }
 
-    fn registry_with_linux_relay_artifact(relay_path: &Path) -> (DesktopRemoteRegistry, tempfile::TempDir) {
+    fn registry_with_linux_relay_artifact(
+        relay_path: &Path,
+    ) -> (DesktopRemoteRegistry, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("tempdir");
         let target = RemoteTarget {
             os: RemoteOs::Linux,
@@ -1102,7 +1096,13 @@ mod tests {
         let status = registry.connection_status("dev-box");
         assert_eq!(status.availability, RemoteAvailability::Unavailable);
         assert_eq!(status.connection_state, RemoteConnectionState::Disconnected);
-        assert!(status.message.as_deref().unwrap().contains("not configured"));
+        assert!(
+            status
+                .message
+                .as_deref()
+                .unwrap()
+                .contains("not configured")
+        );
     }
 
     fn relay_binary_path() -> Option<PathBuf> {
@@ -1140,7 +1140,11 @@ mod tests {
             plan.artifact.target.architecture,
             RemoteArchitecture::X86_64
         );
-        assert!(plan.steps.iter().any(|step| matches!(step, DeploymentStep::ProbeTarget)));
+        assert!(
+            plan.steps
+                .iter()
+                .any(|step| matches!(step, DeploymentStep::ProbeTarget))
+        );
         assert!(plan.steps.iter().any(|step| matches!(
             step,
             DeploymentStep::StartStdioRelay {
@@ -1189,7 +1193,10 @@ mod tests {
         assert_eq!(hosts[0].config.id, "dev-box");
         assert_eq!(hosts[0].config.destination, "dev@example.internal");
         assert_eq!(hosts[0].config.port, Some(2222));
-        assert_eq!(hosts[0].connection_state, RemoteConnectionState::Disconnected);
+        assert_eq!(
+            hosts[0].connection_state,
+            RemoteConnectionState::Disconnected
+        );
     }
 
     #[test]
@@ -1243,9 +1250,7 @@ mod tests {
         };
         let mut registry = registry_with_relay(&relay_path);
         registry.register_host(sample_host("local-relay")).unwrap();
-        let transport = Box::new(DirectRelayTransport::new(
-            relay_path.display().to_string(),
-        ));
+        let transport = Box::new(DirectRelayTransport::new(relay_path.display().to_string()));
         let session = RelaySession::new(sample_host("local-relay"), transport);
         registry.manager.register(session).unwrap();
         registry
@@ -1279,9 +1284,7 @@ mod tests {
         };
         let mut registry = registry_with_relay(&relay_path);
         registry.register_host(sample_host("local-relay")).unwrap();
-        let transport = Box::new(DirectRelayTransport::new(
-            relay_path.display().to_string(),
-        ));
+        let transport = Box::new(DirectRelayTransport::new(relay_path.display().to_string()));
         let session = RelaySession::new(sample_host("local-relay"), transport);
         registry.manager.register(session).unwrap();
         registry
@@ -1336,14 +1339,16 @@ mod tests {
                 attention: None,
             })
         );
-        assert!(extract_relay_session_event(
-            "dev-box",
-            &RelayFrame {
-                sequence: 4,
-                payload: RelayPayload::Heartbeat,
-            }
-        )
-        .is_none());
+        assert!(
+            extract_relay_session_event(
+                "dev-box",
+                &RelayFrame {
+                    sequence: 4,
+                    payload: RelayPayload::Heartbeat,
+                }
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -1411,17 +1416,11 @@ mod tests {
         };
         let mut registry = registry_with_relay(&relay_path);
         registry.register_host(sample_host("local-relay")).unwrap();
-        let transport = Box::new(DirectRelayTransport::new(
-            relay_path.display().to_string(),
-        ));
+        let transport = Box::new(DirectRelayTransport::new(relay_path.display().to_string()));
         let session = RelaySession::new(sample_host("local-relay"), transport);
         registry.manager.register(session).unwrap();
 
-        let snapshot = registry
-            .manager
-            .get_mut("local-relay")
-            .unwrap()
-            .snapshot();
+        let snapshot = registry.manager.get_mut("local-relay").unwrap().snapshot();
         assert_eq!(snapshot.state, ConnectionState::Disconnected);
 
         registry
@@ -1430,11 +1429,7 @@ mod tests {
             .unwrap()
             .start()
             .expect("relay handshake");
-        let snapshot = registry
-            .manager
-            .get_mut("local-relay")
-            .unwrap()
-            .snapshot();
+        let snapshot = registry.manager.get_mut("local-relay").unwrap().snapshot();
         assert_eq!(snapshot.state, ConnectionState::Streaming);
         assert!(snapshot.process_alive);
         assert_eq!(snapshot.connection_nonce.as_deref().map(str::len), Some(64));
@@ -1500,9 +1495,7 @@ mod tests {
             os: RemoteOs::Linux,
             architecture: RemoteArchitecture::X86_64,
         };
-        let artifact_path = dir
-            .path()
-            .join("llm-notch-relay-x86_64-unknown-linux-gnu");
+        let artifact_path = dir.path().join("llm-notch-relay-x86_64-unknown-linux-gnu");
         std::fs::write(&artifact_path, b"relay-bytes").expect("write sidecar");
         let mut registry = DesktopRemoteRegistry::with_config(
             RemoteRegistryConfig::new("ssh", "scp", Path::new("/missing/fallback").into())
@@ -1593,10 +1586,12 @@ mod tests {
             .execute_deploy_with_transport(&host, &plan, &transport)
             .expect("deploy result");
         assert_eq!(result.host_id, "dev-box");
-        assert!(result
-            .completed_steps
-            .iter()
-            .any(|step| matches!(step, RemoteDeploymentStepView::ActivateAtomically { .. })));
+        assert!(
+            result
+                .completed_steps
+                .iter()
+                .any(|step| matches!(step, RemoteDeploymentStepView::ActivateAtomically { .. }))
+        );
         assert_eq!(
             result.probed_target,
             Some(RemoteTargetView {
@@ -1621,9 +1616,7 @@ mod tests {
         if status.availability == RemoteAvailability::Unavailable {
             return;
         }
-        let error = registry
-            .execute_deploy("dev-box")
-            .expect_err("scp missing");
+        let error = registry.execute_deploy("dev-box").expect_err("scp missing");
         assert!(error.contains("SCP is unavailable"));
     }
 }

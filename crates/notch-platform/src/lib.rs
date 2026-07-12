@@ -11,6 +11,11 @@ mod types;
 mod windows;
 mod wt_collector;
 
+pub use hwnd_collector::{
+    discover_terminal_window_handle, discover_terminal_window_handle_from_pid,
+    export_discovered_window_handle_to_env, hwnd_for_pid, parse_window_handle,
+    validate_window_handle,
+};
 pub use macos::{
     MacOsHostActivationBridge, MacOsTerminalNavigator, build_iterm2_exact_pane_script,
     build_mac_terminal_tab_script, bundle_id_for_host, classify_macos_host,
@@ -25,11 +30,6 @@ pub use types::{
 pub use windows::{
     WindowsHostActivationBridge, WindowsTerminalNavigator, build_wt_exact_pane_command,
     classify_windows_host, try_exact_pane_host_bridge,
-};
-pub use hwnd_collector::{
-    discover_terminal_window_handle, discover_terminal_window_handle_from_pid,
-    export_discovered_window_handle_to_env, hwnd_for_pid, parse_window_handle,
-    validate_window_handle,
 };
 pub use wt_collector::{
     ENV_PANE_ID, ENV_TAB_ID, ENV_TERMINAL_SESSION_ID, ENV_WINDOW_HANDLE, ENV_WT_PROFILE_ID,

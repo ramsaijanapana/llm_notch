@@ -3,11 +3,11 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use thiserror::Error;
 
+use crate::hook_ingest::{RelayHookPayload, validate_hook_payload};
 use crate::{
     ConnectionState, MAX_REMOTE_FRAME_BYTES, RelayControl, RelayFrame, RelayHello,
     RemoteHostConfig, ResumeCursor,
 };
-use crate::hook_ingest::{RelayHookPayload, validate_hook_payload};
 
 const MAX_HELLO_BYTES: usize = 4 * 1024;
 pub const DEFAULT_REMOTE_RUNTIME_DIRECTORY: &str = "~/.llm-notch";
@@ -575,7 +575,10 @@ mod tests {
             Ok(())
         }
 
-        fn inject_hook(&mut self, _payload: &crate::hook_ingest::RelayHookPayload) -> Result<(), TransportError> {
+        fn inject_hook(
+            &mut self,
+            _payload: &crate::hook_ingest::RelayHookPayload,
+        ) -> Result<(), TransportError> {
             Ok(())
         }
 

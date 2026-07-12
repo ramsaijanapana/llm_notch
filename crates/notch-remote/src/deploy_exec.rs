@@ -38,7 +38,9 @@ pub enum DeployExecError {
     },
     #[error("relay artifact hash mismatch: expected {expected}, got {actual}")]
     HashMismatch { expected: String, actual: String },
-    #[error("probed remote target {probed:?} does not match deployment artifact target {artifact:?}")]
+    #[error(
+        "probed remote target {probed:?} does not match deployment artifact target {artifact:?}"
+    )]
     TargetMismatch {
         probed: RemoteTarget,
         artifact: RemoteTarget,
@@ -92,7 +94,11 @@ impl DeployTransport for OpenSshDeployTransport {
             .ssh_args()
             .map_err(|error| DeployTransportError::Protocol(error.to_string()))?;
         args.push(script.to_string());
-        run_command(&self.ssh_executable, &args, DeployTransportError::SshUnavailable)
+        run_command(
+            &self.ssh_executable,
+            &args,
+            DeployTransportError::SshUnavailable,
+        )
     }
 
     fn upload_file(
@@ -112,7 +118,11 @@ impl DeployTransport for OpenSshDeployTransport {
             .map_err(|error| DeployTransportError::Protocol(error.to_string()))?;
         args.push(local_path.display().to_string());
         args.push(format!("{}:{remote_path}", host.destination));
-        run_command(&self.scp_executable, &args, DeployTransportError::ScpUnavailable)?;
+        run_command(
+            &self.scp_executable,
+            &args,
+            DeployTransportError::ScpUnavailable,
+        )?;
         Ok(())
     }
 }
@@ -138,13 +148,12 @@ impl<'a, T: DeployTransport + ?Sized> DeploymentExecutor<'a, T> {
         for step in &plan.steps {
             match step {
                 DeploymentStep::ProbeTarget => {
-                    let target = self
-                        .transport
-                        .probe_target(host)
-                        .map_err(|source| DeployExecError::StepFailed {
+                    let target = self.transport.probe_target(host).map_err(|source| {
+                        DeployExecError::StepFailed {
                             step: step.clone(),
                             source,
-                        })?;
+                        }
+                    })?;
                     if target != plan.artifact.target {
                         return Err(DeployExecError::TargetMismatch {
                             probed: target,
@@ -174,13 +183,16 @@ impl<'a, T: DeployTransport + ?Sized> DeploymentExecutor<'a, T> {
                     completed.push(step.clone());
                 }
                 DeploymentStep::VerifySha256 { expected_sha256 } => {
-                    let remote_path = temporary_path.as_deref().ok_or(DeployExecError::MissingRelayPath)?;
-                    let actual = remote_sha256(self.transport, host, remote_path).map_err(
-                        |source| DeployExecError::StepFailed {
-                            step: step.clone(),
-                            source,
-                        },
-                    )?;
+                    let remote_path = temporary_path
+                        .as_deref()
+                        .ok_or(DeployExecError::MissingRelayPath)?;
+                    let actual =
+                        remote_sha256(self.transport, host, remote_path).map_err(|source| {
+                            DeployExecError::StepFailed {
+                                step: step.clone(),
+                                source,
+                            }
+                        })?;
                     if actual != *expected_sha256 {
                         return Err(DeployExecError::HashMismatch {
                             expected: expected_sha256.clone(),
@@ -190,7 +202,9 @@ impl<'a, T: DeployTransport + ?Sized> DeploymentExecutor<'a, T> {
                     completed.push(step.clone());
                 }
                 DeploymentStep::ActivateAtomically { remote_path } => {
-                    let temporary = temporary_path.as_deref().ok_or(DeployExecError::MissingRelayPath)?;
+                    let temporary = temporary_path
+                        .as_deref()
+                        .ok_or(DeployExecError::MissingRelayPath)?;
                     activate_relay(self.transport, host, temporary, remote_path).map_err(
                         |source| DeployExecError::StepFailed {
                             step: step.clone(),
@@ -248,9 +262,9 @@ fn parse_probe_output(output: &str) -> Result<RemoteTarget, DeployTransportError
     let os = lines
         .next()
         .ok_or_else(|| DeployTransportError::Protocol("probe output missing OS".into()))?;
-    let architecture = lines
-        .next()
-        .ok_or_else(|| DeployTransportError::Protocol("probe output missing architecture".into()))?;
+    let architecture = lines.next().ok_or_else(|| {
+        DeployTransportError::Protocol("probe output missing architecture".into())
+    })?;
     Ok(RemoteTarget {
         os: match os {
             "Linux" => RemoteOs::Linux,
@@ -317,8 +331,8 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    use crate::{DeploymentError, RelayArtifact, SshHostKeyPolicy};
     use crate::transport::DEFAULT_REMOTE_BIN_DIRECTORY;
+    use crate::{DeploymentError, RelayArtifact, SshHostKeyPolicy};
 
     use super::*;
 
@@ -386,7 +400,10 @@ mod tests {
     }
 
     impl DeployTransport for FakeDeployTransport {
-        fn probe_target(&self, _host: &RemoteHostConfig) -> Result<RemoteTarget, DeployTransportError> {
+        fn probe_target(
+            &self,
+            _host: &RemoteHostConfig,
+        ) -> Result<RemoteTarget, DeployTransportError> {
             if self.fail_step == Some("probe") {
                 return Err(DeployTransportError::AuthenticationFailed);
             }
@@ -407,10 +424,9 @@ mod tests {
             if self.fail_step == Some("activate") && script.starts_with("test -f") {
                 return Err(DeployTransportError::Process("mv failed".into()));
             }
-            self.remote_outputs
-                .get(script)
-                .cloned()
-                .ok_or_else(|| DeployTransportError::Protocol(format!("unexpected script: {script}")))
+            self.remote_outputs.get(script).cloned().ok_or_else(|| {
+                DeployTransportError::Protocol(format!("unexpected script: {script}"))
+            })
         }
 
         fn upload_file(
@@ -463,14 +479,18 @@ mod tests {
             .execute(&sample_host(), &plan)
             .expect("deploy");
         assert!(outcome.probed_target.is_some());
-        assert!(outcome
-            .completed_steps
-            .iter()
-            .any(|step| matches!(step, DeploymentStep::ActivateAtomically { .. })));
-        assert!(!outcome
-            .completed_steps
-            .iter()
-            .any(|step| matches!(step, DeploymentStep::StartStdioRelay { .. })));
+        assert!(
+            outcome
+                .completed_steps
+                .iter()
+                .any(|step| matches!(step, DeploymentStep::ActivateAtomically { .. }))
+        );
+        assert!(
+            !outcome
+                .completed_steps
+                .iter()
+                .any(|step| matches!(step, DeploymentStep::StartStdioRelay { .. }))
+        );
         assert_eq!(transport.uploads.borrow().len(), 1);
     }
 

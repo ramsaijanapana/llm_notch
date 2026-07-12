@@ -210,7 +210,9 @@ pub fn validate_wire_token(token: &str) -> Result<(), LocatorError> {
     Ok(())
 }
 
-fn validate_verified_terminal_fields(terminal: &VerifiedTerminalContext) -> Result<(), LocatorError> {
+fn validate_verified_terminal_fields(
+    terminal: &VerifiedTerminalContext,
+) -> Result<(), LocatorError> {
     for value in [
         terminal.terminal_session_id.as_deref(),
         terminal.tab_id.as_deref(),
@@ -234,9 +236,10 @@ fn validate_terminal_id(value: &str) -> Result<(), LocatorError> {
     if contains_unsafe_shell_chars(value) {
         return Err(LocatorError::UnsafeCharacters);
     }
-    if !value.chars().all(|ch| {
-        ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '-' | '_' | '.' | '%')
-    }) {
+    if !value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '-' | '_' | '.' | '%'))
+    {
         return Err(LocatorError::InvalidVerifiedTerminalField);
     }
     Ok(())
@@ -331,13 +334,9 @@ mod tests {
             pane_id: Some("1".into()),
             window_handle: Some(99),
         };
-        let locator = ContextLocator::encode(
-            HostKind::WindowsTerminal,
-            None,
-            None,
-            Some(&verified),
-        )
-        .expect("encode");
+        let locator =
+            ContextLocator::encode(HostKind::WindowsTerminal, None, None, Some(&verified))
+                .expect("encode");
         let parsed = ContextLocator::parse(locator.token()).expect("parse");
         assert!(parsed.pane_verified());
         assert_eq!(parsed.verified_terminal(), verified);
@@ -349,13 +348,8 @@ mod tests {
             tab_id: Some("1".into()),
             ..Default::default()
         };
-        let locator = ContextLocator::encode(
-            HostKind::WindowsTerminal,
-            None,
-            None,
-            Some(&partial),
-        )
-        .expect("encode");
+        let locator = ContextLocator::encode(HostKind::WindowsTerminal, None, None, Some(&partial))
+            .expect("encode");
         assert!(!locator.pane_verified());
     }
 }

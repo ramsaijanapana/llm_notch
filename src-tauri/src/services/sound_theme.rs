@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
+use chrono::Timelike;
 use notch_protocol::{
     AttentionKind, PublicSettings, SessionStatus, SoundEvent as ProtocolSoundEvent,
 };
@@ -14,7 +15,6 @@ use notch_services::sound_pack::{
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
-use chrono::Timelike;
 
 pub const DEFAULT_SOUND_THEME_ID: &str = "builtin.8-bit";
 
@@ -252,10 +252,12 @@ pub fn routing_from_settings(settings: &PublicSettings) -> SoundRouting {
     SoundRouting {
         enabled: settings.alert_sound_enabled && routing.enabled,
         volume: routing.volume,
-        quiet_hours: routing.quiet_hours.map(|hours| notch_services::sound::QuietHours {
-            start_minute: hours.start_minute,
-            end_minute: hours.end_minute,
-        }),
+        quiet_hours: routing
+            .quiet_hours
+            .map(|hours| notch_services::sound::QuietHours {
+                start_minute: hours.start_minute,
+                end_minute: hours.end_minute,
+            }),
         event_volume: routing
             .event_volume
             .iter()
@@ -322,7 +324,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use notch_protocol::{PublicSettings, SoundRouting as ProtocolSoundRouting};
-    use notch_services::sound::{QuietHours, SoundBackend, SoundEngine, PlaybackRequest};
+    use notch_services::sound::{PlaybackRequest, QuietHours, SoundBackend, SoundEngine};
     use tempfile::TempDir;
 
     use super::*;

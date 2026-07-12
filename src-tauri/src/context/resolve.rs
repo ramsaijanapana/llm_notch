@@ -3,7 +3,9 @@
 use notch_platform::{
     NavigationTier, ProcessDescriptor, TerminalHost, VerifiedTerminalMetadata, current_navigator,
 };
-use notch_protocol::{AgentSession, AgentSource, ContextOpenTier, ProcessIdentity, VerifiedTerminalContext};
+use notch_protocol::{
+    AgentSession, AgentSource, ContextOpenTier, ProcessIdentity, VerifiedTerminalContext,
+};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
 use crate::context::locator::{ContextLocator, HostKind, LocatorError, pane_verified_for_host};
@@ -307,10 +309,7 @@ mod tests {
         session.verified_terminal = Some(wt_verified_terminal());
         let resolved = resolve_session(&session).expect("resolve").expect("some");
         assert!(resolved.pane_verified);
-        assert_eq!(
-            resolved.locator.verified_terminal(),
-            wt_verified_terminal()
-        );
+        assert_eq!(resolved.locator.verified_terminal(), wt_verified_terminal());
     }
 
     #[test]
@@ -324,7 +323,10 @@ mod tests {
         );
         let resolved = resolve_session(&session).expect("resolve").expect("some");
         assert!(!resolved.pane_verified);
-        assert_eq!(resolved.locator.verified_terminal(), VerifiedTerminalContext::default());
+        assert_eq!(
+            resolved.locator.verified_terminal(),
+            VerifiedTerminalContext::default()
+        );
     }
 
     #[test]

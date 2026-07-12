@@ -1,4 +1,4 @@
-use notch_protocol::{AttentionKind, SessionEventKind, MAX_TOOL_NAME_LEN};
+use notch_protocol::{AttentionKind, MAX_TOOL_NAME_LEN, SessionEventKind};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -35,9 +35,13 @@ pub struct RelayFrame {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type", deny_unknown_fields)]
 pub enum RelayControl {
-    Acknowledge { cursor: ResumeCursor },
+    Acknowledge {
+        cursor: ResumeCursor,
+    },
     /// Injects a normalized hook event for immediate forwarding on stdout.
-    InjectHook { payload: RelayHookPayload },
+    InjectHook {
+        payload: RelayHookPayload,
+    },
     Shutdown,
 }
 
@@ -112,8 +116,9 @@ impl RelayControl {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         match self {
             Self::Acknowledge { .. } | Self::Shutdown => Ok(()),
-            Self::InjectHook { payload } => validate_hook_payload(payload)
-                .map_err(|_| ProtocolError::InvalidField),
+            Self::InjectHook { payload } => {
+                validate_hook_payload(payload).map_err(|_| ProtocolError::InvalidField)
+            }
         }
     }
 }

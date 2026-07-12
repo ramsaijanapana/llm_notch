@@ -239,7 +239,9 @@ impl QuotaCredentialResolver for EnvCredentialResolver {
                 }
             }
         }
-        Err(QuotaError::MissingCredentials(credential_setup_message(env_vars)))
+        Err(QuotaError::MissingCredentials(credential_setup_message(
+            env_vars,
+        )))
     }
 }
 
@@ -249,10 +251,7 @@ pub fn credential_setup_message(env_vars: &[&str]) -> String {
     } else if env_vars.len() == 1 {
         format!("set {} to enable quota probes", env_vars[0])
     } else {
-        format!(
-            "set one of {} to enable quota probes",
-            env_vars.join(", ")
-        )
+        format!("set one of {} to enable quota probes", env_vars.join(", "))
     }
 }
 
@@ -301,9 +300,10 @@ impl HttpQuotaProbeClient for UreqHttpQuotaProbeClient {
             "llm-notch-quota-probe/0.1 (+https://github.com/llm-notch/llm_notch)",
         );
         http_request = match request.header_style {
-            RateLimitHeaderStyle::OpenAi => {
-                http_request.header("authorization", format!("Bearer {}", request.credential.expose()))
-            }
+            RateLimitHeaderStyle::OpenAi => http_request.header(
+                "authorization",
+                format!("Bearer {}", request.credential.expose()),
+            ),
             RateLimitHeaderStyle::Anthropic => http_request
                 .header("x-api-key", request.credential.expose())
                 .header("anthropic-version", "2023-06-01"),
@@ -441,13 +441,9 @@ fn snapshot_from_probe_response(
 
     let parsed = match spec.header_style {
         RateLimitHeaderStyle::OpenAi => parse_openai_rate_limit_headers(&response.headers)?,
-        RateLimitHeaderStyle::Anthropic => {
-            parse_anthropic_rate_limit_headers(&response.headers)?
-        }
+        RateLimitHeaderStyle::Anthropic => parse_anthropic_rate_limit_headers(&response.headers)?,
         RateLimitHeaderStyle::Google => parse_google_rate_limit_headers(&response.headers)?,
-        RateLimitHeaderStyle::Moonshot => {
-            parse_moonshot_rate_limit_headers(&response.headers)?
-        }
+        RateLimitHeaderStyle::Moonshot => parse_moonshot_rate_limit_headers(&response.headers)?,
     };
 
     let mut snapshot = QuotaSnapshot {
@@ -463,10 +459,7 @@ fn snapshot_from_probe_response(
         reliability: Reliability::Reported,
         freshness: Freshness::Fresh,
         authentication: AuthenticationState::Authenticated,
-        metadata: BTreeMap::from([(
-            "probeSource".into(),
-            Value::String(spec.probe_url.into()),
-        )]),
+        metadata: BTreeMap::from([("probeSource".into(), Value::String(spec.probe_url.into()))]),
     };
     if let (Some(limit), Some(remaining)) = (snapshot.limit, snapshot.remaining) {
         if snapshot.used.is_none() {
@@ -766,10 +759,7 @@ mod tests {
 
     fn anthropic_fixture_headers() -> BTreeMap<String, String> {
         BTreeMap::from([
-            (
-                "anthropic-ratelimit-requests-limit".into(),
-                "4000".into(),
-            ),
+            ("anthropic-ratelimit-requests-limit".into(), "4000".into()),
             (
                 "anthropic-ratelimit-requests-remaining".into(),
                 "3995".into(),
@@ -963,7 +953,10 @@ mod tests {
     fn gemini_missing_credentials_are_explicit_without_secrets() {
         let provider = CredentialGatedQuotaProvider::new(
             gemini_spec(),
-            Arc::new(MockCredentialResolver::missing(&["GOOGLE_API_KEY", "GEMINI_API_KEY"])),
+            Arc::new(MockCredentialResolver::missing(&[
+                "GOOGLE_API_KEY",
+                "GEMINI_API_KEY",
+            ])),
             Arc::new(MockHttpClient::with_response(HttpProbeResponse {
                 status: 200,
                 headers: gemini_fixture_headers(),

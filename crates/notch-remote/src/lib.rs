@@ -3,11 +3,11 @@
 mod config;
 mod deploy;
 mod deploy_exec;
-mod relay_artifact;
 pub mod event_spool;
 pub mod hook_ingest;
 mod protocol;
 mod reconnect;
+mod relay_artifact;
 mod session;
 mod transport;
 
@@ -16,12 +16,8 @@ pub use deploy::{
     DeploymentError, DeploymentPlan, DeploymentStep, RelayArtifact, remote_hook_spool_guidance,
 };
 pub use deploy_exec::{
-    DeployExecError, DeployTransport, DeployTransportError, DeploymentExecutor,
-    DeploymentOutcome, OpenSshDeployTransport,
-};
-pub use relay_artifact::{
-    RelayArtifactError, remote_target_triple, resolve_relay_artifact, rust_triple_for_target,
-    sidecar_filename_for_target,
+    DeployExecError, DeployTransport, DeployTransportError, DeploymentExecutor, DeploymentOutcome,
+    OpenSshDeployTransport,
 };
 pub use event_spool::EventSpoolReader;
 pub use hook_ingest::{HookIngestError, RelayHookPayload, normalize_hook_payload};
@@ -30,6 +26,10 @@ pub use protocol::{
     ResumeCursor,
 };
 pub use reconnect::{ConnectionState, ReconnectPolicy};
+pub use relay_artifact::{
+    RelayArtifactError, remote_target_triple, resolve_relay_artifact, rust_triple_for_target,
+    sidecar_filename_for_target,
+};
 pub use session::{RelaySession, RelaySessionError, RelaySessionSnapshot, RemoteRelayManager};
 pub use transport::{
     DEFAULT_REMOTE_BIN_DIRECTORY, DEFAULT_REMOTE_RUNTIME_DIRECTORY, DirectRelayTransport,

@@ -91,11 +91,7 @@ fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         }
 
         if last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL {
-            emit_frame(
-                &mut output,
-                &mut sequence,
-                RelayPayload::Heartbeat,
-            )?;
+            emit_frame(&mut output, &mut sequence, RelayPayload::Heartbeat)?;
             last_heartbeat = Instant::now();
         }
 
@@ -159,7 +155,9 @@ fn parse_args(
                         .map_err(|_| "resume must be an unsigned integer".to_string())?,
                 )
             }
-            "--event-spool" if event_spool_dir.is_none() => event_spool_dir = Some(PathBuf::from(value)),
+            "--event-spool" if event_spool_dir.is_none() => {
+                event_spool_dir = Some(PathBuf::from(value))
+            }
             _ => return Err(format!("unknown or duplicate argument: {flag}")),
         }
     }

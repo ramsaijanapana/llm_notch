@@ -23,7 +23,10 @@ fn quota_command_never_fabricates_usage() {
         .collect::<Vec<_>>();
     assert_eq!(configured.len(), 4);
     assert!(configured.iter().all(|snapshot| {
-        snapshot.message.as_ref().is_some_and(|message| message.contains("set "))
+        snapshot
+            .message
+            .as_ref()
+            .is_some_and(|message| message.contains("set "))
     }));
 }
 

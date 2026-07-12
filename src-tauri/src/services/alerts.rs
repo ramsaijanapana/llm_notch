@@ -9,8 +9,8 @@ use notch_protocol::{AgentSession, AttentionKind, PublicSettings, SessionStatus,
 use tracing::warn;
 
 use crate::services::sound_theme::{
-    SoundNotificationContext, local_minute_now, play_notification_sound,
-    sound_event_for_alert, sound_event_for_attention, sound_event_for_session_status,
+    SoundNotificationContext, local_minute_now, play_notification_sound, sound_event_for_alert,
+    sound_event_for_attention, sound_event_for_session_status,
 };
 
 /// Stable key for deduplicating sustained resource alerts.
@@ -61,7 +61,10 @@ impl AlertNotifier {
             .sounded_attention
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        for alert in alerts.iter().filter(|alert| alert.kind == AlertKind::NewAttention) {
+        for alert in alerts
+            .iter()
+            .filter(|alert| alert.kind == AlertKind::NewAttention)
+        {
             let Some(session_id) = alert.session_id.as_deref() else {
                 continue;
             };

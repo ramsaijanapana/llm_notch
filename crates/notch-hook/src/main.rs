@@ -167,11 +167,7 @@ fn spool_relay_payload_in(
     request_id: &str,
     payload: &IngestPayload,
 ) -> Result<(), IpcError> {
-    write_spool_ingest(
-        runtime_dir,
-        request_id,
-        &relay_compatible_payload(payload),
-    )
+    write_spool_ingest(runtime_dir, request_id, &relay_compatible_payload(payload))
 }
 
 fn write_spool_ingest(
@@ -276,7 +272,14 @@ fn parse_hook_mode(args: &[String]) -> Result<HookMode, IpcError> {
     let source = source.ok_or_else(|| IpcError::FrameRejected("--source required".into()))?;
     if !matches!(
         source.as_str(),
-        "cursor" | "claudeCode" | "codex" | "gemini" | "qwen" | "antigravityCli" | "copilotCli" | "generic"
+        "cursor"
+            | "claudeCode"
+            | "codex"
+            | "gemini"
+            | "qwen"
+            | "antigravityCli"
+            | "copilotCli"
+            | "generic"
     ) {
         return Err(IpcError::FrameRejected("unsupported hook source".into()));
     }
@@ -443,7 +446,10 @@ fn vendor_hook_payload(
         pid: None,
         process_started_at_ms: None,
         occurred_at_ms,
-        terminal_session_id: read_terminal_field_from_vendor(object, &["terminal_session_id", "terminalSessionId"]),
+        terminal_session_id: read_terminal_field_from_vendor(
+            object,
+            &["terminal_session_id", "terminalSessionId"],
+        ),
         tab_id: read_terminal_field_from_vendor(object, &["tab_id", "tabId"]),
         pane_id: read_terminal_field_from_vendor(object, &["pane_id", "paneId"]),
         window_handle: read_window_handle_from_vendor(object),
@@ -462,7 +468,9 @@ fn read_terminal_field_from_vendor(
         .map(str::to_string)
 }
 
-fn read_window_handle_from_vendor(object: &serde_json::Map<String, serde_json::Value>) -> Option<u64> {
+fn read_window_handle_from_vendor(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> Option<u64> {
     ["window_handle", "windowHandle"]
         .iter()
         .find_map(|key| object.get(*key))
@@ -898,11 +906,7 @@ mod tests {
 
     #[test]
     fn spool_dir_flag_overrides_env_when_present() {
-        let mut args = vec![
-            "--spool-dir".into(),
-            "/cli/runtime".into(),
-            "hook".into(),
-        ];
+        let mut args = vec!["--spool-dir".into(), "/cli/runtime".into(), "hook".into()];
         let target = parse_delivery_target(&mut args);
         assert_eq!(
             target.spool_runtime_dir,
@@ -933,7 +937,10 @@ mod tests {
         let length = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
         assert_eq!(bytes.len(), 4 + length);
 
-        let decoded = reader.decode_frame(&frames[0]).unwrap().expect("forwardable");
+        let decoded = reader
+            .decode_frame(&frames[0])
+            .unwrap()
+            .expect("forwardable");
         match decoded {
             SpoolEvent::Forwardable(relay_payload) => {
                 assert_eq!(relay_payload.source, "codex");
@@ -942,10 +949,7 @@ mod tests {
                     relay_payload.external_session_id.as_deref(),
                     Some("remote-roundtrip")
                 );
-                assert_eq!(
-                    relay_payload.summary.as_deref(),
-                    Some("Session started")
-                );
+                assert_eq!(relay_payload.summary.as_deref(), Some("Session started"));
             }
             SpoolEvent::Ignored => panic!("expected forwardable spool event"),
         }
@@ -1195,12 +1199,14 @@ mod tests {
     fn vendor_hook_without_collector_env_leaves_terminal_fields_absent() {
         let preserved = preserve_collector_env();
         clear_collector_env();
-        let payload = prepare_hook_payload(vendor_hook_payload(
-            "cursor",
-            "SessionStart",
-            &serde_json::json!({"session_id": "cursor-1"}),
+        let payload = prepare_hook_payload(
+            vendor_hook_payload(
+                "cursor",
+                "SessionStart",
+                &serde_json::json!({"session_id": "cursor-1"}),
+            )
+            .expect("payload"),
         )
-        .expect("payload"))
         .expect("prepare");
         assert!(payload.terminal_session_id.is_none());
         assert!(payload.tab_id.is_none());
@@ -1258,12 +1264,14 @@ mod tests {
             std::env::set_var("LLM_NOTCH_TAB_ID", "1");
             std::env::set_var("LLM_NOTCH_PANE_ID", "0");
         }
-        let payload = prepare_hook_payload(vendor_hook_payload(
-            "cursor",
-            "SessionStart",
-            &serde_json::json!({"session_id": "cursor-1"}),
+        let payload = prepare_hook_payload(
+            vendor_hook_payload(
+                "cursor",
+                "SessionStart",
+                &serde_json::json!({"session_id": "cursor-1"}),
+            )
+            .expect("payload"),
         )
-        .expect("payload"))
         .expect("prepare");
         assert_eq!(
             payload.terminal_session_id.as_deref(),
@@ -1280,17 +1288,19 @@ mod tests {
 
     #[test]
     fn vendor_hook_reads_terminal_fields_from_vendor_json_when_present() {
-        let payload = prepare_hook_payload(vendor_hook_payload(
-            "cursor",
-            "SessionStart",
-            &serde_json::json!({
-                "session_id": "cursor-1",
-                "terminalSessionId": "0",
-                "tabId": "2",
-                "paneId": "1"
-            }),
+        let payload = prepare_hook_payload(
+            vendor_hook_payload(
+                "cursor",
+                "SessionStart",
+                &serde_json::json!({
+                    "session_id": "cursor-1",
+                    "terminalSessionId": "0",
+                    "tabId": "2",
+                    "paneId": "1"
+                }),
+            )
+            .expect("payload"),
         )
-        .expect("payload"))
         .expect("prepare");
         assert_eq!(payload.terminal_session_id.as_deref(), Some("0"));
         assert_eq!(payload.tab_id.as_deref(), Some("2"));

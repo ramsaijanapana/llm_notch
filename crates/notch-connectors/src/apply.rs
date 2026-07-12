@@ -588,9 +588,11 @@ mod tests {
         let written: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&hooks).expect("read")).expect("parse");
         assert_eq!(written["version"], 1);
-        assert!(written["hooks"]["preToolUse"][0]["command"]
-            .as_str()
-            .is_some_and(|command| command.contains("security-check")));
+        assert!(
+            written["hooks"]["preToolUse"][0]["command"]
+                .as_str()
+                .is_some_and(|command| command.contains("security-check"))
+        );
         assert!(written["hooks"]["sessionStart"].is_array());
         assert!(written["hooks"]["permissionRequest"].is_array());
     }

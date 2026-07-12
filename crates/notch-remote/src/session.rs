@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::hook_ingest::RelayHookPayload;
 use crate::{
     ConnectionState, ReconnectPolicy, RelayFrame, RemoteConnection, RemoteHostConfig,
     RemoteTransport, ResumeCursor, TransportError,
 };
-use crate::hook_ingest::RelayHookPayload;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum RelaySessionError {
@@ -341,7 +341,10 @@ mod tests {
             Ok(())
         }
 
-        fn inject_hook(&mut self, _payload: &crate::hook_ingest::RelayHookPayload) -> Result<(), TransportError> {
+        fn inject_hook(
+            &mut self,
+            _payload: &crate::hook_ingest::RelayHookPayload,
+        ) -> Result<(), TransportError> {
             Ok(())
         }
 

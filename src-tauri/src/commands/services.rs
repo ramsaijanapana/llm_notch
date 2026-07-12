@@ -80,9 +80,21 @@ mod tests {
             quota.used.is_none() && quota.remaining.is_none() && quota.limit.is_none()
         }));
 
-        let claude = quotas.iter().find(|quota| quota.service == "claude").unwrap();
-        assert_eq!(claude.availability, quota_service::QuotaAvailability::Unavailable);
-        assert!(claude.message.as_ref().unwrap().contains("ANTHROPIC_API_KEY"));
+        let claude = quotas
+            .iter()
+            .find(|quota| quota.service == "claude")
+            .unwrap();
+        assert_eq!(
+            claude.availability,
+            quota_service::QuotaAvailability::Unavailable
+        );
+        assert!(
+            claude
+                .message
+                .as_ref()
+                .unwrap()
+                .contains("ANTHROPIC_API_KEY")
+        );
     }
 
     #[test]

@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::{RemoteHostConfig, RemoteTarget};
 use crate::transport::DEFAULT_REMOTE_RUNTIME_DIRECTORY;
+use crate::{RemoteHostConfig, RemoteTarget};
 
 const MAX_ARTIFACT_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -21,10 +21,18 @@ pub struct RelayArtifact {
 #[serde(rename_all = "camelCase", tag = "type", deny_unknown_fields)]
 pub enum DeploymentStep {
     ProbeTarget,
-    CreatePrivateDirectory { remote_directory: String },
-    UploadTemporary { remote_path: String },
-    VerifySha256 { expected_sha256: String },
-    ActivateAtomically { remote_path: String },
+    CreatePrivateDirectory {
+        remote_directory: String,
+    },
+    UploadTemporary {
+        remote_path: String,
+    },
+    VerifySha256 {
+        expected_sha256: String,
+    },
+    ActivateAtomically {
+        remote_path: String,
+    },
     StartStdioRelay {
         remote_path: String,
         event_spool_dir: String,

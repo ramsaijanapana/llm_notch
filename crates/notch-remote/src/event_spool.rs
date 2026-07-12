@@ -173,7 +173,8 @@ fn decode_ingest_payload(bytes: &[u8]) -> Result<Option<RelayHookPayload>, HookI
     if length > MAX_FRAME_BYTES || bytes.len() != 4 + length {
         return Err(HookIngestError::InvalidField("frame"));
     }
-    let body = std::str::from_utf8(&bytes[4..]).map_err(|_| HookIngestError::InvalidField("frame"))?;
+    let body =
+        std::str::from_utf8(&bytes[4..]).map_err(|_| HookIngestError::InvalidField("frame"))?;
     let frame: WireIngestFrame =
         serde_json::from_str(body).map_err(|_| HookIngestError::InvalidField("frame"))?;
     if frame.frame_type != "ingest" {

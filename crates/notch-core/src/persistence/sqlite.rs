@@ -999,6 +999,85 @@ mod tests {
     }
 
     #[test]
+    fn generic_sessions_backfill_from_label_hints() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("generic-backfill.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(crate::persistence::migrations::MIGRATION_001)
+                .unwrap();
+            conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
+                .unwrap();
+            for (id, label, external) in [
+                ("qwen-1", "qwen session", "ext-qwen"),
+                ("ag-1", "antigravityCli session", "ext-ag"),
+                ("cp-1", "copilotCli session", "ext-cp"),
+                ("keep-1", "custom label", "ext-keep"),
+            ] {
+                conn.execute(
+                    "INSERT INTO sessions (
+                        id, source, external_session_id, label, workspace_label, status, attention,
+                        started_at_ms, last_event_at_ms
+                     ) VALUES (?1, 'Generic', ?2, ?3, NULL, 'Running', 'None', 1, 1)",
+                    params![id, external, label],
+                )
+                .unwrap();
+            }
+        }
+
+        let repo = SqliteRepository::open(&path).unwrap();
+        let sessions = repo.load_sessions().unwrap();
+        let by_external = |external: &str| {
+            sessions
+                .iter()
+                .find(|session| session.external_session_id == external)
+                .expect("session")
+        };
+
+        assert_eq!(by_external("ext-qwen").source, AgentSource::Qwen);
+        assert_eq!(by_external("ext-ag").source, AgentSource::AntigravityCli);
+        assert_eq!(by_external("ext-cp").source, AgentSource::CopilotCli);
+        assert_eq!(by_external("ext-keep").source, AgentSource::Generic);
+    }
+
+    #[test]
+    fn generic_backfill_skips_unique_conflicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("generic-conflict.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(crate::persistence::migrations::MIGRATION_001)
+                .unwrap();
+            conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
+                .unwrap();
+            conn.execute(
+                "INSERT INTO sessions (
+                    id, source, external_session_id, label, workspace_label, status, attention,
+                    started_at_ms, last_event_at_ms
+                 ) VALUES ('typed', 'Qwen', 'shared-ext', 'qwen session', NULL, 'Running', 'None', 1, 1)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO sessions (
+                    id, source, external_session_id, label, workspace_label, status, attention,
+                    started_at_ms, last_event_at_ms
+                 ) VALUES ('generic', 'Generic', 'shared-ext', 'qwen session', NULL, 'Running', 'None', 1, 1)",
+                [],
+            )
+            .unwrap();
+        }
+
+        let repo = SqliteRepository::open(&path).unwrap();
+        let sessions = repo.load_sessions().unwrap();
+        let generic = sessions
+            .iter()
+            .find(|session| session.id == "generic")
+            .expect("generic row");
+        assert_eq!(generic.source, AgentSource::Generic);
+    }
+
+    #[test]
     fn legacy_db_migrates_and_persists_verified_terminal() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("v1.db");
@@ -1015,7 +1094,10 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT version FROM schema_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, i64::from(crate::persistence::migrations::CURRENT_SCHEMA_VERSION));
+        assert_eq!(
+            version,
+            i64::from(crate::persistence::migrations::CURRENT_SCHEMA_VERSION)
+        );
         drop(conn);
 
         let mut session = sample_session("legacy");
@@ -1179,7 +1261,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, i64::from(crate::persistence::migrations::CURRENT_SCHEMA_VERSION));
+        assert_eq!(
+            version,
+            i64::from(crate::persistence::migrations::CURRENT_SCHEMA_VERSION)
+        );
         assert_eq!(count, 1);
         assert_eq!(cpu, 9.0);
     }
@@ -1373,16 +1458,14 @@ mod tests {
         let repo = SqliteRepository::in_memory().unwrap();
         let config = r#"{"id":"dev-box","destination":"dev@example.internal","hostKeyPolicy":"strict","connectTimeoutSeconds":10}"#;
 
-        repo.upsert_remote_host("dev-box", config, 1_000)
-            .unwrap();
+        repo.upsert_remote_host("dev-box", config, 1_000).unwrap();
         let loaded = repo.load_remote_hosts().unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].0, "dev-box");
         assert_eq!(loaded[0].1, config);
 
         let updated = r#"{"id":"dev-box","destination":"dev@lab.internal","hostKeyPolicy":"acceptNew","connectTimeoutSeconds":15}"#;
-        repo.upsert_remote_host("dev-box", updated, 2_000)
-            .unwrap();
+        repo.upsert_remote_host("dev-box", updated, 2_000).unwrap();
         let loaded = repo.load_remote_hosts().unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].1, updated);

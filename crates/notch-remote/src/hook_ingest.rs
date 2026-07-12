@@ -1,10 +1,10 @@
 //! Normalize bounded hook ingest payloads into relay `SessionEvent` frames.
 
-use notch_protocol::{AttentionKind, SessionEventKind, MAX_TOOL_NAME_LEN};
+use notch_protocol::{AttentionKind, MAX_TOOL_NAME_LEN, SessionEventKind};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::protocol::{RelayPayload, MAX_REMOTE_FRAME_BYTES};
+use crate::protocol::{MAX_REMOTE_FRAME_BYTES, RelayPayload};
 
 const MAX_SOURCE_LEN: usize = 32;
 const MAX_EVENT_LEN: usize = 32;
@@ -66,10 +66,7 @@ pub fn normalize_hook_payload(
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| default_summary(kind));
     let occurred_at_ms = payload.occurred_at_ms.unwrap_or(now_ms);
-    let tool_name = payload
-        .tool_name
-        .clone()
-        .filter(|value| !value.is_empty());
+    let tool_name = payload.tool_name.clone().filter(|value| !value.is_empty());
     let attention = parse_attention(payload);
     let relay_payload = RelayPayload::SessionEvent {
         session_id,
@@ -157,17 +154,10 @@ fn parse_event_kind(event: &str) -> Result<SessionEventKind, HookIngestError> {
         "tool" => Ok(SessionEventKind::Tool),
         "attention" => Ok(SessionEventKind::Attention),
         "status" | "statuschange" | "status_change" => Ok(SessionEventKind::Status),
-        "lifecycle"
-        | "sessionevent"
-        | "event"
-        | "sessionstart"
-        | "session_start"
-        | "start"
-        | "sessionend"
-        | "session_end"
-        | "end"
-        | "complete"
-        | "fail" => Ok(SessionEventKind::Lifecycle),
+        "lifecycle" | "sessionevent" | "event" | "sessionstart" | "session_start" | "start"
+        | "sessionend" | "session_end" | "end" | "complete" | "fail" => {
+            Ok(SessionEventKind::Lifecycle)
+        }
         other => Err(HookIngestError::UnsupportedEvent(other.into())),
     }
 }

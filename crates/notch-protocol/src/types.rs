@@ -13,7 +13,11 @@ pub enum AgentSource {
     ClaudeCode,
     Codex,
     Gemini,
-    #[serde(alias = "antigravity-cli", alias = "antigravity", alias = "antigravitycli")]
+    #[serde(
+        alias = "antigravity-cli",
+        alias = "antigravity",
+        alias = "antigravitycli"
+    )]
     AntigravityCli,
     #[serde(alias = "copilot-cli", alias = "copilot", alias = "copilotcli")]
     CopilotCli,
@@ -356,9 +360,7 @@ impl AdapterCapabilities {
             AgentSource::ClaudeCode | AgentSource::Qwen => (AttentionCapability::Partial, false),
             AgentSource::Codex => (AttentionCapability::None, true),
             AgentSource::Generic => (AttentionCapability::Full, false),
-            AgentSource::Gemini | AgentSource::CopilotCli => {
-                (AttentionCapability::Partial, false)
-            }
+            AgentSource::Gemini | AgentSource::CopilotCli => (AttentionCapability::Partial, false),
             AgentSource::AntigravityCli => (AttentionCapability::None, false),
             AgentSource::Cursor | AgentSource::Unknown => (AttentionCapability::None, false),
         };

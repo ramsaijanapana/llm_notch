@@ -58,7 +58,9 @@ impl AdapterDescriptor {
         match self.user_target.format {
             ConfigFormat::HooksJson => merge_hooks_json(baseline, template),
             ConfigFormat::ClaudeSettings => merge_claude_settings(baseline, template),
-            ConfigFormat::AntigravityNamedHooks => merge_antigravity_named_hooks(baseline, template),
+            ConfigFormat::AntigravityNamedHooks => {
+                merge_antigravity_named_hooks(baseline, template)
+            }
         }
     }
 
@@ -263,9 +265,7 @@ impl AdapterRegistry {
         AdapterDescriptor {
             catalog_id: "copilot",
             source: AgentSource::CopilotCli,
-            template_path: self
-                .integrations_root
-                .join("copilot/hooks.json.template"),
+            template_path: self.integrations_root.join("copilot/hooks.json.template"),
             user_target: TargetFile {
                 relative_path: PathBuf::from(".copilot/hooks/llm-notch.json"),
                 format: ConfigFormat::HooksJson,

@@ -5,7 +5,7 @@
 //! process tree. Never parses titles or invents handles.
 
 use crate::windows::classify_windows_host;
-use crate::{TerminalHost, ENV_WINDOW_HANDLE};
+use crate::{ENV_WINDOW_HANDLE, TerminalHost};
 
 /// Maximum parent hops when walking the process tree for a terminal host window.
 pub const MAX_PARENT_WALK_DEPTH: usize = 32;
@@ -147,7 +147,7 @@ fn host_owns_top_level_window(host: &TerminalHost) -> bool {
 #[cfg(windows)]
 fn parent_pid_for_current_platform(pid: u32) -> Option<u32> {
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
     };
 
@@ -191,7 +191,7 @@ fn executable_for_current_platform(pid: u32) -> Option<String> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
     };
 
@@ -230,7 +230,13 @@ fn executable_for_current_platform(_pid: u32) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn chain(parents: &[(u32, u32, &str)]) -> (impl Fn(u32) -> Option<u32>, impl Fn(u32) -> Option<String>, impl Fn(u32) -> Option<u64>) {
+    fn chain(
+        parents: &[(u32, u32, &str)],
+    ) -> (
+        impl Fn(u32) -> Option<u32>,
+        impl Fn(u32) -> Option<String>,
+        impl Fn(u32) -> Option<u64>,
+    ) {
         let parent_map: std::collections::HashMap<u32, u32> = parents
             .iter()
             .map(|(pid, parent, _)| (*pid, *parent))
@@ -256,8 +262,7 @@ mod tests {
             (42, 7, "OpenConsole.exe"),
             (7, 0, "WindowsTerminal.exe"),
         ]);
-        let handle =
-            discover_terminal_window_handle_with(100, parent, exe, hwnd).expect("hwnd");
+        let handle = discover_terminal_window_handle_with(100, parent, exe, hwnd).expect("hwnd");
         assert_eq!(handle, 200);
     }
 
@@ -268,8 +273,7 @@ mod tests {
             (42, 7, "conhost.exe"),
             (7, 0, "WindowsTerminal.exe"),
         ]);
-        let handle =
-            discover_terminal_window_handle_with(100, parent, exe, hwnd).expect("hwnd");
+        let handle = discover_terminal_window_handle_with(100, parent, exe, hwnd).expect("hwnd");
         assert_eq!(handle, 200);
     }
 
@@ -291,7 +295,9 @@ mod tests {
         assert!(host_owns_top_level_window(&TerminalHost::VsCode));
         assert!(host_owns_top_level_window(&TerminalHost::Cursor));
         assert!(host_owns_top_level_window(&TerminalHost::WezTerm));
-        assert!(host_owns_top_level_window(&TerminalHost::Other("conemu".into())));
+        assert!(host_owns_top_level_window(&TerminalHost::Other(
+            "conemu".into()
+        )));
         assert!(!host_owns_top_level_window(&TerminalHost::PowerShell));
         assert!(!host_owns_top_level_window(&TerminalHost::ConsoleHost));
     }

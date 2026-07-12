@@ -48,10 +48,7 @@ impl HostActivationBridge for MacOsHostActivationBridge {
         }
 
         activate_macos_application(locator, spawn_open_bundle).unwrap_or_else(|| {
-            activation_failed(
-                locator.tier(),
-                unsupported_host_message(locator.host()),
-            )
+            activation_failed(locator.tier(), unsupported_host_message(locator.host()))
         })
     }
 }
@@ -135,9 +132,9 @@ fn unsupported_host_message(host: &TerminalHost) -> String {
         TerminalHost::Unknown => {
             "macOS activation requires a recognized terminal or editor host".into()
         }
-        TerminalHost::Other(name) => format!(
-            "{name} host activation is not implemented on macOS; open the session manually"
-        ),
+        TerminalHost::Other(name) => {
+            format!("{name} host activation is not implemented on macOS; open the session manually")
+        }
         host => format!(
             "{host:?} host activation is not implemented on macOS; open the session manually"
         ),
@@ -208,10 +205,7 @@ pub fn bundle_id_for_host(host: &TerminalHost) -> Option<&'static str> {
     }
 }
 
-fn resolve_bundle_id(
-    host: &TerminalHost,
-    application_id: Option<&str>,
-) -> Option<&'static str> {
+fn resolve_bundle_id(host: &TerminalHost, application_id: Option<&str>) -> Option<&'static str> {
     if let Some(id) = application_id {
         if id.contains('.') && !id.ends_with(".app") {
             // Already looks like a bundle identifier from a collector.
@@ -282,7 +276,9 @@ pub fn try_exact_pane_host_bridge(locator: &TerminalLocator) -> HostBridgeOutcom
 fn parse_mac_index(field: &str, label: &str) -> Result<u32, String> {
     let trimmed = field.trim();
     if trimmed.is_empty() || !trimmed.chars().all(|ch| ch.is_ascii_digit()) {
-        return Err(format!("{label} `{field}` is not a 1-based tab or pane index"));
+        return Err(format!(
+            "{label} `{field}` is not a 1-based tab or pane index"
+        ));
     }
     let parsed = trimmed
         .parse::<u32>()
@@ -317,8 +313,7 @@ pub fn build_iterm2_exact_pane_script(
         .as_deref()
         .or(metadata.terminal_session_id.as_deref())
         .ok_or_else(|| {
-            "tab_id or terminal_session_id is required for iTerm2 exact-pane activation"
-                .to_string()
+            "tab_id or terminal_session_id is required for iTerm2 exact-pane activation".to_string()
         })?;
     let pane_raw = metadata
         .pane_id
@@ -425,10 +420,7 @@ fn activate_iterm2_exact_pane(
 fn spawn_open_bundle(bundle_id: &str) -> bool {
     use std::process::Command;
 
-    Command::new("open")
-        .args(["-b", bundle_id])
-        .spawn()
-        .is_ok()
+    Command::new("open").args(["-b", bundle_id]).spawn().is_ok()
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -521,7 +513,10 @@ mod tests {
         ));
         let outcome = MacOsTerminalNavigator.activate(&locator);
 
-        assert_eq!(outcome.disposition, NavigationDisposition::RequiresHostBridge);
+        assert_eq!(
+            outcome.disposition,
+            NavigationDisposition::RequiresHostBridge
+        );
         assert!(outcome.message.contains("macOS host bridge"));
     }
 

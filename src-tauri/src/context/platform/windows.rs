@@ -59,7 +59,9 @@ fn legacy_activate(
             }
             activate_app(host, pid, ContextOpenTier::AppActivate, bridge_detail)
         }
-        ContextOpenTier::AppActivate => activate_app(host, pid, ContextOpenTier::AppActivate, bridge_detail),
+        ContextOpenTier::AppActivate => {
+            activate_app(host, pid, ContextOpenTier::AppActivate, bridge_detail)
+        }
         ContextOpenTier::None => ActivationOutcome {
             achieved_tier: ContextOpenTier::None,
             activated: false,

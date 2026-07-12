@@ -18,7 +18,10 @@ fn remote_backend_probes_without_fabricating_hosts() {
         ),
     );
     let status = registry.backend_status();
-    assert_eq!(status.availability, remote_service::RemoteAvailability::Unavailable);
+    assert_eq!(
+        status.availability,
+        remote_service::RemoteAvailability::Unavailable
+    );
     assert_eq!(status.relay_binary_present, Some(false));
     assert!(status.ssh_executable_present.is_some());
     assert!(registry.list_hosts().is_empty());
@@ -52,10 +55,8 @@ fn persisted_hosts_survive_registry_restart() {
         assert_eq!(registry.list_hosts().len(), 1);
     }
 
-    let mut reloaded = remote_service::DesktopRemoteRegistry::with_config_and_repository(
-        config,
-        Some(repository),
-    );
+    let mut reloaded =
+        remote_service::DesktopRemoteRegistry::with_config_and_repository(config, Some(repository));
     let hosts = reloaded.list_hosts();
     assert_eq!(hosts.len(), 1);
     assert_eq!(hosts[0].config.id, "dev-box");
@@ -131,15 +132,14 @@ fn poll_active_sessions_acknowledges_heartbeat_without_status_churn() {
         connect_timeout_seconds: 10,
     };
     registry.register_host(host).unwrap();
-    registry
-        .start_relay("local-relay")
-        .expect("relay start");
+    registry.start_relay("local-relay").expect("relay start");
 
     let poll = registry.poll_active_sessions(1_700_000_000_000);
     assert!(
         poll.connection_updates
             .iter()
-            .any(|update| update.connection_state == remote_service::RemoteConnectionState::Streaming)
+            .any(|update| update.connection_state
+                == remote_service::RemoteConnectionState::Streaming)
     );
     assert!(poll.session_events.is_empty());
     let second = registry.poll_active_sessions(1_700_000_001_000);

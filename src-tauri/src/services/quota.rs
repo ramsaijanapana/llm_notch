@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use notch_services::quota::{
-    build_credential_gated_providers, EnvCredentialResolver, QuotaCredentialResolver, QuotaError,
-    QuotaProviderRegistry, QuotaSnapshot, UreqHttpQuotaProbeClient,
+    EnvCredentialResolver, QuotaCredentialResolver, QuotaError, QuotaProviderRegistry,
+    QuotaSnapshot, UreqHttpQuotaProbeClient, build_credential_gated_providers,
 };
 use serde::Serialize;
 
@@ -80,7 +80,9 @@ impl DesktopQuotaRegistry {
                 if registered.iter().any(|id| id == service) {
                     match self.providers.refresh(service) {
                         Ok(snapshot) => available_view(display_name, snapshot),
-                        Err(error) => unavailable_view(service, display_name, map_refresh_error(error)),
+                        Err(error) => {
+                            unavailable_view(service, display_name, map_refresh_error(error))
+                        }
                     }
                 } else {
                     unavailable_view(
@@ -149,7 +151,11 @@ fn serialized_label<T: Serialize>(value: &T) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn unavailable_view(service: &str, display_name: &str, reason: UnavailableReason) -> QuotaSnapshotView {
+fn unavailable_view(
+    service: &str,
+    display_name: &str,
+    reason: UnavailableReason,
+) -> QuotaSnapshotView {
     QuotaSnapshotView {
         service: service.into(),
         display_name: display_name.into(),
@@ -171,9 +177,8 @@ fn unavailable_view(service: &str, display_name: &str, reason: UnavailableReason
 mod tests {
     use super::*;
     use notch_services::quota::{
-        builtin_probe_specs, credential_setup_message, CredentialGatedQuotaProvider,
-        HttpProbeRequest, HttpProbeResponse, HttpQuotaProbeClient, QuotaCredentialResolver,
-        SecretValue,
+        CredentialGatedQuotaProvider, HttpProbeRequest, HttpProbeResponse, HttpQuotaProbeClient,
+        QuotaCredentialResolver, SecretValue, builtin_probe_specs, credential_setup_message,
     };
     use std::collections::BTreeMap;
     use std::sync::Mutex;
@@ -236,7 +241,9 @@ mod tests {
                 Err(QuotaError::MissingCredentials(message)) => {
                     Err(QuotaError::MissingCredentials(message.clone()))
                 }
-                Err(QuotaError::ParseProbe(message)) => Err(QuotaError::ParseProbe(message.clone())),
+                Err(QuotaError::ParseProbe(message)) => {
+                    Err(QuotaError::ParseProbe(message.clone()))
+                }
                 Err(QuotaError::Provider(message)) => Err(QuotaError::Provider(message.clone())),
                 Err(other) => Err(QuotaError::Provider(other.to_string())),
             }
@@ -324,7 +331,10 @@ mod tests {
     #[test]
     fn gemini_missing_credentials_stay_unavailable_without_usage() {
         let registry = DesktopQuotaRegistry::with_dependencies(
-            Arc::new(MockCredentialResolver::missing(&["GOOGLE_API_KEY", "GEMINI_API_KEY"])),
+            Arc::new(MockCredentialResolver::missing(&[
+                "GOOGLE_API_KEY",
+                "GEMINI_API_KEY",
+            ])),
             Arc::new(MockHttpClient::with_response(HttpProbeResponse {
                 status: 200,
                 headers: gemini_fixture_headers(),

@@ -87,7 +87,9 @@ mod tests {
     use parking_lot::Mutex;
 
     use super::*;
-    use crate::services::remote::{DesktopRemoteRegistry, RemoteAvailability, RemoteRegistryConfig};
+    use crate::services::remote::{
+        DesktopRemoteRegistry, RemoteAvailability, RemoteRegistryConfig,
+    };
 
     fn test_registry() -> SharedRemoteRegistry {
         Arc::new(Mutex::new(DesktopRemoteRegistry::with_config(
@@ -112,6 +114,12 @@ mod tests {
 
         let connection = registry.lock().connection_status("lab");
         assert_eq!(connection.availability, RemoteAvailability::Unavailable);
-        assert!(connection.message.as_deref().unwrap().contains("not configured"));
+        assert!(
+            connection
+                .message
+                .as_deref()
+                .unwrap()
+                .contains("not configured")
+        );
     }
 }

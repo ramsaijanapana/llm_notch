@@ -10,7 +10,7 @@ use tracing::warn;
 use crate::state::HostState;
 
 use super::remote::{
-    SharedRemoteRegistry, REMOTE_CONNECTION_CHANGED_EVENT, REMOTE_RELAY_POLL_INTERVAL_MS,
+    REMOTE_CONNECTION_CHANGED_EVENT, REMOTE_RELAY_POLL_INTERVAL_MS, SharedRemoteRegistry,
 };
 
 /// Periodically polls relay sessions until the desktop host shuts down.

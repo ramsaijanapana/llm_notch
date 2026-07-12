@@ -54,20 +54,18 @@ pub fn resolve_relay_artifact(
     host_relay_path: &Path,
     target: RemoteTarget,
 ) -> Result<RelayArtifact, RelayArtifactError> {
-    let triple = rust_triple_for_target(target).ok_or(RelayArtifactError::UnsupportedTarget(
-        target,
-    ))?;
+    let triple =
+        rust_triple_for_target(target).ok_or(RelayArtifactError::UnsupportedTarget(target))?;
     let expected_path = relay_binaries_dir.join(
         sidecar_filename_for_target(target).expect("triple-checked target has sidecar filename"),
     );
     let candidates = relay_artifact_candidates(relay_binaries_dir, host_relay_path, triple);
-    let local_path = candidates
-        .into_iter()
-        .find(|path| path.is_file())
-        .ok_or(RelayArtifactError::MissingArtifact {
+    let local_path = candidates.into_iter().find(|path| path.is_file()).ok_or(
+        RelayArtifactError::MissingArtifact {
             target,
             expected_path,
-        })?;
+        },
+    )?;
     let bytes = std::fs::read(&local_path).map_err(|error| RelayArtifactError::Unreadable {
         path: local_path.clone(),
         message: error.to_string(),
@@ -249,12 +247,15 @@ mod tests {
         fs::create_dir_all(&binaries_dir).expect("mkdir");
         fs::write(&host_relay, b"host-relay").expect("write host relay");
 
-        let artifact = resolve_relay_artifact(&binaries_dir, &host_relay, linux_x86_64())
-            .expect("artifact");
+        let artifact =
+            resolve_relay_artifact(&binaries_dir, &host_relay, linux_x86_64()).expect("artifact");
         assert_eq!(artifact.local_path, host_relay);
 
         let mismatch = resolve_relay_artifact(&binaries_dir, &host_relay, darwin_arm64())
             .expect_err("host relay should not satisfy different target");
-        assert!(matches!(mismatch, RelayArtifactError::MissingArtifact { .. }));
+        assert!(matches!(
+            mismatch,
+            RelayArtifactError::MissingArtifact { .. }
+        ));
     }
 }

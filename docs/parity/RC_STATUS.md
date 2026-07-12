@@ -4,7 +4,7 @@
 **Base:** `feat/integration-foundations` @ `25d056a`  
 **Merged lanes:** 5 (decision), 6 (context), 7 (UI), 8 (observability), 9 (platform)  
 **Last committed tip:** `3aa90f5` — `docs(parity-rc): record native UX/technical approvals and tip SHA`  
-**Doc refreshed:** 2026-07-11 (wave 9–10; working tree — not committed)  
+**Doc refreshed:** 2026-07-11 (wave 11; working tree — not committed)  
 **Prior RC tip (lanes 5–9 merge):** `caf37ac4fc33bca2e037e250fc2d5bc4e12f24d8`
 
 > This document is structured for **parallel landing**: foundation and advanced parallel tracks that demonstrate in-tree behavior are listed under **Done**; open end-to-end gaps sit under **Still active**; external-secret gates sit under **Blocked**. Tracks are **not** marked complete unless the code already demonstrates end-to-end behavior.
@@ -67,7 +67,7 @@ See also: [integrations index](../integrations/README.md) · [capability matrix]
 | Target-aware deploy artifacts | `crates/notch-remote/src/relay_artifact.rs` `resolve_relay_artifact`, `src-tauri/src/services/remote.rs` `build_deployment_plan` (probe-first) + `build_deployment_plan_for_target`, `src-tauri/src/runtime/relay_path.rs` | `ProbeTarget` → triple resolve picks `src-tauri/binaries/llm-notch-relay-<triple>` or `target/<triple>/{debug,release}/`; `DeployExecError::TargetMismatch` rejects probe/artifact drift |
 | Themed `SoundEngine` tray alerts | `src-tauri/src/services/alerts.rs`, `src-tauri/src/services/sound_theme.rs` `play_notification_sound` | Attention/resource/lifecycle alerts play themed sounds once per key via `SoundEngine`; tray path no longer falls back to `MessageBeep` |
 | `selectedSoundThemeId` settings UI | `src/features/native-dashboard/components/settings/SettingsPanel.tsx`, `src/app/NativeSurfaces.tsx`, `crates/notch-protocol/bindings/PublicSettings.ts` | Theme picker + per-theme preview buttons; persisted `selectedSoundThemeId` routes tray alert playback |
-| `verified_terminal` SQLite persistence | `crates/notch-core/src/persistence/migrations.rs` `MIGRATION_004`, `sqlite.rs` `verified_terminal_json` column + round-trip tests | Sessions survive restarts with collector-supplied terminal metadata (`CURRENT_SCHEMA_VERSION = 4`) |
+| `verified_terminal` SQLite persistence | `crates/notch-core/src/persistence/migrations.rs` `MIGRATION_004`, `sqlite.rs` `verified_terminal_json` column + round-trip tests | Sessions survive restarts with collector-supplied terminal metadata (`CURRENT_SCHEMA_VERSION = 5`; migration 004 added column) |
 | `verified_terminal` hook collectors | `crates/notch-ipc/src/collector.rs`, `normalize.rs` `verified_terminal_from_ingest` + `enrich_ingest_with_collector_env` | Env/wire collector fields (`WT_SESSION`, `LLM_NOTCH_*`) map to `VerifiedTerminalContext` when present; vendor hook stdin still carries no terminal metadata |
 | `DirectRelayTransport` test import fix | `src-tauri/src/services/remote.rs` tests `use notch_remote::DirectRelayTransport`, `crates/notch-remote/tests/relay_lifecycle.rs` | Integration tests compile against public `notch-remote` transport export |
 
@@ -95,6 +95,13 @@ See also: [integrations index](../integrations/README.md) · [capability matrix]
 | Quota refresh UX + credential hints | `MetricsPanel.tsx`, `formatters.ts` `quotaObservedSummary`, `NativeSurfaces.tsx` `refreshQuotas`, `MetricsPanel.test.tsx` | Manual refresh button + loading state; observed-at timestamp + stale/fresh badge (10m threshold); unavailable rows surface `authentication === 'required'` env-var hints |
 | Remote host ingested session stats | `remoteSessionStats.ts`, `RemotePanel.tsx`, `RemotePanel.test.tsx`, `NativeSurfaces.tsx` session feed | Per-host cards show ingested session count, active ingested, and last ingested event via `remote:` workspace attribution |
 | Typecheck green | `npm run typecheck` | TS client + dashboard compile against extended `AgentSource`, `SoundRouting`, and remote stats contracts |
+
+### Wave 11 landings (working tree)
+
+| Area | Evidence | Notes |
+|------|----------|-------|
+| SQLite `Generic` → typed `AgentSource` backfill | `migrations.rs` `MIGRATION_005`, `sqlite.rs` `generic_sessions_backfill_from_label_hints` + `generic_backfill_skips_unique_conflicts` tests | `CURRENT_SCHEMA_VERSION = 5`; pre-wave-10 `Generic` rows with `sessionStart` label hints (`qwen session`, `antigravityCli session`, `copilotCli session`) upgrade to typed sources; skips `UNIQUE(source, external_session_id)` conflicts — no guessing for relay-only Generic rows |
+| In-repo parity closure | This doc refresh | Required in-repo scaffolds complete; remaining gaps are **vendor**, **upstream**, or **external** only (see **Still active** / **Blocked**) |
 
 ### Wave 8 landings (working tree)
 
@@ -181,7 +188,7 @@ Lane 7 originally expected `get_pending_decisions` / `respond_decision`; RC alig
 | Rust check | `cargo check --workspace` | **PASS** |
 | Protocol tests | `cargo test -p notch-protocol --lib` | **80 passed** |
 | Metrics tests | `cargo test -p notch-metrics --lib` | **13 passed**, 1 ignored |
-| Core tests | `cargo test -p notch-core --lib` | **36+ passed** (includes migration 004 `verified_terminal_json` round-trip) |
+| Core tests | `cargo test -p notch-core --lib` | **41+ passed** (includes migration 005 `Generic`→typed backfill + conflict skip) |
 | Connectors tests | `cargo test -p notch-connectors --lib` | **21+ passed** (includes Gemini apply/merge) |
 | Decision tests | `cargo test -p notch-decision --lib` | **9 passed** |
 | Adapter tests | cursor/claude/codex/generic `--lib` | **80 passed** |
@@ -211,16 +218,15 @@ Lane 7 originally expected `get_pending_decisions` / `respond_decision`; RC alig
 
 ## Still active
 
-Open gaps grouped by **who can close them**. Wave 9–10 closed the remaining **in-repo feature scaffolds**; what remains is **vendor contracts**, **upstream platform limits**, **external secrets/soak**, and a few **optional polish** items.
+Open gaps grouped by **who can close them**. Waves 9–11 closed all **required in-repo feature scaffolds**; what remains is **vendor contracts**, **upstream platform limits**, and **external secrets/soak** only.
 
 ### Summary
 
 | Category | Open items (honest) |
 |----------|---------------------|
-| **Vendor** | **18 catalog-only** adapters need hook contracts before verification; **GLM / DeepSeek** quota telemetry; live E2E on real Antigravity / Qwen / Copilot CLI installs |
-| **Upstream** | **WT tab/pane auto-discovery** — Windows Terminal publishes `WT_SESSION` only; numeric tab/pane require user layout config; `wt.exe focus-tab --session` blocked upstream; macOS overlay hardening (`NSPanel` / Tauri upstream) |
+| **Vendor** | **18 catalog-only** adapters need hook contracts before verification; **GLM / DeepSeek** quota telemetry (no public rate-limit headers); live E2E on real Antigravity / Qwen / Copilot CLI installs |
+| **Upstream** | **WT tab/pane auto-discovery** — Windows Terminal publishes `WT_SESSION` only; numeric tab/pane require user layout config; `wt.exe focus-tab --session` blocked upstream; VS Code / Cursor / ConEmu exact-pane bridges (no host query API); macOS overlay hardening (`NSPanel` / Tauri upstream) |
 | **External** | **Signing secrets** (`WINDOWS_CERTIFICATE_*`, `APPLE_*`) + protected CI signed publish runs; **live SSH multi-host relay soak**; Playwright E2E browsers on CI; WebView2 desktop `--lib` test harness; Windows named-pipe ACL for IPC integration tests |
-| **In-repo (optional)** | Onboarding polish (if still open); **SQLite `Generic` → typed `AgentSource` backfill** (optional migration for pre-wave-10 rows); residual exact-pane bridges (VS Code / Cursor / ConEmu) + live HWND soak hardening |
 
 ### 1. Catalog-only agents (vendor)
 
@@ -245,7 +251,7 @@ Open gaps grouped by **who can close them**. Wave 9–10 closed the remaining **
 
 | Present | Missing |
 |---------|---------|
-| Deploy execution SSH/SCP pipeline; CI/release relay sidecar matrix; `SessionEvent` kind/tool/attention ingest; per-host ingested session stats (waves 9–10) | **Live SSH deploy + multi-host relay soak** on real remote hosts; production bundle verification on signed CI matrix |
+| Deploy execution SSH/SCP pipeline; CI/release relay sidecar matrix; `SessionEvent` kind/tool/attention ingest; per-host ingested session stats (waves 9–10) | **Live SSH deploy + multi-host relay soak** on real remote hosts; production bundle verification on signed CI matrix. Soak checklist: deploy relay sidecar → start relay → trigger remote hook with `LLM_NOTCH_EVENT_SPOOL=1` → confirm desktop ingests `SessionEvent` + per-host stats (see [`integrations/remote/README.md`](../../integrations/remote/README.md)) |
 
 ### 5. Signing secrets + signed publish (external)
 
@@ -253,13 +259,12 @@ Open gaps grouped by **who can close them**. Wave 9–10 closed the remaining **
 |---------|---------|
 | Fail-closed Windows + macOS signed workflow scaffolds; signing scripts | **`WINDOWS_CERTIFICATE_*` and `APPLE_*` repository secrets**; successful protected-tag workflow runs producing stapled/notarized + Authenticode artifacts |
 
-### 6. Optional in-repo polish
+### 6. Deferred (upstream / live soak — not in-repo)
 
 | Present | Missing |
 |---------|---------|
-| Onboarding flow + integrations panel shipped (lane 7) | Copy/UX polish if review still flags gaps |
-| `AgentSource` typed ingest (wave 10) | Optional SQLite backfill for historical `Generic` rows saved before enum extension |
-| HWND + WT collectors; macOS Terminal/iTerm2 bridges | Residual VS Code / Cursor / ConEmu exact-pane bridges; live verified pane selection soak |
+| HWND + WT collectors; macOS Terminal/iTerm2 bridges; VS Code / Cursor / ConEmu honest `Unavailable` bridges in `notch-platform` | Live verified pane selection soak on real hosts; VS Code / Cursor / ConEmu exact-pane activation (blocked on host query APIs) |
+| Onboarding flow + integrations panel shipped (lane 7) | Copy/UX polish only if a future review flags gaps — not a parity scaffold blocker |
 
 ---
 
@@ -274,6 +279,7 @@ These items cannot close in-repo. Workflow scaffolds are **Advanced** (see **Don
 | Playwright E2E on CI | Browser install on runners | Locally skipped; not evidenced on release path |
 | Desktop `--lib` tests (Windows) | WebView2 runtime in test harness | `STATUS_ENTRYPOINT_NOT_FOUND` in this environment |
 | IPC socket integration tests | Windows named-pipe ACL / sandbox | 3 tests fail with `PermissionDenied` — environment, not logic |
+| Live SSH multi-host relay soak | Real remote host(s) with SSH + deployed relay sidecar | In-tree deploy/spool/ingest pipeline complete; confidence gate requires manual soak (see **Still active** §4) |
 | macOS overlay hardening | True `NSPanel` or upstream Tauri support | `native_macos` test gate in CI; production overlay deferred |
 
 ### Residual code risks (not secret-blocked)
@@ -290,17 +296,18 @@ These items cannot close in-repo. Workflow scaffolds are **Advanced** (see **Don
 | Gate | Status |
 |------|--------|
 | **RC_READY_FOR_REVIEW** (unsigned, lanes 5–9) | `true` at foundation tip `caf37ac` |
-| **Parallel tracks landing** | **Advanced** — waves 9–10 close relay `SessionEvent` metadata, per-event/per-agent sound UI, quota refresh UX, remote ingest stats, and `AgentSource` Qwen/AntigravityCli/CopilotCli; see **Done** and **Still active** |
+| **Parallel tracks landing** | **Advanced** — waves 9–11 close relay `SessionEvent` metadata, per-event/per-agent sound UI, quota refresh UX, remote ingest stats, `AgentSource` extension, and SQLite Generic backfill; see **Done** and **Still active** |
+| **In-repo code parity** | **COMPLETE** — no required feature scaffold remains; optional polish and live soak are non-blocking |
 | **Signed release publish** | **BLOCKED (external)** — workflow scaffolds + relay matrix in-tree; `WINDOWS_*` / `APPLE_*` secrets + successful protected CI runs still required |
 | **Full catalog parity** | **NOT DONE** — vendor catalog contracts, upstream WT limits, and external soak/signing gates remain |
 
-### Loop recommendation (wave 9–10)
+### Loop recommendation (waves 9–11)
 
 | Question | Answer |
 |----------|--------|
-| **Should `/loop wake` stop soon?** | **Yes — stop after one final doc/commit pass.** Required in-repo feature scaffolds are landed; **Still active** is now vendor, upstream, external, and optional polish only. |
-| **When should it stop?** | Now or on the next wake once working-tree changes are committed. **In-repo (code)** no longer blocks unsigned RC review. |
-| **Signed production-only lens** | External gates dominate: signing secrets, protected CI runs, live SSH soak. No major feature scaffold is missing. |
+| **Should `/loop wake` stop?** | **Yes — stop now.** All required in-repo scaffolds are landed (wave 11 closes SQLite Generic backfill). **Still active** is vendor, upstream, and external only. |
+| **When should it stop?** | Immediately; commit working-tree changes on next pass. **In-repo (code)** no longer blocks unsigned RC review or signed-release scaffold readiness. |
+| **Signed production-only lens** | External gates dominate: signing secrets, protected CI runs, live SSH soak. No in-repo feature scaffold is missing. |
 
 Compile surface is green for the workspace; vitest/typecheck pass; crate-level Rust tests pass; native Windows smoke passes. Treat IPC socket failures, desktop lib test harness, E2E skip, and CRLF lint as known environment/pre-existing items.
 
@@ -309,9 +316,9 @@ Compile surface is green for the workspace; vitest/typecheck pass; crate-level R
 | Goal | Remaining work | External-only? |
 |------|----------------|----------------|
 | **Signed production installers** | Configure `WINDOWS_CERTIFICATE_*` + `APPLE_*` secrets; run protected-tag signed workflows; verify stapled/notarized + Authenticode artifacts on release matrix; live SSH soak for confidence | **Mostly yes** — signing secrets and CI soak are the hard gates; macOS overlay hardening and Playwright E2E on CI are secondary environment/upstream items |
-| **Full catalog + services parity** | 18 catalog-only agents (**vendor** hook contracts); GLM/DeepSeek (**vendor** APIs); WT tab/pane upstream; live SSH soak (**external**); optional onboarding polish + SQLite Generic backfill (**in-repo, optional**) | **Mostly vendor/upstream/external** — no required in-repo feature scaffold remains |
+| **Full catalog + services parity** | 18 catalog-only agents (**vendor** hook contracts); GLM/DeepSeek (**vendor** APIs); WT tab/pane upstream; VS Code/Cursor/ConEmu exact-pane upstream; live SSH soak (**external**) | **Vendor/upstream/external only** — in-repo scaffolds complete through wave 11 |
 
-**Honest bottom line:** For **signed production**, only **external blockers** (signing secrets + protected CI runs + real-host SSH soak for confidence) stand between the current tree and publish — no major feature scaffold is missing. For **full catalog parity**, **vendor contracts**, **upstream**, and **external** items dominate; waves 9–10 closed the last required in-repo gaps (relay metadata, sound routing UI, quota refresh UX, remote ingest stats, `AgentSource` extension, typecheck green).
+**Honest bottom line:** **In-repo work is complete** for parity RC goals. Waves 9–11 closed relay metadata, sound routing UI, quota refresh UX, remote ingest stats, `AgentSource` extension, and SQLite Generic backfill. For **signed production**, only **external blockers** (signing secrets + protected CI runs + real-host SSH soak for confidence) remain. For **full catalog parity**, **vendor contracts**, **upstream**, and **external** items dominate — do not invent verified agents or quota numbers.
 
 **Signed release publish:** **BLOCKED** until signing secrets land, protected CI jobs produce stapled/notarized macOS + Authenticode Windows artifacts, and release-matrix bundle verification passes. Playwright E2E on CI and macOS overlay hardening are secondary gates documented under **Blocked**. This RC does **not** publish a GitHub Release with signed installers until those gates close.
 
@@ -337,4 +344,4 @@ Compile surface is green for the workspace; vitest/typecheck pass; crate-level R
 | `caf37ac` | `fix(connectors): close apply/backup TOCTOU races on feat/parity-rc` |
 | `855b951` | `feat(parity-rc): merge lanes 5-9, align IPC surface, and document RC status` |
 
-Parallel-track changes through wave 10 (relay metadata, sound routing UI, quota refresh UX, remote ingest stats, `AgentSource` extension, catalog, services, remote, platform, macOS activation bridge, relay sidecar matrix, Qwen, Gemini, signing workflows) are present in the working tree as of this doc refresh and are **not yet committed**.
+Parallel-track changes through wave 11 (relay metadata, sound routing UI, quota refresh UX, remote ingest stats, `AgentSource` extension, SQLite Generic backfill, catalog, services, remote, platform, macOS activation bridge, relay sidecar matrix, Qwen, Gemini, signing workflows) are present in the working tree as of this doc refresh and are **not yet committed**.

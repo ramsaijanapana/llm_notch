@@ -92,16 +92,19 @@ pub fn validate_terminal_id_field(value: &str, field: &str) -> IpcResult<()> {
         )));
     }
     if value.contains("..") || value.contains('/') || value.contains('\\') {
-        return Err(IpcError::FrameRejected(format!("{field} contains path escape")));
+        return Err(IpcError::FrameRejected(format!(
+            "{field} contains path escape"
+        )));
     }
     if contains_unsafe_shell_chars(value) {
         return Err(IpcError::FrameRejected(format!(
             "{field} contains unsafe shell characters"
         )));
     }
-    if !value.chars().all(|ch| {
-        ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '-' | '_' | '.' | '%')
-    }) {
+    if !value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '-' | '_' | '.' | '%'))
+    {
         return Err(IpcError::FrameRejected(format!(
             "{field} contains invalid characters"
         )));
@@ -128,7 +131,12 @@ fn read_window_handle_from_env() -> Option<u64> {
 }
 
 fn contains_unsafe_shell_chars(value: &str) -> bool {
-    value.chars().any(|ch| matches!(ch, '"' | '\'' | '`' | '$' | ';' | '|' | '&' | '<' | '>' | '\n' | '\r'))
+    value.chars().any(|ch| {
+        matches!(
+            ch,
+            '"' | '\'' | '`' | '$' | ';' | '|' | '&' | '<' | '>' | '\n' | '\r'
+        )
+    })
 }
 
 #[cfg(test)]

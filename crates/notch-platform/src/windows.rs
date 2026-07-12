@@ -143,14 +143,12 @@ pub fn try_exact_pane_host_bridge(locator: &TerminalLocator) -> HostBridgeOutcom
 pub fn build_wt_exact_pane_command(
     metadata: &VerifiedTerminalMetadata,
 ) -> Result<Vec<String>, String> {
-    let tab_id = metadata
-        .tab_id
-        .as_deref()
-        .ok_or_else(|| "tab_id is required for Windows Terminal exact-pane activation".to_string())?;
-    let pane_id = metadata
-        .pane_id
-        .as_deref()
-        .ok_or_else(|| "pane_id is required for Windows Terminal exact-pane activation".to_string())?;
+    let tab_id = metadata.tab_id.as_deref().ok_or_else(|| {
+        "tab_id is required for Windows Terminal exact-pane activation".to_string()
+    })?;
+    let pane_id = metadata.pane_id.as_deref().ok_or_else(|| {
+        "pane_id is required for Windows Terminal exact-pane activation".to_string()
+    })?;
     let tab_index = parse_wt_index(tab_id)
         .ok_or_else(|| format!("tab_id `{tab_id}` is not a Windows Terminal tab index"))?;
     let pane_index = parse_wt_index(pane_id)

@@ -16,12 +16,12 @@ use notch_decision::DecisionBroker;
 use notch_protocol::PublicSettings;
 use parking_lot::Mutex;
 use services::global_shortcut::ShortcutHandler;
+use services::remote::{DesktopRemoteRegistry, RemoteRegistryConfig, SharedRemoteRegistry};
 use services::tray::TrayActionHandler;
 use services::{
     AlertNotifier, AutostartService, BACKGROUND_LAUNCH_ARG, DEFAULT_DASHBOARD_SHORTCUT,
     GlobalShortcutService, SharedTrayService, TrayMenuAction, TrayMenuModel, TrayService,
 };
-use services::remote::{DesktopRemoteRegistry, RemoteRegistryConfig, SharedRemoteRegistry};
 use state::{HostState, SystemClock, register_builtin_adapters};
 use stream::StreamHub;
 use tauri::{Manager, RunEvent, Wry};
@@ -129,11 +129,8 @@ pub(crate) fn synchronize_tray_model(
     let settings = host.settings();
     let sound_ctx = services::alerts::sound_context_from_settings(&settings, &themes_root);
     let snapshot = host.snapshot();
-    let resource_alert = alert_notifier.observe(
-        &host.active_alerts(),
-        &snapshot.sessions,
-        &sound_ctx,
-    );
+    let resource_alert =
+        alert_notifier.observe(&host.active_alerts(), &snapshot.sessions, &sound_ctx);
     let model = tray
         .model()
         .clone()

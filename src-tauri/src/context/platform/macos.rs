@@ -30,7 +30,8 @@ fn legacy_activate(
     match target_tier {
         ContextOpenTier::ExactPane => {
             if !has_verified_pane_route(locator) {
-                let outcome = activate_application(host, ContextOpenTier::WindowFocus, bridge_detail.clone());
+                let outcome =
+                    activate_application(host, ContextOpenTier::WindowFocus, bridge_detail.clone());
                 return ActivationOutcome {
                     detail: Some(merge_detail(
                         bridge_detail,
@@ -39,7 +40,8 @@ fn legacy_activate(
                     ..outcome
                 };
             }
-            let outcome = activate_application(host, ContextOpenTier::WindowFocus, bridge_detail.clone());
+            let outcome =
+                activate_application(host, ContextOpenTier::WindowFocus, bridge_detail.clone());
             ActivationOutcome {
                 achieved_tier: ContextOpenTier::WindowFocus,
                 activated: outcome.activated,
@@ -155,7 +157,8 @@ mod tests {
 
     #[test]
     fn exact_pane_without_verified_metadata_downgrades_honestly() {
-        let locator = ContextLocator::encode(HostKind::TerminalApp, None, None, None).expect("encode");
+        let locator =
+            ContextLocator::encode(HostKind::TerminalApp, None, None, None).expect("encode");
         let outcome = legacy_activate(&locator, ContextOpenTier::ExactPane, None);
         assert_ne!(outcome.achieved_tier, ContextOpenTier::ExactPane);
         assert!(outcome.detail.unwrap_or_default().contains("pane"));
@@ -191,13 +194,8 @@ mod tests {
             pane_id: Some("1".into()),
             ..Default::default()
         };
-        let locator = ContextLocator::encode(
-            HostKind::TerminalApp,
-            None,
-            None,
-            Some(&verified),
-        )
-        .expect("encode");
+        let locator = ContextLocator::encode(HostKind::TerminalApp, None, None, Some(&verified))
+            .expect("encode");
         let terminal = terminal_locator_for_activation(&locator);
         assert_eq!(terminal.tier(), NavigationTier::ExactPane);
         assert!(matches!(

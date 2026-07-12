@@ -169,7 +169,9 @@ mod tests {
         let mut adapter = AdapterCapabilities::template(notch_protocol::AgentSource::Generic);
         adapter.context_open = true;
         adapter.context_open_tier = ContextOpenTier::ExactPane;
-        let resolved = resolve::resolve_session(&session).expect("resolve").expect("some");
+        let resolved = resolve::resolve_session(&session)
+            .expect("resolve")
+            .expect("some");
         assert!(resolved.pane_verified);
         let host_cap = cap_tier(
             adapter.context_open_tier,
