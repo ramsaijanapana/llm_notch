@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-upsert-remote-host"
+description = "Enables the upsert_remote_host command without any pre-configured scope."
+commands.allow = ["upsert_remote_host"]
+
+[[permission]]
+identifier = "deny-upsert-remote-host"
+description = "Denies the upsert_remote_host command without any pre-configured scope."
+commands.deny = ["upsert_remote_host"]

@@ -1,0 +1,11 @@
+[package]
+name = "notch-platform"
+description = "Platform-neutral terminal navigation contracts for LLM Notch"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true

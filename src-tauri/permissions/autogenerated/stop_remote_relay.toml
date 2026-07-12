@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stop-remote-relay"
+description = "Enables the stop_remote_relay command without any pre-configured scope."
+commands.allow = ["stop_remote_relay"]
+
+[[permission]]
+identifier = "deny-stop-remote-relay"
+description = "Denies the stop_remote_relay command without any pre-configured scope."
+commands.deny = ["stop_remote_relay"]

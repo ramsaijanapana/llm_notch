@@ -66,6 +66,7 @@ mod tests {
                 pid: 42,
                 started_at_ms: 1_700_000_000_000,
             }),
+            verified_terminal: None,
             latest_metric: Some(metric_sample()),
         }
     }
@@ -188,6 +189,19 @@ mod tests {
         let decoded: AdapterCapabilities = serde_json::from_value(value).expect("deserialize");
         assert_eq!(decoded.source, AgentSource::Cursor);
         assert!(decoded.fail_open_hooks);
+    }
+
+    #[test]
+    fn agent_source_round_trips_and_accepts_legacy_aliases() {
+        let canonical = serde_json::json!("qwen");
+        let decoded: AgentSource = serde_json::from_value(canonical).expect("qwen");
+        assert_eq!(decoded, AgentSource::Qwen);
+
+        for alias in ["antigravity-cli", "copilot", "qwen-cli"] {
+            let decoded: AgentSource =
+                serde_json::from_value(serde_json::json!(alias)).expect(alias);
+            assert_ne!(decoded, AgentSource::Generic);
+        }
     }
 
     #[test]

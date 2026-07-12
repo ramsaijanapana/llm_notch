@@ -159,7 +159,14 @@ fn apply_single_file(
 
     let backup_id = if file.baseline_text != file.merged_text && file.canonical_path.exists() {
         revalidate()?;
-        Some(create_backup(file, journal, plan_id, source, now_ms, &mut revalidate)?)
+        Some(create_backup(
+            file,
+            journal,
+            plan_id,
+            source,
+            now_ms,
+            &mut revalidate,
+        )?)
     } else {
         None
     };
@@ -195,9 +202,8 @@ fn create_backup(
     let backup_path = secure_backup_path(&file.canonical_path, &timestamp)?;
 
     revalidate()?;
-    let (bytes, content_sha256) = read_and_hash(&file.canonical_path).map_err(|error| {
-        ConnectorError::Internal(format!("backup read failed: {error}"))
-    })?;
+    let (bytes, content_sha256) = read_and_hash(&file.canonical_path)
+        .map_err(|error| ConnectorError::Internal(format!("backup read failed: {error}")))?;
 
     revalidate()?;
     write_exclusive_file(&backup_path, &bytes)?;
@@ -272,9 +278,8 @@ fn restore_from_backup(
     }
 
     revalidate()?;
-    let (bytes, backup_hash) = read_and_hash(&backup_path).map_err(|error| {
-        ConnectorError::Internal(format!("backup read failed: {error}"))
-    })?;
+    let (bytes, backup_hash) = read_and_hash(&backup_path)
+        .map_err(|error| ConnectorError::Internal(format!("backup read failed: {error}")))?;
     if backup_hash != backup.content_sha256 {
         return Err(ConnectorError::RollbackHashMismatch);
     }
@@ -299,6 +304,7 @@ mod tests {
     use crate::path_security::{ScopeRoot, write_exclusive_file};
     use crate::preview::build_preview;
     use notch_protocol::{AgentSource, ConnectorScope};
+    use std::fs;
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
     use tempfile::TempDir;
@@ -308,7 +314,8 @@ mod tests {
         let integrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
         let dir = TempDir::new().expect("tempdir");
         let journal = Journal::open(dir.path()).expect("journal");
-        let registry = AdapterRegistry::new(integrations.clone(), dir.path().join("llm-notch-hook.exe"));
+        let registry =
+            AdapterRegistry::new(integrations.clone(), dir.path().join("llm-notch-hook.exe"));
         let adapter = registry.get(AgentSource::Cursor).expect("cursor");
         let root = ScopeRoot {
             canonical: std::fs::canonicalize(dir.path()).expect("canonicalize"),
@@ -432,12 +439,159 @@ mod tests {
             AdapterCapabilities::template(AgentSource::Cursor),
         )
         .expect("apply");
-        assert_eq!(result.file_results[0].outcome, ConnectorFileOutcome::Applied);
+        assert_eq!(
+            result.file_results[0].outcome,
+            ConnectorFileOutcome::Applied
+        );
 
         let revalidations = TEST_REVALIDATE_COUNT.load(Ordering::SeqCst);
         assert!(
             revalidations >= 5,
             "expected revalidation before each mutating apply stage, got {revalidations}"
         );
+    }
+
+    #[test]
+    fn apply_gemini_settings_preserves_unrelated_keys() {
+        let dir = TempDir::new().expect("tempdir");
+        let settings = dir.path().join(".gemini/settings.json");
+        fs::create_dir_all(settings.parent().unwrap()).expect("mkdir");
+        let baseline = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../integrations/fixtures/connectors/gemini-user-baseline.json");
+        fs::copy(baseline, &settings).expect("seed");
+
+        let journal = Journal::open(dir.path()).expect("journal");
+        let integrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
+        let registry = AdapterRegistry::new(integrations, dir.path().join("llm-notch-hook.exe"));
+        let adapter = registry.get(AgentSource::Gemini).expect("gemini");
+        let root = ScopeRoot {
+            canonical: std::fs::canonicalize(dir.path()).expect("canonicalize"),
+            display_prefix: "~".into(),
+        };
+        let (_, stored) = build_preview(
+            &registry,
+            &adapter,
+            ConnectorScope::User,
+            PlanOperation::Install,
+            &root,
+            crate::plan::now_ms(),
+            None,
+        )
+        .expect("preview");
+
+        let result = apply_plan(
+            &stored,
+            &journal,
+            crate::plan::now_ms(),
+            AdapterCapabilities::template(AgentSource::Gemini),
+        )
+        .expect("apply");
+        assert_eq!(
+            result.file_results[0].outcome,
+            ConnectorFileOutcome::Applied
+        );
+
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&settings).expect("read")).expect("parse");
+        assert_eq!(written["model"], "gemini-2.5-pro");
+        assert!(written["hooks"]["BeforeTool"].is_array());
+        assert!(written["hooks"]["SessionStart"].is_array());
+    }
+
+    #[test]
+    fn apply_qwen_settings_preserves_unrelated_keys() {
+        let dir = TempDir::new().expect("tempdir");
+        let settings = dir.path().join(".qwen/settings.json");
+        fs::create_dir_all(settings.parent().unwrap()).expect("mkdir");
+        let baseline = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../integrations/fixtures/connectors/qwen-user-baseline.json");
+        fs::copy(baseline, &settings).expect("seed");
+
+        let journal = Journal::open(dir.path()).expect("journal");
+        let integrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
+        let registry = AdapterRegistry::new(integrations, dir.path().join("llm-notch-hook.exe"));
+        let adapter = registry.get_by_catalog_id("qwen").expect("qwen");
+        let root = ScopeRoot {
+            canonical: std::fs::canonicalize(dir.path()).expect("canonicalize"),
+            display_prefix: "~".into(),
+        };
+        let (_, stored) = build_preview(
+            &registry,
+            &adapter,
+            ConnectorScope::User,
+            PlanOperation::Install,
+            &root,
+            crate::plan::now_ms(),
+            None,
+        )
+        .expect("preview");
+
+        let result = apply_plan(
+            &stored,
+            &journal,
+            crate::plan::now_ms(),
+            AdapterCapabilities::template(AgentSource::ClaudeCode),
+        )
+        .expect("apply");
+        assert_eq!(
+            result.file_results[0].outcome,
+            ConnectorFileOutcome::Applied
+        );
+
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&settings).expect("read")).expect("parse");
+        assert_eq!(written["model"], "qwen3-coder-plus");
+        assert!(written["hooks"]["PreToolUse"].is_array());
+        assert!(written["hooks"]["SessionStart"].is_array());
+    }
+
+    #[test]
+    fn apply_copilot_hooks_preserves_unrelated_entries() {
+        let dir = TempDir::new().expect("tempdir");
+        let hooks = dir.path().join(".copilot/hooks/llm-notch.json");
+        fs::create_dir_all(hooks.parent().unwrap()).expect("mkdir");
+        let baseline = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../integrations/fixtures/connectors/copilot-user-baseline.json");
+        fs::copy(baseline, &hooks).expect("seed");
+
+        let journal = Journal::open(dir.path()).expect("journal");
+        let integrations = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
+        let registry = AdapterRegistry::new(integrations, dir.path().join("llm-notch-hook.exe"));
+        let adapter = registry.get_by_catalog_id("copilot").expect("copilot");
+        let root = ScopeRoot {
+            canonical: std::fs::canonicalize(dir.path()).expect("canonicalize"),
+            display_prefix: "~".into(),
+        };
+        let (_, stored) = build_preview(
+            &registry,
+            &adapter,
+            ConnectorScope::User,
+            PlanOperation::Install,
+            &root,
+            crate::plan::now_ms(),
+            None,
+        )
+        .expect("preview");
+
+        let result = apply_plan(
+            &stored,
+            &journal,
+            crate::plan::now_ms(),
+            AdapterCapabilities::template(AgentSource::Generic),
+        )
+        .expect("apply");
+        assert_eq!(
+            result.file_results[0].outcome,
+            ConnectorFileOutcome::Applied
+        );
+
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&hooks).expect("read")).expect("parse");
+        assert_eq!(written["version"], 1);
+        assert!(written["hooks"]["preToolUse"][0]["command"]
+            .as_str()
+            .is_some_and(|command| command.contains("security-check")));
+        assert!(written["hooks"]["sessionStart"].is_array());
+        assert!(written["hooks"]["permissionRequest"].is_array());
     }
 }

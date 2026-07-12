@@ -17,6 +17,7 @@ Integrations are **never silently installed**. This document describes the inten
 | Cursor | `~/.cursor/hooks.json` | `<repo>/.cursor/hooks.json` |
 | Claude Code | `~/.claude/settings.json` | `<repo>/.claude/settings.json` |
 | Codex | `~/.codex/hooks.json` | `<repo>/.codex/hooks.json` |
+| Gemini CLI | `~/.gemini/settings.json` | `<repo>/.gemini/settings.json` |
 
 Project scope is preferred when the team wants shared, reviewable config.
 
@@ -79,7 +80,7 @@ for each event in template:
 return target
 ```
 
-Claude Code uses nested `hooks → Event → [{matcher, hooks:[...]}]`. Merge matches on `(event, matcher, command)` triples.
+Claude Code uses nested `hooks → Event → [{matcher, hooks:[...]}]`. Merge matches on `(event, matcher, command)` triples. Gemini CLI uses the same nested `settings.json` hook structure.
 
 **Never remove** entries the user or other tools added.
 
@@ -107,7 +108,7 @@ Claude Code uses nested `hooks → Event → [{matcher, hooks:[...]}]`. Merge ma
 
 4. Merge manually or copy template after editing paths to `hooks/llm-notch-hook-wrapper.sh`.
 
-5. Restart Cursor / Claude Code / Codex.
+5. Restart Cursor / Claude Code / Codex / Gemini CLI.
 
 ## Backup naming
 

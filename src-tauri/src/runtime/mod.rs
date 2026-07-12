@@ -2,3 +2,4 @@
 
 pub mod helper_path;
 pub mod integrations_dir;
+pub mod relay_path;

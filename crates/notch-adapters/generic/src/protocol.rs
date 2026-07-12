@@ -156,6 +156,10 @@ mod tests {
             pid: None,
             process_started_at_ms: None,
             occurred_at_ms: None,
+            terminal_session_id: None,
+            tab_id: None,
+            pane_id: None,
+            window_handle: None,
         };
         validate_ingest_example(&payload).expect("valid");
     }

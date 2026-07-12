@@ -1,0 +1,14 @@
+{
+  "session_id": "gemini-session-7c4a",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "hook_event_name": "AfterTool",
+  "tool_name": "write_file",
+  "tool_input": {
+    "file_path": "src/example.ts"
+  },
+  "tool_response": {
+    "llmContent": "File written",
+    "returnDisplay": "Updated src/example.ts"
+  },
+  "timestamp": "2026-07-11T18:01:05.000Z"
+}

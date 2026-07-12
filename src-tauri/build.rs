@@ -26,6 +26,19 @@ fn main() {
         "list_connector_backups",
         "list_pending_decisions",
         "submit_decision",
+        "get_sound_themes",
+        "preview_sound_routing",
+        "play_sound_event",
+        "import_sound_pack",
+        "list_remote_hosts",
+        "upsert_remote_host",
+        "remove_remote_host",
+        "get_remote_backend_status",
+        "preview_remote_deploy",
+        "execute_remote_deploy",
+        "start_remote_relay",
+        "stop_remote_relay",
+        "get_remote_connection_status",
     ];
     let attributes = tauri_build::Attributes::new()
         .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS));

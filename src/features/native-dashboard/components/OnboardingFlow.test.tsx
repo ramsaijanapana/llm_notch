@@ -5,7 +5,15 @@ import type { AgentSource } from '../../../native/contracts'
 import { mockDisplays } from '../fixtures/testFixtures'
 import { OnboardingFlow } from './OnboardingFlow'
 
-const integrationOptions: AgentSource[] = ['cursor', 'claudeCode', 'codex']
+const integrationOptions: AgentSource[] = [
+  'cursor',
+  'claudeCode',
+  'codex',
+  'gemini',
+  'qwen',
+  'antigravityCli',
+  'copilotCli',
+]
 
 const baseProps = {
   open: true,
@@ -36,18 +44,25 @@ const baseProps = {
 describe('OnboardingFlow', () => {
   afterEach(() => cleanup())
 
-  it('renders consent step with documented paths', () => {
+  it('renders detect-first step with documented paths disclosure', async () => {
+    const user = userEvent.setup()
     render(<OnboardingFlow {...baseProps} />)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /detect & connect your agents/i })).toBeInTheDocument()
     expect(screen.getByText(/documented configuration paths/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /how detection works/i }))
     expect(screen.getByText(/~\/.cursor\/hooks.json/i)).toBeInTheDocument()
+    expect(screen.getByText(/~\/.gemini\/settings.json/i)).toBeInTheDocument()
+    expect(screen.getByText(/~\/.qwen\/settings.json/i)).toBeInTheDocument()
+    expect(screen.getByText(/~\/.gemini\/antigravity-cli\/hooks.json/i)).toBeInTheDocument()
+    expect(screen.getByText(/~\/.copilot\/hooks\/llm-notch.json/i)).toBeInTheDocument()
   })
 
-  it('triggers detection from Get started', async () => {
+  it('triggers detection from Detect all agents', async () => {
     const user = userEvent.setup()
     const onGetStarted = vi.fn()
     render(<OnboardingFlow {...baseProps} onGetStarted={onGetStarted} />)
-    await user.click(screen.getByRole('button', { name: /get started/i }))
+    await user.click(screen.getByRole('button', { name: /detect all agents/i }))
     expect(onGetStarted).toHaveBeenCalled()
   })
 
@@ -90,7 +105,7 @@ describe('OnboardingFlow', () => {
     expect(onSkip).toHaveBeenCalled()
   })
 
-  it('shows connect agents step with scope radios', () => {
+  it('shows connect agents step with scope controls', () => {
     render(
       <OnboardingFlow
         {...baseProps}
@@ -114,6 +129,6 @@ describe('OnboardingFlow', () => {
       />,
     )
     expect(screen.getByRole('heading', { name: /connect agents/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/user scope/i)).toBeChecked()
+    expect(screen.getByRole('radio', { name: /user scope/i })).toHaveAttribute('aria-checked', 'true')
   })
 })

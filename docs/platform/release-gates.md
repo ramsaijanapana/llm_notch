@@ -8,7 +8,9 @@ Lane 9 defines the minimum gates before distributing signed desktop builds.
 flowchart LR
   A[npm run build] --> B[native:prepare-helper]
   B --> C[src-tauri/binaries/llm-notch-hook-target]
+  B --> C2[src-tauri/binaries/llm-notch-relay-target]
   C --> D[tauri build]
+  C2 --> D
   D --> E{Platform}
   E -->|Windows| F[Authenticode sign]
   E -->|macOS| G[codesign + notarize]
@@ -21,16 +23,19 @@ flowchart LR
 `src-tauri/tauri.conf.json` declares:
 
 ```json
-"externalBin": ["binaries/llm-notch-hook"]
+"externalBin": ["binaries/llm-notch-hook", "binaries/llm-notch-relay"]
 ```
 
-`npm run native:prepare-helper` copies the Cargo `notch-hook` binary to:
+`npm run native:prepare-helper` copies the Cargo `notch-hook` and `notch-remote` binaries to:
 
 ```
 src-tauri/binaries/llm-notch-hook-<rust-target-triple>[.exe]
+src-tauri/binaries/llm-notch-relay-<rust-target-triple>[.exe]
 ```
 
-Tauri renames this to `llm-notch-hook` / `llm-notch-hook.exe` beside the main executable in the bundle. Runtime resolution lives in `src-tauri/src/runtime/helper_path.rs` and is logged at host startup.
+Tauri renames these to `llm-notch-hook` / `llm-notch-hook.exe` and `llm-notch-relay` / `llm-notch-relay.exe` beside the main executable in the bundle. Runtime resolution lives in `src-tauri/src/runtime/helper_path.rs` and `src-tauri/src/runtime/relay_path.rs` and is logged at host startup.
+
+Cross-compiled relay sidecars for SSH remote deploy use target-suffixed filenames under the same `binaries/` directory (for example `llm-notch-relay-x86_64-unknown-linux-gnu`). CI builds them unsigned on native runners via `npm run native:prepare-relay -- --target <triple>`; release workflows attach them to draft GitHub Releases and bundle them as Tauri resources when present. They are **not** Authenticode/codesign verified (relay signing is not yet wired).
 
 ## Windows overlay guarantees (validated in CI)
 

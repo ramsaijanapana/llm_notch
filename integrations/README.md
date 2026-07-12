@@ -1,4 +1,4 @@
-# llm_notch integration templates
+# LLM Notch integration templates
 
 **These files are templates and previews only.** Nothing in this directory is installed automatically. Applying an integration requires an explicit user action through the llm_notch dashboard installer (planned) or manual copy after reviewing a diff.
 
@@ -15,9 +15,15 @@
 | Path | Purpose |
 |------|---------|
 | `wrappers/` | Portable Unix shell and PowerShell hook wrappers |
+| `windows-terminal/` | Honest Windows Terminal tab/pane collector docs + limitations |
 | `cursor/` | Cursor `hooks.json` template (project scope) |
 | `claude-code/` | Claude Code `settings.json` hooks fragment |
 | `codex/` | Codex lifecycle `hooks.json` + legacy `notify` fallback |
+| `gemini/` | Gemini CLI `settings.json` hooks fragment |
+| `qwen/` | Qwen Code `settings.json` hooks fragment |
+| `antigravity-cli/` | Antigravity CLI named `.agents/hooks.json` scaffold |
+| `copilot/` | GitHub Copilot CLI `hooks/*.json` template |
+| `remote/` | SSH remote-host hook templates (`LLM_NOTCH_EVENT_SPOOL=1` spool pairing) |
 | `generic/` | `emit` CLI examples for custom agents |
 | `fixtures/` | JSON examples for tests and documentation |
 | `validate-json.sh` / `validate-json.ps1` | Syntax-check JSON fixtures |
@@ -35,3 +41,7 @@ See [`docs/integrations/`](../docs/integrations/README.md) for the protocol guid
 ```powershell
 .\integrations\validate-json.ps1
 ```
+Bundled first-party connectors currently cover Cursor, Claude Code, Codex, Gemini CLI, Qwen Code, and Copilot CLI. The
+dashboard detects their user/project configuration paths, previews merged changes, preserves
+unrelated hooks, and creates rollback backups before writing. Antigravity CLI ships connector
+merge fixtures and hook stdin mapping tests.

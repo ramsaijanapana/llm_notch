@@ -27,6 +27,7 @@ use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
 use crate::services::AlertNotifier;
+use crate::services::remote::RelaySessionEventIngest;
 use crate::stream::StreamHub;
 
 pub type DesktopCore = AppCore<SystemClock, SqliteRepository, StreamHub>;
@@ -282,6 +283,107 @@ impl HostState {
         });
 
         self.tasks.lock().extend([ipc_task, metrics_task]);
+    }
+
+    pub fn start_remote_relay_supervisor(
+        self: &Arc<Self>,
+        app: AppHandle,
+        registry: crate::services::remote::SharedRemoteRegistry,
+    ) {
+        let mut shutdown = self.shutdown_tx.subscribe();
+        let host = Arc::clone(self);
+        let task = tauri::async_runtime::spawn(async move {
+            crate::services::remote_supervisor::run_relay_supervisor(
+                app,
+                host,
+                registry,
+                &mut shutdown,
+            )
+            .await;
+        });
+        self.tasks.lock().push(task);
+    }
+
+    /// Ingests a relay `SessionEvent` frame into AppCore and the stream hub.
+    /// Does not fabricate events — only persists what the remote relay reported.
+    pub fn ingest_relay_session_event(&self, event: &RelaySessionEventIngest) -> Result<(), String> {
+        let source = parse_ipc_source(&event.source);
+        if source == AgentSource::Unknown {
+            return Err(format!(
+                "relay session event source `{}` is not recognized",
+                event.source
+            ));
+        }
+        if event.external_session_id.is_empty() {
+            return Err("relay session event session id must not be empty".into());
+        }
+        if event.summary.is_empty() {
+            return Err("relay session event summary must not be empty".into());
+        }
+
+        if self
+            .resolve_session(
+                &event.external_session_id,
+                source,
+                Some(&event.external_session_id),
+            )
+            .is_none()
+        {
+            self.core
+                .ingest(IngestCommand::SessionStart(SessionStartCommand {
+                    idempotency_key: Some(format!(
+                        "relay:{}:{}",
+                        event.host_id, event.external_session_id
+                    )),
+                    source,
+                    external_session_id: event.external_session_id.clone(),
+                    label: truncate_for_session_label(&event.summary),
+                    workspace_label: Some(format!("remote:{}", event.host_id)),
+                    status: SessionStatus::Running,
+                    occurred_at_ms: event.occurred_at_ms,
+                }))
+                .map_err(|error| error.to_string())?;
+        }
+
+        let level = relay_event_level(event.attention);
+        let command = if event.kind == Some(SessionEventKind::Attention) {
+            event.attention.map(|attention| {
+                IngestCommand::Attention(AttentionCommand {
+                    source,
+                    external_session_id: event.external_session_id.clone(),
+                    attention,
+                    level,
+                    summary: event.summary.clone(),
+                    occurred_at_ms: event.occurred_at_ms,
+                })
+            })
+        } else {
+            None
+        }
+        .unwrap_or_else(|| match event.kind {
+            Some(SessionEventKind::Tool) => IngestCommand::ToolEvent(ToolEventCommand {
+                source,
+                external_session_id: event.external_session_id.clone(),
+                level,
+                summary: event.summary.clone(),
+                tool_name: event.tool_name.clone(),
+                occurred_at_ms: event.occurred_at_ms,
+            }),
+            _ => IngestCommand::LifecycleEvent(LifecycleEventCommand {
+                source,
+                external_session_id: event.external_session_id.clone(),
+                level,
+                summary: event.summary.clone(),
+                occurred_at_ms: event.occurred_at_ms,
+            }),
+        });
+
+        self.core
+            .ingest(command)
+            .map_err(|error| error.to_string())?;
+        self.record_connector_traffic(source, event.occurred_at_ms);
+        self.sync_presentation();
+        Ok(())
     }
 
     pub fn begin_shutdown(&self) {
@@ -856,6 +958,12 @@ impl HostState {
                 .map_err(|error| error.to_string())?;
         }
 
+        if let Some(terminal) = incoming.verified_terminal.clone() {
+            self.core
+                .set_verified_terminal(&session_id, terminal)
+                .map_err(|error| error.to_string())?;
+        }
+
         self.record_connector_traffic(source, occurred_at_ms);
         self.reconcile_metric_roots()
     }
@@ -884,11 +992,18 @@ pub fn builtin_adapter_capabilities() -> Vec<AdapterCapabilities> {
         AdapterCapabilities::template(AgentSource::Cursor),
         AdapterCapabilities::template(AgentSource::ClaudeCode),
         AdapterCapabilities::template(AgentSource::Codex),
+        AdapterCapabilities::template(AgentSource::Gemini),
+        AdapterCapabilities::template(AgentSource::Qwen),
+        AdapterCapabilities::template(AgentSource::AntigravityCli),
+        AdapterCapabilities::template(AgentSource::CopilotCli),
         AdapterCapabilities::template(AgentSource::Generic),
     ];
     for entry in caps.iter_mut() {
         match entry.source {
-            AgentSource::Cursor | AgentSource::ClaudeCode | AgentSource::Codex => {
+            AgentSource::Cursor
+            | AgentSource::ClaudeCode
+            | AgentSource::Codex
+            | AgentSource::Gemini => {
                 entry.context_open = true;
                 entry.context_open_tier = ContextOpenTier::AppActivate;
             }
@@ -915,8 +1030,13 @@ pub fn register_builtin_adapters(core: &DesktopCore) -> Result<(), String> {
 fn attribution_for_source(source: AgentSource) -> AttributionQuality {
     match source {
         AgentSource::Cursor => AttributionQuality::Shared,
-        AgentSource::ClaudeCode | AgentSource::Codex => AttributionQuality::Heuristic,
-        AgentSource::Generic => AttributionQuality::Exact,
+        AgentSource::ClaudeCode | AgentSource::Codex | AgentSource::Gemini => {
+            AttributionQuality::Heuristic
+        }
+        AgentSource::Qwen
+        | AgentSource::AntigravityCli
+        | AgentSource::CopilotCli
+        | AgentSource::Generic => AttributionQuality::Exact,
         AgentSource::Unknown => AttributionQuality::Unknown,
     }
 }
@@ -948,9 +1068,34 @@ fn parse_ipc_source(raw: &str) -> AgentSource {
         "cursor" => AgentSource::Cursor,
         "claudeCode" => AgentSource::ClaudeCode,
         "codex" => AgentSource::Codex,
+        "gemini" => AgentSource::Gemini,
+        "antigravityCli" | "antigravity-cli" | "antigravity" => AgentSource::AntigravityCli,
+        "copilotCli" | "copilot-cli" | "copilot" => AgentSource::CopilotCli,
+        "qwen" | "qwen-cli" | "qwencode" => AgentSource::Qwen,
         "generic" => AgentSource::Generic,
         _ => AgentSource::Unknown,
     }
+}
+
+fn truncate_for_session_label(summary: &str) -> String {
+    use notch_protocol::MAX_SESSION_LABEL_LEN;
+    if summary.len() <= MAX_SESSION_LABEL_LEN {
+        return summary.to_string();
+    }
+    summary
+        .chars()
+        .take(MAX_SESSION_LABEL_LEN)
+        .collect::<String>()
+}
+
+fn relay_event_level(attention: Option<AttentionKind>) -> EventLevel {
+    if attention == Some(AttentionKind::Error) {
+        return EventLevel::Error;
+    }
+    if attention == Some(AttentionKind::Permission) || attention == Some(AttentionKind::Approval) {
+        return EventLevel::Warning;
+    }
+    EventLevel::Info
 }
 
 fn parse_ipc_decision_kind(raw: &str) -> DecisionKind {
@@ -992,6 +1137,8 @@ mod tests {
                     show_over_fullscreen: false,
                     history_retention_hours: 24,
                     alert_sound_enabled: false,
+                    selected_sound_theme_id: None,
+                    sound_routing: notch_protocol::SoundRouting::default(),
                 },
             )
             .unwrap(),
@@ -1019,6 +1166,7 @@ mod tests {
             last_event_at_ms: at_ms,
             ended_at_ms: None,
             process_root,
+            verified_terminal: None,
             latest_metric: None,
         }
     }
@@ -1134,5 +1282,186 @@ mod tests {
         assert!(state.metrics_paused());
         state.set_metrics_paused(false);
         assert!(!state.metrics_paused());
+    }
+
+    #[test]
+    fn relay_session_event_ingest_creates_session_and_timeline_event() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-42".into(),
+                source: "codex".into(),
+                summary: "Remote tool finished".into(),
+                occurred_at_ms: 1_700_000_000_000,
+                kind: None,
+                tool_name: None,
+                attention: None,
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-session-42")
+            .expect("remote session");
+        assert_eq!(session.source, AgentSource::Codex);
+        assert_eq!(session.workspace_label.as_deref(), Some("remote:dev-box"));
+
+        let events = state
+            .session_event_page(&session.id, None, 10)
+            .expect("session events");
+        assert!(
+            events
+                .events
+                .iter()
+                .any(|event| event.summary == "Remote tool finished")
+        );
+    }
+
+    #[test]
+    fn relay_session_event_ingest_uses_tool_metadata_when_present() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-tool".into(),
+                source: "codex".into(),
+                summary: "Executed cargo test".into(),
+                occurred_at_ms: 1_700_000_000_100,
+                kind: Some(SessionEventKind::Tool),
+                tool_name: Some("run_command".into()),
+                attention: None,
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-session-tool")
+            .expect("remote session");
+        let events = state
+            .session_event_page(&session.id, None, 10)
+            .expect("session events");
+        let tool_event = events
+            .events
+            .iter()
+            .find(|event| event.summary == "Executed cargo test")
+            .expect("tool event");
+        assert_eq!(tool_event.kind, SessionEventKind::Tool);
+        assert_eq!(tool_event.tool_name.as_deref(), Some("run_command"));
+    }
+
+    #[test]
+    fn relay_session_event_ingest_uses_attention_when_present() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-attn".into(),
+                source: "cursor".into(),
+                summary: "Approve shell command".into(),
+                occurred_at_ms: 1_700_000_000_200,
+                kind: Some(SessionEventKind::Attention),
+                tool_name: None,
+                attention: Some(AttentionKind::Permission),
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-session-attn")
+            .expect("remote session");
+        assert_eq!(session.attention, AttentionKind::Permission);
+        let events = state
+            .session_event_page(&session.id, None, 10)
+            .expect("session events");
+        let attention_event = events
+            .events
+            .iter()
+            .find(|event| event.summary == "Approve shell command")
+            .expect("attention event");
+        assert_eq!(attention_event.kind, SessionEventKind::Attention);
+    }
+
+    #[test]
+    fn relay_session_event_without_attention_metadata_falls_back_to_lifecycle() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-fallback".into(),
+                source: "codex".into(),
+                summary: "Attention required".into(),
+                occurred_at_ms: 1_700_000_000_300,
+                kind: Some(SessionEventKind::Attention),
+                tool_name: None,
+                attention: None,
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-session-fallback")
+            .expect("remote session");
+        let events = state
+            .session_event_page(&session.id, None, 10)
+            .expect("session events");
+        let event = events
+            .events
+            .iter()
+            .find(|event| event.summary == "Attention required")
+            .expect("lifecycle fallback event");
+        assert_eq!(event.kind, SessionEventKind::Lifecycle);
+    }
+
+    #[test]
+    fn relay_session_event_ingest_accepts_catalog_wire_sources() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-copilot-1".into(),
+                source: "copilotCli".into(),
+                summary: "Copilot finished".into(),
+                occurred_at_ms: 1_700_000_000_200,
+                kind: Some(SessionEventKind::Lifecycle),
+                tool_name: None,
+                attention: None,
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-copilot-1")
+            .expect("remote session");
+        assert_eq!(session.source, AgentSource::CopilotCli);
+    }
+
+    #[test]
+    fn relay_session_event_rejects_unknown_source() {
+        let state = test_state();
+        let error = state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-42".into(),
+                source: "not-a-real-agent".into(),
+                summary: "Remote tool finished".into(),
+                occurred_at_ms: 1_700_000_000_000,
+                kind: None,
+                tool_name: None,
+                attention: None,
+            })
+            .unwrap_err();
+        assert!(error.contains("not recognized"));
+        assert!(state.snapshot().sessions.is_empty());
     }
 }

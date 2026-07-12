@@ -209,6 +209,94 @@ pub fn merge_claude_settings(target: &Value, template: &Value) -> (Value, Vec<St
     (merged, preserved)
 }
 
+/// Merge Antigravity CLI named-hook wrapper configs (`.agents/hooks.json`).
+pub fn merge_antigravity_named_hooks(target: &Value, template: &Value) -> (Value, Vec<String>) {
+    let mut merged = target.clone();
+    let preserved = collect_foreign_antigravity_named_hooks(&merged);
+
+    let Some(template_blocks) = template.as_object() else {
+        return (merged, preserved);
+    };
+
+    let target_root = match merged.as_object_mut() {
+        Some(root) => root,
+        None => return (merged, preserved),
+    };
+
+    for (name, template_block) in template_blocks {
+        if !named_block_has_managed_commands(template_block) {
+            continue;
+        }
+        target_root.insert(name.clone(), template_block.clone());
+    }
+
+    (merged, preserved)
+}
+
+/// Remove llm_notch managed named blocks from Antigravity hooks.json configs.
+pub fn remove_antigravity_named_hooks(target: &Value) -> (Value, Vec<String>) {
+    let mut merged = target.clone();
+    let mut removed = Vec::new();
+
+    let Some(target_root) = merged.as_object_mut() else {
+        return (merged, removed);
+    };
+
+    target_root.retain(|name, block| {
+        if named_block_has_managed_commands(block) {
+            removed.push(name.clone());
+            false
+        } else {
+            true
+        }
+    });
+
+    (merged, removed)
+}
+
+fn named_block_has_managed_commands(block: &Value) -> bool {
+    let Some(obj) = block.as_object() else {
+        return false;
+    };
+    for (key, value) in obj {
+        if key == "enabled" {
+            continue;
+        }
+        let Some(entries) = value.as_array() else {
+            continue;
+        };
+        for entry in entries {
+            if entry_command(entry).is_some_and(is_managed_command) {
+                return true;
+            }
+            if let Some(hooks) = entry.get("hooks").and_then(Value::as_array) {
+                if hooks.iter().any(|hook| {
+                    hook.get("command")
+                        .and_then(Value::as_str)
+                        .is_some_and(is_managed_command)
+                }) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn collect_foreign_antigravity_named_hooks(value: &Value) -> Vec<String> {
+    let mut preserved = Vec::new();
+    let Some(root) = value.as_object() else {
+        return preserved;
+    };
+    for (name, block) in root {
+        if named_block_has_managed_commands(block) {
+            continue;
+        }
+        preserved.push(name.clone());
+    }
+    preserved
+}
+
 fn collect_foreign_hooks_json(value: &Value) -> Vec<String> {
     let mut preserved = Vec::new();
     let Some(hooks) = value.get("hooks").and_then(Value::as_object) else {
@@ -372,5 +460,101 @@ mod tests {
         assert!(merged["hooks"]["beforeShellExecution"].is_array());
         assert!(merged["hooks"].get("sessionStart").is_none());
         assert!(!removed.is_empty());
+    }
+
+    #[test]
+    fn merge_preserves_unrelated_gemini_settings() {
+        let target = json!({
+            "model": "gemini-2.5-pro",
+            "hooks": {
+                "BeforeTool": [{
+                    "matcher": "run_shell_command",
+                    "hooks": [{
+                        "type": "command",
+                        "name": "audit-shell",
+                        "command": "/usr/local/bin/audit-shell.sh"
+                    }]
+                }]
+            }
+        });
+        let template = json!({
+            "hooks": {
+                "SessionStart": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "llm-notch-hook hook --source gemini --vendor-event SessionStart --hook-mode"
+                    }]
+                }]
+            }
+        });
+        let (merged, preserved) = merge_claude_settings(&target, &template);
+        assert_eq!(merged["model"], "gemini-2.5-pro");
+        assert!(merged["hooks"]["BeforeTool"].is_array());
+        assert!(merged["hooks"]["SessionStart"].is_array());
+        assert_eq!(preserved.len(), 1);
+    }
+
+    #[test]
+    fn merge_preserves_unrelated_qwen_settings() {
+        let target = json!({
+            "model": "qwen3-coder-plus",
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "^bash$",
+                    "hooks": [{
+                        "type": "command",
+                        "name": "audit-shell",
+                        "command": "/usr/local/bin/audit-shell.sh"
+                    }]
+                }]
+            }
+        });
+        let template = json!({
+            "hooks": {
+                "SessionStart": [{
+                    "hooks": [{
+                        "type": "command",
+                        "command": "llm-notch-hook hook --source claudeCode --vendor-event SessionStart --hook-mode"
+                    }]
+                }]
+            }
+        });
+        let (merged, preserved) = merge_claude_settings(&target, &template);
+        assert_eq!(merged["model"], "qwen3-coder-plus");
+        assert!(merged["hooks"]["PreToolUse"].is_array());
+        assert!(merged["hooks"]["SessionStart"].is_array());
+        assert_eq!(preserved.len(), 1);
+    }
+
+    #[test]
+    fn merge_preserves_foreign_antigravity_named_hooks() {
+        let target = json!({
+            "safety-gate": {
+                "enabled": true,
+                "PreToolUse": [{
+                    "matcher": "run_command",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "/Users/dev/.agents/hooks/safety-check.sh"
+                    }]
+                }]
+            }
+        });
+        let template = json!({
+            "llm-notch": {
+                "enabled": true,
+                "PreToolUse": [{
+                    "matcher": "run_command",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "llm-notch-hook hook --source generic --vendor-event PreToolUse --hook-mode"
+                    }]
+                }]
+            }
+        });
+        let (merged, preserved) = merge_antigravity_named_hooks(&target, &template);
+        assert!(merged["safety-gate"].is_object());
+        assert!(merged["llm-notch"].is_object());
+        assert_eq!(preserved, vec!["safety-gate".to_string()]);
     }
 }

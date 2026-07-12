@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "llm_notch",
+  "productName": "LLM Notch",
   "version": "0.1.0",
   "identifier": "com.llmnotch.desktop",
   "build": {
@@ -15,7 +15,7 @@
     "windows": [
       {
         "label": "overlay",
-        "title": "llm_notch",
+        "title": "LLM Notch",
         "width": 360,
         "height": 44,
         "resizable": false,
@@ -30,7 +30,7 @@
       },
       {
         "label": "dashboard",
-        "title": "llm_notch Dashboard",
+        "title": "LLM Notch Dashboard",
         "width": 900,
         "height": 640,
         "minWidth": 720,
@@ -47,9 +47,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/llm-notch-hook"],
+    "externalBin": ["binaries/llm-notch-hook", "binaries/llm-notch-relay"],
     "resources": {
-      "../integrations/": "integrations/"
+      "../integrations/": "integrations/",
+      "binaries/llm-notch-relay-*": "binaries/"
     },
     "icon": [
       "icons/32x32.png",

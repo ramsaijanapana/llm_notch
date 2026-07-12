@@ -103,6 +103,7 @@ mod tests {
             last_event_at_ms: 0,
             ended_at_ms: None,
             process_root: None,
+            verified_terminal: None,
             latest_metric: None,
         };
         let session_b = session_a.clone();

@@ -16,14 +16,15 @@ Production releases **must not ship** until Authenticode (Windows) and Developer
 
 ## Gate checklist
 
-1. `npm run native:prepare-helper` — sidecar copied to `src-tauri/binaries/llm-notch-hook-<target>`
-2. `npm run native:build` — Tauri bundles app + `externalBin` helper
-3. **Windows**: `scripts/signing/sign-windows.ps1` — Authenticode on `.exe`, `.msi`, and embedded `llm-notch-hook.exe`
-4. **macOS**: codesign app + helper, then `scripts/signing/notarize-macos.sh`
-5. Manual smoke: overlay does not steal focus; helper health probe passes
+1. `npm run native:prepare-helper` — sidecars copied to `src-tauri/binaries/llm-notch-hook-<target>` and `llm-notch-relay-<target>`
+2. `npm run native:prepare-relay -- --target <triple>` — optional cross-compiled relay sidecars for SSH remote deploy (built unsigned in CI matrix; not Authenticode/codesign verified)
+3. `npm run native:build` — Tauri bundles app + `externalBin` hook and relay
+4. **Windows**: `scripts/signing/sign-windows.ps1` — Authenticode on `.exe`, `.msi`, and embedded `llm-notch-hook.exe` (relay signing not yet wired)
+5. **macOS**: codesign app + helper, then `scripts/signing/notarize-macos.sh` (relay signing not yet wired)
+6. Manual smoke: overlay does not steal focus; helper health probe passes; remote backend reports relay present when bundled
 
 ## Local development
 
-Unsigned debug builds are expected. Use `LLM_NOTCH_HOOK_BIN` to point connectors at `target/debug/llm-notch-hook`.
+Unsigned debug builds are expected. Use `LLM_NOTCH_HOOK_BIN` to point connectors at `target/debug/llm-notch-hook`. Use `LLM_NOTCH_RELAY_BIN` to point the remote registry at `target/debug/llm-notch-relay`.
 
 See also [`docs/platform/release-gates.md`](../../docs/platform/release-gates.md).

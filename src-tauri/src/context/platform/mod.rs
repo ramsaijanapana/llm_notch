@@ -1,5 +1,6 @@
 //! Platform-specific activation backends.
 
+pub mod bridge;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod stub;

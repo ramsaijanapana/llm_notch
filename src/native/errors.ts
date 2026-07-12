@@ -6,6 +6,9 @@ export type NativeClientErrorCode =
   | 'resync-required'
   | 'not-available'
   | 'invalid-response'
+  | 'remote-host-invalid'
+  | 'remote-host-missing'
+  | 'remote-backend-unavailable'
 
 export class NativeClientError extends Error {
   override readonly name = 'NativeClientError'

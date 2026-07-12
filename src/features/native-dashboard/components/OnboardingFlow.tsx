@@ -1,13 +1,22 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import {
+  CheckCircle2,
+  Loader2,
+  Monitor,
+  Radar,
+  ShieldCheck,
+  Sparkles,
+  Zap,
+} from 'lucide-react'
 import styles from '../styles/dashboard.module.css'
 import type { OnboardingFlowProps } from '../types/contracts'
-import { DOCUMENTED_CONNECTOR_PATHS } from '../utils/integrationLabels'
 import { agentLabel } from '../utils/formatters'
+import { DOCUMENTED_CONNECTOR_PATHS } from '../utils/integrationLabels'
 import { ApplyProgressPanel } from './integrations/ApplyProgressPanel'
 import { DiffReviewPanel } from './integrations/DiffReviewPanel'
 
 const STEP_TITLES = [
-  'Welcome',
+  'Detect agents',
   'Island & display',
   'Connect agents',
   'Review & apply',
@@ -53,6 +62,7 @@ export function OnboardingFlow({
   const dialogRef = useRef<HTMLDivElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
   const [confirmSkip, setConfirmSkip] = useState(false)
+  const [pathsExpanded, setPathsExpanded] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -71,7 +81,10 @@ export function OnboardingFlow({
   }, [open])
 
   useEffect(() => {
-    if (!open) setConfirmSkip(false)
+    if (!open) {
+      setConfirmSkip(false)
+      setPathsExpanded(false)
+    }
   }, [open])
 
   useEffect(() => {
@@ -86,6 +99,9 @@ export function OnboardingFlow({
   const overlayClass = reducedMotion
     ? `${styles.onboardingOverlay} ${styles.reduceMotion}`
     : styles.onboardingOverlay
+  const cardClass = reducedMotion
+    ? `${styles.onboardingCard} ${styles.onboardingCardStatic}`
+    : `${styles.onboardingCard} ${styles.onboardingCardEnter}`
   const isLastStep = step === 4
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
@@ -127,36 +143,71 @@ export function OnboardingFlow({
       tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
-      <div className={styles.onboardingCard}>
-        <div className={styles.stepIndicator} aria-hidden="true">
-          {STEP_TITLES.map((_, index) => (
+      <div className={cardClass}>
+        <div className={styles.onboardingProgress} aria-hidden="true">
+          {STEP_TITLES.map((title, index) => (
             <span
-              key={STEP_TITLES[index]}
-              className={index === step ? styles.stepDotActive : styles.stepDot}
+              key={title}
+              className={
+                index === step
+                  ? styles.onboardingStepActive
+                  : index < step
+                    ? styles.onboardingStepDone
+                    : styles.onboardingStep
+              }
             />
           ))}
         </div>
 
-        <h2 id="onboarding-title" className={styles.cardTitle}>
-          {STEP_TITLES[step]}
-        </h2>
+        {step === 0 ? (
+          <div className={styles.onboardingHero}>
+            <span className={styles.onboardingHeroIcon} aria-hidden="true">
+              <Radar size={22} strokeWidth={2} />
+            </span>
+            <div>
+              <h2 id="onboarding-title" className={styles.onboardingHeroTitle}>
+                Detect & connect your agents
+              </h2>
+              <p className={styles.muted}>
+                One scan checks every supported agent at documented configuration paths. We never
+                browse your disk — only fixed, published locations.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <h2 id="onboarding-title" className={styles.cardTitle}>
+            {STEP_TITLES[step]}
+          </h2>
+        )}
 
         {step === 0 ? (
           <>
-            <p className={styles.muted}>
-              LLM Notch connects to your installed agents using only documented configuration paths.
-              We never scan your disk — detection checks these fixed locations after you continue.
-            </p>
-            <ul className={styles.list}>
-              {DOCUMENTED_CONNECTOR_PATHS.map((entry) => (
-                <li key={entry.source} className={styles.muted}>
-                  <strong>{agentLabel(entry.source)}</strong>: {entry.userPath}
-                  {entry.source !== 'generic' ? ` (project: ${entry.projectPath})` : ''}
-                </li>
-              ))}
-            </ul>
+            <button
+              type="button"
+              className={styles.pathsToggle}
+              aria-expanded={pathsExpanded}
+              onClick={() => setPathsExpanded((current) => !current)}
+            >
+              <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
+              {pathsExpanded ? 'Hide documented paths' : 'How detection works'}
+            </button>
+            {pathsExpanded ? (
+              <ul className={styles.pathList}>
+                {DOCUMENTED_CONNECTOR_PATHS.map((entry) => (
+                  <li key={entry.source} className={styles.pathItem}>
+                    <strong>{agentLabel(entry.source)}</strong>
+                    <span className={styles.mono}>{entry.userPath}</span>
+                    {entry.source !== 'generic' ? (
+                      <span className={styles.pathProject}>project: {entry.projectPath}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
             {detectLoadState === 'loading' ? (
-              <p className={styles.muted} role="status">
+              <p className={styles.onboardingStatus} role="status">
+                <Loader2 size={14} className={styles.spinIcon} aria-hidden="true" />
                 Scanning documented paths…
               </p>
             ) : null}
@@ -166,9 +217,25 @@ export function OnboardingFlow({
               </p>
             ) : null}
             {detectLoadState === 'ready' && detectedConnectors.length > 0 ? (
-              <p className={styles.muted} role="status">
-                Found {detectedConnectors.length} configuration path
-                {detectedConnectors.length === 1 ? '' : 's'}.
+              <div className={styles.detectResults} role="status">
+                <p className={styles.onboardingStatus}>
+                  <CheckCircle2 size={14} aria-hidden="true" />
+                  Found {detectedConnectors.length} configuration path
+                  {detectedConnectors.length === 1 ? '' : 's'}
+                </p>
+                <ul className={styles.detectChips}>
+                  {detectedConnectors.map((entry) => (
+                    <li key={`${entry.source}-${entry.displayPath}`} className={styles.detectChip}>
+                      {agentLabel(entry.source)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {detectLoadState === 'ready' && detectedConnectors.length === 0 ? (
+              <p className={styles.caveat} role="status">
+                No configuration files found yet. You can continue and connect agents later from
+                Integrations.
               </p>
             ) : null}
           </>
@@ -181,7 +248,9 @@ export function OnboardingFlow({
               island should appear — no account required.
             </p>
             <div className={styles.field}>
-              <label htmlFor="onboarding-display">Display</label>
+              <label htmlFor="onboarding-display">
+                <Monitor size={14} aria-hidden="true" /> Display
+              </label>
               <select
                 id="onboarding-display"
                 className={styles.select}
@@ -225,80 +294,96 @@ export function OnboardingFlow({
           <>
             <p className={styles.muted}>
               Select which agent files to connect. User scope is the default — project scope is
-              optional for team-shared configuration.
+              optional for team-shared configuration. Every supported agent is preselected.
             </p>
-            <div className={styles.field}>
-              <span className={styles.metricLabel}>Scope</span>
-              <label className={styles.checkboxRow}>
-                <input
-                  type="radio"
-                  name="connect-scope"
-                  checked={connectScope === 'user'}
-                  onChange={() => onConnectScopeChange('user')}
-                />
-                User scope (recommended)
-              </label>
-              <label className={styles.checkboxRow}>
-                <input
-                  type="radio"
-                  name="connect-scope"
-                  checked={connectScope === 'project'}
-                  onChange={() => onConnectScopeChange('project')}
-                />
+            <div className={styles.scopeToggle} role="radiogroup" aria-label="Connector scope">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={connectScope === 'user'}
+                className={
+                  connectScope === 'user' ? styles.scopeOptionActive : styles.scopeOption
+                }
+                onClick={() => onConnectScopeChange('user')}
+              >
+                User scope
+                <span className={styles.scopeHint}>Recommended</span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={connectScope === 'project'}
+                className={
+                  connectScope === 'project' ? styles.scopeOptionActive : styles.scopeOption
+                }
+                onClick={() => onConnectScopeChange('project')}
+              >
                 Project scope
-              </label>
+              </button>
             </div>
             <fieldset className={styles.fieldsetReset}>
               <legend className={styles.metricLabel}>Connect agents</legend>
-              {integrationOptions.map((source) => {
-                const paths = connectSelections.filter((entry) => entry.source === source)
-                if (paths.length === 0) {
-                  const detected = detectedConnectors.find((entry) => entry.source === source)
-                  if (!detected) return null
-                  return (
-                    <label key={source} className={styles.checkboxRow}>
-                      <input
-                        type="checkbox"
-                        checked={false}
-                        onChange={() =>
-                          onConnectSelectionChange([
-                            ...connectSelections,
-                            {
-                              source,
-                              displayPath: detected.displayPath,
-                              selected: true,
-                            },
-                          ])
-                        }
-                      />
-                      {agentLabel(source)} — {detected.displayPath}
-                    </label>
-                  )
-                }
-                return paths.map((entry) => (
-                  <label key={`${entry.source}-${entry.displayPath}`} className={styles.checkboxRow}>
-                    <input
-                      type="checkbox"
-                      checked={entry.selected}
-                      onChange={(event) =>
-                        onConnectSelectionChange(
-                          connectSelections.map((current) =>
-                            current.displayPath === entry.displayPath &&
-                            current.source === entry.source
-                              ? { ...current, selected: event.target.checked }
-                              : current,
-                          ),
-                        )
-                      }
-                    />
-                    {agentLabel(entry.source)} — {entry.displayPath}
-                  </label>
-                ))
-              })}
+              <ul className={styles.agentSelectList}>
+                {integrationOptions.map((source) => {
+                  const paths = connectSelections.filter((entry) => entry.source === source)
+                  if (paths.length === 0) {
+                    const detected = detectedConnectors.find((entry) => entry.source === source)
+                    if (!detected) return null
+                    return (
+                      <li key={source}>
+                        <label className={styles.agentSelectCard}>
+                          <input
+                            type="checkbox"
+                            checked={false}
+                            onChange={() =>
+                              onConnectSelectionChange([
+                                ...connectSelections,
+                                {
+                                  source,
+                                  displayPath: detected.displayPath,
+                                  selected: true,
+                                },
+                              ])
+                            }
+                          />
+                          <span className={styles.agentSelectBody}>
+                            <span className={styles.agentSelectName}>{agentLabel(source)}</span>
+                            <span className={styles.mono}>{detected.displayPath}</span>
+                          </span>
+                        </label>
+                      </li>
+                    )
+                  }
+                  return paths.map((entry) => (
+                    <li key={`${entry.source}-${entry.displayPath}`}>
+                      <label className={styles.agentSelectCard}>
+                        <input
+                          type="checkbox"
+                          checked={entry.selected}
+                          onChange={(event) =>
+                            onConnectSelectionChange(
+                              connectSelections.map((current) =>
+                                current.displayPath === entry.displayPath &&
+                                current.source === entry.source
+                                  ? { ...current, selected: event.target.checked }
+                                  : current,
+                              ),
+                            )
+                          }
+                        />
+                        <span className={styles.agentSelectBody}>
+                          <span className={styles.agentSelectName}>{agentLabel(entry.source)}</span>
+                          <span className={styles.mono}>{entry.displayPath}</span>
+                        </span>
+                      </label>
+                    </li>
+                  ))
+                })}
+              </ul>
             </fieldset>
             <p className={styles.caveat}>
-              One confirmation applies all selected files. Unrelated hooks are preserved; backups
-              are created before each write.
+              <Sparkles size={12} aria-hidden="true" /> One confirmation connects every selected
+              agent. Unrelated hooks are preserved and backups are created before each write.
             </p>
           </>
         ) : null}
@@ -342,13 +427,19 @@ export function OnboardingFlow({
               Toggle the dashboard with <strong>{shortcutLabel}</strong>. Optional autostart keeps
               the helper ready at login.
             </p>
-            <label className={styles.checkboxRow}>
+            <label className={styles.toggleCard}>
               <input
                 type="checkbox"
                 checked={autostartEnabled}
                 onChange={(event) => onAutostartChange(event.target.checked)}
               />
-              Launch LLM Notch at startup
+              <span className={styles.toggleCardBody}>
+                <Zap size={16} aria-hidden="true" />
+                <span>
+                  <span className={styles.toggleCardTitle}>Launch at startup</span>
+                  <span className={styles.toggleCardHint}>Keep LLM Notch ready after login</span>
+                </span>
+              </span>
             </label>
           </>
         ) : null}
@@ -388,7 +479,17 @@ export function OnboardingFlow({
                 onClick={onGetStarted}
                 disabled={detectLoadState === 'loading'}
               >
-                {detectLoadState === 'loading' ? 'Detecting…' : 'Get started'}
+                {detectLoadState === 'loading' ? (
+                  <>
+                    <Loader2 size={14} className={styles.spinIcon} aria-hidden="true" />
+                    Detecting…
+                  </>
+                ) : (
+                  <>
+                    <Radar size={14} aria-hidden="true" />
+                    Detect all agents
+                  </>
+                )}
               </button>
             ) : null}
             {step === 0 && detectLoadState === 'ready' ? (
@@ -407,7 +508,7 @@ export function OnboardingFlow({
                   onClick={onPreviewConnect}
                   disabled={selectedCount === 0}
                 >
-                  Review changes ({selectedCount})
+                  Review & connect ({selectedCount})
                 </button>
               </>
             ) : null}

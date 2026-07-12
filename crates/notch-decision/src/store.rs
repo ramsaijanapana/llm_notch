@@ -251,6 +251,7 @@ fn parse_agent_source(raw: &str) -> notch_protocol::AgentSource {
         "Cursor" => notch_protocol::AgentSource::Cursor,
         "ClaudeCode" => notch_protocol::AgentSource::ClaudeCode,
         "Codex" => notch_protocol::AgentSource::Codex,
+        "Gemini" => notch_protocol::AgentSource::Gemini,
         "Generic" => notch_protocol::AgentSource::Generic,
         _ => notch_protocol::AgentSource::Unknown,
     }

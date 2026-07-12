@@ -7,7 +7,10 @@ use crate::context::locator::HostKind;
 /// Returns the highest tier we can honestly attempt for a resolved host.
 pub fn achievable_tier(host: HostKind, pane_verified: bool) -> ContextOpenTier {
     match host {
-        HostKind::TerminalApp | HostKind::ITerm2 if pane_verified => ContextOpenTier::ExactPane,
+        HostKind::TerminalApp | HostKind::ITerm2 | HostKind::WindowsTerminal if pane_verified => {
+            ContextOpenTier::ExactPane
+        }
+        HostKind::VsCode | HostKind::Cursor if pane_verified => ContextOpenTier::ExactPane,
         HostKind::TerminalApp | HostKind::ITerm2 | HostKind::WindowsTerminal => {
             ContextOpenTier::WindowFocus
         }
@@ -81,6 +84,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn windows_terminal_with_verification_allows_exact_pane() {
+        assert_eq!(
+            achievable_tier(HostKind::WindowsTerminal, true),
+            ContextOpenTier::ExactPane
+        );
+        assert_eq!(
+            achievable_tier(HostKind::WindowsTerminal, false),
+            ContextOpenTier::WindowFocus
+        );
+    }
+
+    #[test]
     fn terminal_without_verification_caps_at_window_focus() {
         assert_eq!(
             achievable_tier(HostKind::TerminalApp, false),
@@ -117,6 +132,10 @@ mod tests {
         assert_eq!(
             cap_tier(ContextOpenTier::None, HostKind::Cursor, false),
             ContextOpenTier::None
+        );
+        assert_eq!(
+            cap_tier(ContextOpenTier::ExactPane, HostKind::WindowsTerminal, true),
+            ContextOpenTier::ExactPane
         );
         assert_eq!(
             cap_tier(ContextOpenTier::ExactPane, HostKind::TerminalApp, false),

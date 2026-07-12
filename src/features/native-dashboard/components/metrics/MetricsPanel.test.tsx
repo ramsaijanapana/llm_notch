@@ -164,4 +164,121 @@ describe('MetricsPanel', () => {
     )
     expect(screen.getByRole('button', { name: /24 hours/i })).toBeDisabled()
   })
+
+  it('surfaces credential setup hints for gated quota providers', () => {
+    render(
+      <MetricsPanel
+        host={mockHost}
+        aggregate={mockAggregate}
+        agents={mockAgentMetrics}
+        history={buildHistory()}
+        historyRange="15m"
+        onHistoryRangeChange={vi.fn()}
+        quotas={[
+          {
+            service: 'claude',
+            displayName: 'Claude',
+            availability: 'unavailable',
+            authentication: 'required',
+            message: 'set ANTHROPIC_API_KEY to enable quota probes',
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText(/set ANTHROPIC_API_KEY to enable quota probes/i)).toBeInTheDocument()
+  })
+
+  it('refreshes quotas via the refresh button', async () => {
+    const user = userEvent.setup()
+    const onRefreshQuotas = vi.fn()
+
+    render(
+      <MetricsPanel
+        host={mockHost}
+        aggregate={mockAggregate}
+        agents={mockAgentMetrics}
+        history={buildHistory()}
+        historyRange="15m"
+        onHistoryRangeChange={vi.fn()}
+        onRefreshQuotas={onRefreshQuotas}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /refresh quotas/i }))
+    expect(onRefreshQuotas).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables refresh while quota refresh is loading', () => {
+    render(
+      <MetricsPanel
+        host={mockHost}
+        aggregate={mockAggregate}
+        agents={mockAgentMetrics}
+        history={buildHistory()}
+        historyRange="15m"
+        onHistoryRangeChange={vi.fn()}
+        onRefreshQuotas={vi.fn()}
+        quotaRefreshState="loading"
+      />,
+    )
+
+    const button = screen.getByRole('button', { name: /refreshing/i })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-busy', 'true')
+  })
+
+  it('shows fresh/stale indicator when quota snapshots include timestamps', () => {
+    const nowMs = 1_700_000_000_000
+    render(
+      <MetricsPanel
+        host={mockHost}
+        aggregate={mockAggregate}
+        agents={mockAgentMetrics}
+        history={buildHistory()}
+        historyRange="15m"
+        onHistoryRangeChange={vi.fn()}
+        nowMs={nowMs}
+        quotas={[
+          {
+            service: 'claude',
+            displayName: 'Claude',
+            availability: 'available',
+            remaining: 42,
+            unit: 'requests',
+            observedAtMs: nowMs - 2 * 60_000,
+            freshness: 'fresh',
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByTestId('quota-observed-status')).toHaveTextContent(/updated 2m ago/i)
+    expect(screen.getByText('Fresh')).toBeInTheDocument()
+  })
+
+  it('does not show freshness indicator without observed timestamps', () => {
+    render(
+      <MetricsPanel
+        host={mockHost}
+        aggregate={mockAggregate}
+        agents={mockAgentMetrics}
+        history={buildHistory()}
+        historyRange="15m"
+        onHistoryRangeChange={vi.fn()}
+        quotas={[
+          {
+            service: 'claude',
+            displayName: 'Claude',
+            availability: 'unavailable',
+            authentication: 'required',
+            message: 'set ANTHROPIC_API_KEY to enable quota probes',
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.queryByTestId('quota-observed-status')).not.toBeInTheDocument()
+    expect(screen.getByText(/set ANTHROPIC_API_KEY to enable quota probes/i)).toBeInTheDocument()
+  })
 })

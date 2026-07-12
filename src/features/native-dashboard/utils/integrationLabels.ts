@@ -17,6 +17,26 @@ export const DOCUMENTED_CONNECTOR_PATHS: Array<{
     projectPath: '<repo>/.claude/settings.json',
   },
   { source: 'codex', userPath: '~/.codex/hooks.json', projectPath: '<repo>/.codex/hooks.json' },
+  {
+    source: 'gemini',
+    userPath: '~/.gemini/settings.json',
+    projectPath: '<repo>/.gemini/settings.json',
+  },
+  {
+    source: 'qwen',
+    userPath: '~/.qwen/settings.json',
+    projectPath: '<repo>/.qwen/settings.json',
+  },
+  {
+    source: 'antigravityCli',
+    userPath: '~/.gemini/antigravity-cli/hooks.json',
+    projectPath: '<repo>/.agents/hooks.json',
+  },
+  {
+    source: 'copilotCli',
+    userPath: '~/.copilot/hooks/llm-notch.json',
+    projectPath: '<repo>/.github/hooks/llm-notch.json',
+  },
 ]
 
 const STATUS_LABELS: Record<ConnectorUserStatus, string> = {

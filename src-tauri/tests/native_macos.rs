@@ -3,11 +3,17 @@
 //! macOS overlay smoke tests that do not require a live NSWindow.
 
 use llm_notch_desktop_lib::runtime::helper_path::bundled_helper_filename;
+use llm_notch_desktop_lib::runtime::relay_path::bundled_relay_filename;
 use llm_notch_desktop_lib::window::types::{CapabilityStatus, OverlayPlatformCapability};
 
 #[test]
 fn bundled_helper_resource_path_has_no_suffix() {
     assert_eq!(bundled_helper_filename(), "llm-notch-hook");
+}
+
+#[test]
+fn bundled_relay_resource_path_has_no_suffix() {
+    assert_eq!(bundled_relay_filename(), "llm-notch-relay");
 }
 
 #[test]

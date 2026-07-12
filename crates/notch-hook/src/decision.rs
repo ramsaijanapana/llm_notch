@@ -58,6 +58,10 @@ pub fn plan_interactive_decision(
         pid: None,
         process_started_at_ms: None,
         occurred_at_ms: None,
+        terminal_session_id: None,
+        tab_id: None,
+        pane_id: None,
+        window_handle: None,
     };
     notch_ipc::validate_ingest_payload(&ingest)?;
 

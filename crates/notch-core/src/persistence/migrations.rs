@@ -130,7 +130,29 @@ UPDATE schema_version SET version = 2;
 COMMIT;
 "#;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 2;
+pub const MIGRATION_003: &str = r#"
+BEGIN IMMEDIATE;
+
+CREATE TABLE remote_hosts (
+    id TEXT PRIMARY KEY,
+    config_json TEXT NOT NULL,
+    updated_at_ms INTEGER NOT NULL
+);
+
+UPDATE schema_version SET version = 3;
+COMMIT;
+"#;
+
+pub const MIGRATION_004: &str = r#"
+BEGIN IMMEDIATE;
+
+ALTER TABLE sessions ADD COLUMN verified_terminal_json TEXT;
+
+UPDATE schema_version SET version = 4;
+COMMIT;
+"#;
+
+pub const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 pub fn apply_migrations(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
     let version: Option<i32> = conn
@@ -146,8 +168,16 @@ pub fn apply_migrations(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
         version = Some(1);
     }
 
-    if version.unwrap_or_default() < CURRENT_SCHEMA_VERSION {
+    if version.unwrap_or_default() < 2 {
         conn.execute_batch(MIGRATION_002)?;
+    }
+
+    if version.unwrap_or_default() < 3 {
+        conn.execute_batch(MIGRATION_003)?;
+    }
+
+    if version.unwrap_or_default() < 4 {
+        conn.execute_batch(MIGRATION_004)?;
     }
 
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;

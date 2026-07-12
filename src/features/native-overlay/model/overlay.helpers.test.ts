@@ -16,6 +16,8 @@ import {
 describe('overlay.helpers', () => {
   it('formats agent sources and session statuses', () => {
     expect(formatAgentSource('claudeCode')).toBe('Claude Code')
+    expect(formatAgentSource('gemini')).toBe('Gemini CLI')
+    expect(formatAgentSource('qwen')).toBe('Qwen Code')
     expect(formatSessionStatus('waiting')).toBe('Waiting')
     expect(formatAttentionKind('permission')).toBe('Permission needed')
   })

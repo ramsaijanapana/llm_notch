@@ -1,12 +1,20 @@
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { NATIVE_EVENTS } from './commands.ts'
 import { PROTOCOL_VERSION } from './contracts.ts'
 import { createPreviewSnapshot } from './fixtures.ts'
 import { createTauriNativeClient } from './TauriNativeClient.ts'
 
+const listenMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: listenMock,
+}))
+
 describe('TauriNativeClient', () => {
   afterEach(() => {
     clearMocks()
+    listenMock.mockReset()
   })
 
   it('validates protocol version during bootstrap', async () => {
@@ -23,6 +31,30 @@ describe('TauriNativeClient', () => {
     await expect(client.bootstrap()).rejects.toMatchObject({
       code: 'protocol-incompatible',
     })
+  })
+
+  it('invokes the read-only agent catalog command', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'list_agent_catalog') {
+        return [
+          {
+            id: 'opencode',
+            displayName: 'OpenCode',
+            aliases: [],
+            executableNames: [],
+            adapterFamily: 'undetermined',
+            maturity: 'declaredUnverified',
+            capabilities: [],
+            configTargets: [],
+          },
+        ]
+      }
+      return null
+    })
+
+    const catalog = await createTauriNativeClient().listAgentCatalog()
+    expect(catalog).toHaveLength(1)
+    expect(catalog[0]).toMatchObject({ id: 'opencode', maturity: 'declaredUnverified' })
   })
 
   it('delivers every sequence for provider-side validation', async () => {
@@ -199,5 +231,119 @@ describe('TauriNativeClient', () => {
       nextBeforeSequence: 51,
       hasMore: true,
     })
+  })
+
+  it('invokes remote lifecycle commands with honest unavailable responses', async () => {
+    mockIPC((cmd, payload) => {
+      if (cmd === 'list_remote_hosts') {
+        return []
+      }
+      if (cmd === 'get_remote_backend_status') {
+        return {
+          availability: 'unavailable',
+          message: 'SSH relay backend is not available in this build.',
+        }
+      }
+      if (cmd === 'preview_remote_deploy') {
+        expect(payload).toMatchObject({ hostId: 'dev-box' })
+        throw 'SSH relay backend is not available in this build.'
+      }
+      if (cmd === 'start_remote_relay') {
+        expect(payload).toMatchObject({ hostId: 'dev-box' })
+        throw 'SSH relay backend is not available in this build.'
+      }
+      if (cmd === 'get_remote_connection_status') {
+        expect(payload).toMatchObject({ hostId: 'dev-box' })
+        return {
+          hostId: 'dev-box',
+          availability: 'unavailable',
+          connectionState: 'disconnected',
+          message: 'SSH relay backend is not available in this build.',
+        }
+      }
+      if (cmd === 'upsert_remote_host') {
+        expect(payload).toMatchObject({
+          config: {
+            id: 'dev-box',
+            destination: 'dev@example.internal',
+          },
+        })
+        return {
+          config: {
+            id: 'dev-box',
+            destination: 'dev@example.internal',
+            hostKeyPolicy: 'strict',
+            connectTimeoutSeconds: 10,
+          },
+          availability: 'unavailable',
+          connectionState: 'disconnected',
+        }
+      }
+      if (cmd === 'remove_remote_host') {
+        expect(payload).toMatchObject({ hostId: 'dev-box' })
+        return null
+      }
+      return null
+    })
+
+    const client = createTauriNativeClient()
+    await expect(client.listRemoteHosts()).resolves.toEqual([])
+    await expect(client.getRemoteBackendStatus()).resolves.toMatchObject({
+      availability: 'unavailable',
+    })
+    await expect(client.previewRemoteDeploy('dev-box')).rejects.toThrow()
+    await expect(client.startRemoteRelay('dev-box')).rejects.toThrow()
+    await expect(client.getRemoteConnectionStatus('dev-box')).resolves.toMatchObject({
+      connectionState: 'disconnected',
+    })
+    await expect(
+      client.upsertRemoteHost({
+        id: 'dev-box',
+        destination: 'dev@example.internal',
+        hostKeyPolicy: 'strict',
+        connectTimeoutSeconds: 10,
+      }),
+    ).resolves.toMatchObject({
+      config: { id: 'dev-box' },
+      connectionState: 'disconnected',
+    })
+    await expect(client.removeRemoteHost('dev-box')).resolves.toBeUndefined()
+  })
+
+  it('subscribes to remote connection change events and unsubscribes cleanly', async () => {
+    const unlisten = vi.fn()
+    let eventHandler: ((event: { payload: unknown }) => void) | undefined
+    listenMock.mockImplementation(async (eventName, handler) => {
+      expect(eventName).toBe(NATIVE_EVENTS.remoteConnectionChanged)
+      eventHandler = handler
+      return unlisten
+    })
+
+    const client = createTauriNativeClient()
+    const updates: string[] = []
+    const subscription = await client.subscribeRemoteConnectionChanges((status) => {
+      updates.push(status.connectionState as string)
+    })
+
+    eventHandler?.({
+      payload: {
+        hostId: 'dev-box',
+        availability: 'available',
+        connectionState: 'connecting',
+        message: 'Opening SSH session',
+      },
+    })
+    eventHandler?.({
+      payload: {
+        hostId: 'dev-box',
+        availability: 'available',
+        connectionState: 'streaming',
+        message: null,
+      },
+    })
+
+    await subscription.unsubscribe()
+    expect(unlisten).toHaveBeenCalledTimes(1)
+    expect(updates).toEqual(['connecting', 'streaming'])
   })
 })

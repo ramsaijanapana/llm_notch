@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 notch-protocol.workspace = true
 notch-ipc.workspace = true
+notch-platform.workspace = true
 notch-adapters-claude-code.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -24,6 +25,8 @@ tracing-subscriber.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "io-std"] }
 uuid.workspace = true
 chrono.workspace = true
+directories.workspace = true
 
 [dev-dependencies]
+notch-remote.workspace = true
 tempfile.workspace = true

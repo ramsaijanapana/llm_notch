@@ -1,3 +1,4 @@
+import { attributionQualityLabel } from '../../../../native/contracts'
 import styles from '../../styles/dashboard.module.css'
 import type {
   MetricSeriesCoverage,
@@ -8,10 +9,11 @@ import {
   formatBytes,
   formatBytesPerSec,
   formatPercent,
+  formatRelativeTime,
   historyRangeLabel,
   metricAvailabilityLabel,
+  quotaObservedSummary,
 } from '../../utils/formatters'
-import { attributionQualityLabel } from '../../../../native/contracts'
 import { EmptyState } from '../shared/EmptyState'
 import { ErrorState } from '../shared/ErrorState'
 import { LoadingState } from '../shared/LoadingState'
@@ -51,7 +53,11 @@ export function MetricsPanel({
   historyLoadState = 'ready',
   historyError,
   disabledHistoryRanges = [],
-}: MetricsPanelProps) {
+  quotas = [],
+  onRefreshQuotas,
+  quotaRefreshState = 'idle',
+  nowMs = Date.now(),
+}: MetricsPanelProps & { nowMs?: number }) {
   if (loadState === 'loading') {
     return <LoadingState label="Loading metrics…" />
   }
@@ -66,6 +72,7 @@ export function MetricsPanel({
   }
 
   const agentEntries = Object.entries(agents)
+  const quotaObserved = quotaObservedSummary(quotas, nowMs)
 
   return (
     <div className={styles.panelGrid}>
@@ -140,6 +147,63 @@ export function MetricsPanel({
           )}
         </article>
       </div>
+      <section className={styles.card} aria-labelledby="quota-title">
+        <div className={styles.cardHeaderRow}>
+          <h3 id="quota-title" className={styles.cardTitle}>
+            Service quotas
+          </h3>
+          <div className={styles.actions} style={{ marginTop: 0 }}>
+            {quotaObserved ? (
+              <span
+                className={styles.muted}
+                role="status"
+                data-testid="quota-observed-status"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
+              >
+                Updated {formatRelativeTime(quotaObserved.observedAtMs, nowMs)}
+                <span
+                  className={
+                    quotaObserved.freshness === 'stale'
+                      ? styles.badgeWarning
+                      : styles.badgeSuccess
+                  }
+                >
+                  {quotaObserved.freshness === 'stale' ? 'Stale' : 'Fresh'}
+                </span>
+              </span>
+            ) : null}
+            {onRefreshQuotas ? (
+              <button
+                type="button"
+                className={styles.button}
+                aria-busy={quotaRefreshState === 'loading'}
+                disabled={quotaRefreshState === 'loading'}
+                onClick={onRefreshQuotas}
+              >
+                {quotaRefreshState === 'loading' ? 'Refreshing…' : 'Refresh quotas'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className={styles.cardsRow}>
+          {quotas.map((quota) => (
+            <article key={quota.service} className={styles.metricCell}>
+              <span className={styles.metricLabel}>{quota.displayName}</span>
+              {quota.availability === 'available' ? (
+                <strong className={styles.metricValue}>
+                  {quota.remaining ?? '—'} {quota.unit ?? ''} remaining
+                </strong>
+              ) : (
+                <span className={styles.listSecondary}>
+                  {quota.authentication === 'required'
+                    ? (quota.message ?? 'Set provider credentials to enable quota probes.')
+                    : (quota.message ?? 'Unavailable')}
+                </span>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
       <section className={styles.card}>
         <h3 className={styles.cardTitle}>Per-agent metrics</h3>
         {agentEntries.length === 0 ? (

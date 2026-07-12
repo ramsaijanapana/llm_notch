@@ -4,7 +4,8 @@ use notch_protocol::{AgentSource, ConnectorScope, ExternalTrustAction, ExternalT
 use serde_json::Value;
 
 use crate::merge::{
-    merge_claude_settings, merge_hooks_json, remove_claude_settings, remove_hooks_json,
+    merge_antigravity_named_hooks, merge_claude_settings, merge_hooks_json,
+    remove_antigravity_named_hooks, remove_claude_settings, remove_hooks_json,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,10 +26,12 @@ pub struct TargetFile {
 pub enum ConfigFormat {
     HooksJson,
     ClaudeSettings,
+    AntigravityNamedHooks,
 }
 
 #[derive(Debug, Clone)]
 pub struct AdapterDescriptor {
+    pub catalog_id: &'static str,
     pub source: AgentSource,
     pub template_path: PathBuf,
     pub user_target: TargetFile,
@@ -55,6 +58,7 @@ impl AdapterDescriptor {
         match self.user_target.format {
             ConfigFormat::HooksJson => merge_hooks_json(baseline, template),
             ConfigFormat::ClaudeSettings => merge_claude_settings(baseline, template),
+            ConfigFormat::AntigravityNamedHooks => merge_antigravity_named_hooks(baseline, template),
         }
     }
 
@@ -62,6 +66,7 @@ impl AdapterDescriptor {
         match self.user_target.format {
             ConfigFormat::HooksJson => remove_hooks_json(baseline),
             ConfigFormat::ClaudeSettings => remove_claude_settings(baseline),
+            ConfigFormat::AntigravityNamedHooks => remove_antigravity_named_hooks(baseline),
         }
     }
 }
@@ -94,6 +99,10 @@ impl AdapterRegistry {
             AgentSource::Cursor => Some(self.cursor()),
             AgentSource::ClaudeCode => Some(self.claude_code()),
             AgentSource::Codex => Some(self.codex()),
+            AgentSource::Gemini => Some(self.gemini()),
+            AgentSource::Qwen => Some(self.qwen()),
+            AgentSource::AntigravityCli => Some(self.antigravity_cli()),
+            AgentSource::CopilotCli => Some(self.copilot_cli()),
             AgentSource::Generic | AgentSource::Unknown => None,
         }
     }
@@ -103,15 +112,44 @@ impl AdapterRegistry {
             AgentSource::Cursor,
             AgentSource::ClaudeCode,
             AgentSource::Codex,
+            AgentSource::Gemini,
+            AgentSource::Qwen,
+            AgentSource::AntigravityCli,
+            AgentSource::CopilotCli,
         ]
+    }
+
+    /// Catalog-backed adapters, including agents that do not yet have a distinct `AgentSource`.
+    pub fn catalog_supported_ids(&self) -> Vec<&'static str> {
+        vec![
+            "cursor",
+            "claude-code",
+            "codex",
+            "gemini-cli",
+            "qwen",
+            "antigravity-cli",
+            "copilot",
+        ]
+    }
+
+    pub fn get_by_catalog_id(&self, catalog_id: &str) -> Option<AdapterDescriptor> {
+        match catalog_id {
+            "cursor" => Some(self.cursor()),
+            "claude-code" => Some(self.claude_code()),
+            "codex" => Some(self.codex()),
+            "gemini-cli" => Some(self.gemini()),
+            "qwen" => Some(self.qwen()),
+            "antigravity-cli" => Some(self.antigravity_cli()),
+            "copilot" => Some(self.copilot_cli()),
+            _ => None,
+        }
     }
 
     fn cursor(&self) -> AdapterDescriptor {
         AdapterDescriptor {
+            catalog_id: "cursor",
             source: AgentSource::Cursor,
-            template_path: self
-                .integrations_root
-                .join("cursor/hooks.json.template"),
+            template_path: self.integrations_root.join("cursor/hooks.json.template"),
             user_target: TargetFile {
                 relative_path: PathBuf::from(".cursor/hooks.json"),
                 format: ConfigFormat::HooksJson,
@@ -126,6 +164,7 @@ impl AdapterRegistry {
 
     fn claude_code(&self) -> AdapterDescriptor {
         AdapterDescriptor {
+            catalog_id: "claude-code",
             source: AgentSource::ClaudeCode,
             template_path: self
                 .integrations_root
@@ -144,10 +183,9 @@ impl AdapterRegistry {
 
     fn codex(&self) -> AdapterDescriptor {
         AdapterDescriptor {
+            catalog_id: "codex",
             source: AgentSource::Codex,
-            template_path: self
-                .integrations_root
-                .join("codex/hooks.json.template"),
+            template_path: self.integrations_root.join("codex/hooks.json.template"),
             user_target: TargetFile {
                 relative_path: PathBuf::from(".codex/hooks.json"),
                 format: ConfigFormat::HooksJson,
@@ -161,6 +199,82 @@ impl AdapterRegistry {
                 instructions:
                     "Run /hooks in Codex and approve the llm_notch hooks to finish setup.".into(),
             }],
+        }
+    }
+
+    fn gemini(&self) -> AdapterDescriptor {
+        AdapterDescriptor {
+            catalog_id: "gemini-cli",
+            source: AgentSource::Gemini,
+            template_path: self
+                .integrations_root
+                .join("gemini/settings.hooks.template.json"),
+            user_target: TargetFile {
+                relative_path: PathBuf::from(".gemini/settings.json"),
+                format: ConfigFormat::ClaudeSettings,
+            },
+            project_target: TargetFile {
+                relative_path: PathBuf::from(".gemini/settings.json"),
+                format: ConfigFormat::ClaudeSettings,
+            },
+            external_trust_actions: Vec::new(),
+        }
+    }
+
+    fn qwen(&self) -> AdapterDescriptor {
+        AdapterDescriptor {
+            catalog_id: "qwen",
+            source: AgentSource::Qwen,
+            template_path: self
+                .integrations_root
+                .join("qwen/settings.hooks.template.json"),
+            user_target: TargetFile {
+                relative_path: PathBuf::from(".qwen/settings.json"),
+                format: ConfigFormat::ClaudeSettings,
+            },
+            project_target: TargetFile {
+                relative_path: PathBuf::from(".qwen/settings.json"),
+                format: ConfigFormat::ClaudeSettings,
+            },
+            external_trust_actions: Vec::new(),
+        }
+    }
+
+    fn antigravity_cli(&self) -> AdapterDescriptor {
+        AdapterDescriptor {
+            catalog_id: "antigravity-cli",
+            source: AgentSource::AntigravityCli,
+            template_path: self
+                .integrations_root
+                .join("antigravity-cli/hooks.json.template"),
+            user_target: TargetFile {
+                relative_path: PathBuf::from(".gemini/antigravity-cli/hooks.json"),
+                format: ConfigFormat::AntigravityNamedHooks,
+            },
+            project_target: TargetFile {
+                relative_path: PathBuf::from(".agents/hooks.json"),
+                format: ConfigFormat::AntigravityNamedHooks,
+            },
+            external_trust_actions: Vec::new(),
+        }
+    }
+
+    fn copilot_cli(&self) -> AdapterDescriptor {
+        AdapterDescriptor {
+            catalog_id: "copilot",
+            source: AgentSource::CopilotCli,
+            template_path: self
+                .integrations_root
+                .join("copilot/hooks.json.template"),
+            user_target: TargetFile {
+                relative_path: PathBuf::from(".copilot/hooks/llm-notch.json"),
+                format: ConfigFormat::HooksJson,
+            },
+            project_target: TargetFile {
+                relative_path: PathBuf::from(".github/hooks/llm-notch.json"),
+                format: ConfigFormat::HooksJson,
+            },
+            external_trust_actions: Vec::new(),
         }
     }
 }
@@ -246,6 +360,88 @@ mod tests {
         let adapter = registry.get(AgentSource::Cursor).expect("cursor");
         let template = adapter.load_template().expect("template");
         assert!(template.get("hooks").is_some());
+    }
+
+    #[test]
+    fn registry_loads_gemini_settings_template() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
+        let registry =
+            AdapterRegistry::new(root.clone(), root.join("target/fake/llm-notch-hook.exe"));
+        let adapter = registry.get(AgentSource::Gemini).expect("gemini");
+        let template = adapter.load_template().expect("template");
+
+        assert_eq!(
+            adapter.user_target.relative_path,
+            PathBuf::from(".gemini/settings.json")
+        );
+        assert!(template["hooks"]["SessionStart"].is_array());
+        assert!(template["hooks"]["BeforeTool"].is_array());
+        assert!(template["hooks"]["Notification"].is_array());
+        assert!(template["hooks"]["SessionEnd"].is_array());
+        assert!(template["hooks"].get("AfterAgent").is_none());
+    }
+
+    #[test]
+    fn registry_loads_qwen_settings_template() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
+        let registry =
+            AdapterRegistry::new(root.clone(), root.join("target/fake/llm-notch-hook.exe"));
+        let adapter = registry
+            .get_by_catalog_id("qwen")
+            .expect("qwen catalog adapter");
+        let template = adapter.load_template().expect("template");
+
+        assert_eq!(
+            adapter.user_target.relative_path,
+            PathBuf::from(".qwen/settings.json")
+        );
+        assert_eq!(adapter.catalog_id, "qwen");
+        assert_eq!(adapter.source, AgentSource::Qwen);
+        assert!(template["hooks"]["SessionStart"].is_array());
+        assert!(template["hooks"]["PreToolUse"].is_array());
+        assert!(template["hooks"]["PermissionRequest"].is_array());
+    }
+
+    #[test]
+    fn registry_loads_antigravity_named_hook_template() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
+        let registry =
+            AdapterRegistry::new(root.clone(), root.join("target/fake/llm-notch-hook.exe"));
+        let adapter = registry
+            .get_by_catalog_id("antigravity-cli")
+            .expect("antigravity catalog adapter");
+        let template = adapter.load_template().expect("template");
+
+        assert_eq!(
+            adapter.project_target.relative_path,
+            PathBuf::from(".agents/hooks.json")
+        );
+        assert_eq!(adapter.source, AgentSource::AntigravityCli);
+        assert!(template["llm-notch"]["PreToolUse"].is_array());
+        assert!(template["llm-notch"]["Stop"].is_array());
+    }
+
+    #[test]
+    fn registry_loads_copilot_hook_template() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../integrations");
+        let registry =
+            AdapterRegistry::new(root.clone(), root.join("target/fake/llm-notch-hook.exe"));
+        let adapter = registry
+            .get_by_catalog_id("copilot")
+            .expect("copilot catalog adapter");
+        let template = adapter.load_template().expect("template");
+
+        assert_eq!(
+            adapter.user_target.relative_path,
+            PathBuf::from(".copilot/hooks/llm-notch.json")
+        );
+        assert_eq!(adapter.catalog_id, "copilot");
+        assert_eq!(adapter.source, AgentSource::CopilotCli);
+        assert_eq!(template["version"], 1);
+        assert!(template["hooks"]["sessionStart"].is_array());
+        assert!(template["hooks"]["preToolUse"].is_array());
+        assert!(template["hooks"]["permissionRequest"].is_array());
+        assert!(template["hooks"]["agentStop"].is_array());
     }
 
     #[test]

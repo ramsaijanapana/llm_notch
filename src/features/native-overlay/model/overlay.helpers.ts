@@ -16,6 +16,14 @@ export function formatAgentSource(source: AgentSource): string {
       return 'Claude Code'
     case 'codex':
       return 'Codex'
+    case 'gemini':
+      return 'Gemini CLI'
+    case 'antigravityCli':
+      return 'Antigravity CLI'
+    case 'copilotCli':
+      return 'GitHub Copilot CLI'
+    case 'qwen':
+      return 'Qwen Code'
     case 'generic':
       return 'Generic'
     case 'unknown':

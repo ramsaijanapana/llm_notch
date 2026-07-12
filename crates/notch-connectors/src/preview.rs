@@ -207,7 +207,8 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         let hooks = dir.path().join(".cursor/hooks.json");
         std::fs::create_dir_all(hooks.parent().unwrap()).expect("mkdir");
-        let registry = AdapterRegistry::new(integrations.clone(), dir.path().join("llm-notch-hook.exe"));
+        let registry =
+            AdapterRegistry::new(integrations.clone(), dir.path().join("llm-notch-hook.exe"));
         let adapter = registry.get(AgentSource::Cursor).expect("cursor");
         let template = materialize_template(
             &adapter.load_template().expect("template"),

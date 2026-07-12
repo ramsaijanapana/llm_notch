@@ -21,6 +21,10 @@ notch-metrics.workspace = true
 notch-ipc.workspace = true
 notch-connectors.workspace = true
 notch-decision.workspace = true
+notch-agent-catalog = { path = "../crates/notch-agent-catalog" }
+notch-platform.workspace = true
+notch-services.workspace = true
+notch-remote.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -45,3 +49,8 @@ objc2-foundation.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+notch-remote.workspace = true
+

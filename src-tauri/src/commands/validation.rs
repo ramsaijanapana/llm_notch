@@ -120,6 +120,8 @@ mod tests {
             show_over_fullscreen: false,
             history_retention_hours: 24,
             alert_sound_enabled: false,
+            selected_sound_theme_id: None,
+            sound_routing: notch_protocol::SoundRouting::default(),
         }
     }
 

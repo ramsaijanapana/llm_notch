@@ -1,5 +1,6 @@
 import type {
   AdapterCapabilities,
+  AgentCatalogEntry,
   AppSnapshot,
   BackupJournalEntry,
   ConnectorApplyResult,
@@ -14,11 +15,27 @@ import type {
   DetectedConnector,
   HealthProbeResult,
   PublicSettings,
+  QuotaSnapshotView,
+  RemoteBackendStatus,
+  RemoteConnectionStatusView,
+  RemoteDeploymentPlanView,
+  RemoteDeploymentResultView,
+  RemoteHostConfigInput,
+  RemoteHostView,
   SessionEvent,
+  SoundEvent,
+  SoundRouting,
+  SoundRoutingPreview,
+  SoundPlayRequest,
+  SoundPlayResult,
+  SoundTheme,
+  SoundPackValidation,
+  ImportSoundPackRequest,
   StreamFrame,
 } from './contracts.ts'
 
 export type {
+  AgentCatalogEntry,
   BackupJournalEntry,
   ConnectorHealthEntry,
   ConnectorHealthReport,
@@ -125,12 +142,20 @@ export interface OpenSessionResult {
 
 export type StreamFrameHandler = (frame: StreamFrame) => void
 export type StreamErrorHandler = (error: Error) => void
+export type RemoteConnectionChangeHandler = (status: RemoteConnectionStatusView) => void
+
+export interface RemoteConnectionSubscription {
+  unsubscribe(): Promise<void>
+}
 
 export interface NativeClient {
   readonly mode: NativeClientMode
 
   bootstrap(): Promise<BootstrapResult>
   subscribe(onFrame: StreamFrameHandler, onError: StreamErrorHandler): Promise<StreamSubscription>
+  subscribeRemoteConnectionChanges(
+    onChange: RemoteConnectionChangeHandler,
+  ): Promise<RemoteConnectionSubscription>
   openDashboard(): Promise<void>
   openSession(sessionId: string): Promise<OpenSessionResult>
   setOverlayMode(mode: OverlayMode): Promise<void>
@@ -145,6 +170,26 @@ export interface NativeClient {
   ): Promise<SessionEventPage>
   listDisplays(): Promise<NativeDisplayOption[]>
   getIntegrationHealth(): Promise<ConnectorHealthReport>
+  listAgentCatalog(): Promise<AgentCatalogEntry[]>
+  listQuotaSnapshots(): Promise<QuotaSnapshotView[]>
+  listRemoteHosts(): Promise<RemoteHostView[]>
+  upsertRemoteHost(config: RemoteHostConfigInput): Promise<RemoteHostView>
+  removeRemoteHost(hostId: string): Promise<void>
+  getRemoteBackendStatus(): Promise<RemoteBackendStatus>
+  previewRemoteDeploy(hostId: string): Promise<RemoteDeploymentPlanView>
+  executeRemoteDeploy(hostId: string): Promise<RemoteDeploymentResultView>
+  startRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView>
+  stopRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView>
+  getRemoteConnectionStatus(hostId: string): Promise<RemoteConnectionStatusView>
+  getSoundThemes(): Promise<SoundTheme[]>
+  previewSoundRouting(request: {
+    routing: SoundRouting
+    event: SoundEvent
+    agent?: string
+    localMinute: number
+  }): Promise<SoundRoutingPreview>
+  playSoundEvent(request: SoundPlayRequest): Promise<SoundPlayResult>
+  importSoundPack(request: ImportSoundPackRequest): Promise<SoundPackValidation>
   detectConnectors(): Promise<DetectedConnector[]>
   previewConnector(
     source: AdapterCapabilities['source'],
@@ -171,4 +216,3 @@ export interface NativeClient {
 export interface CreateNativeClientOptions {
   forcePreview?: boolean
 }
-

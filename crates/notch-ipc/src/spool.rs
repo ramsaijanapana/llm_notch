@@ -103,7 +103,7 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::limits::{MAX_SPOOL_FILES, IPC_WIRE_VERSION};
+    use crate::limits::{IPC_WIRE_VERSION, MAX_SPOOL_FILES};
     use crate::wire::{IngestPayload, WireMessage, decode_frame_bytes};
     use tempfile::tempdir;
 
@@ -121,7 +121,11 @@ mod tests {
                 .expect("spool");
         }
         spool
-            .spool_message(&ingest_message("req-new", "sessionStart", MAX_SPOOL_FILES as i64))
+            .spool_message(&ingest_message(
+                "req-new",
+                "sessionStart",
+                MAX_SPOOL_FILES as i64,
+            ))
             .expect("evict and spool");
         assert_eq!(spool.list_frames().expect("list").len(), MAX_SPOOL_FILES);
     }
@@ -156,6 +160,10 @@ mod tests {
                 pid: None,
                 process_started_at_ms: None,
                 occurred_at_ms: Some(occurred_at_ms),
+                terminal_session_id: None,
+                tab_id: None,
+                pane_id: None,
+                window_handle: None,
             },
         }
     }

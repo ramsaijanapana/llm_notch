@@ -10,7 +10,7 @@ pub use locator::{ContextLocator, HostKind, LocatorError};
 pub use resolve::ResolvedContext;
 pub use tier::{achievable_tier, cap_tier, fallback_message};
 
-use notch_protocol::{AdapterCapabilities, AgentSession, ContextOpenTier};
+use notch_protocol::{AdapterCapabilities, AgentSession, ContextOpenTier, VerifiedTerminalContext};
 
 use crate::context::activate::activate;
 
@@ -61,7 +61,7 @@ pub fn open_session_context(
                 ),
             };
         }
-        let locator = match ContextLocator::encode(fallback_host, None, None) {
+        let locator = match ContextLocator::encode(fallback_host, None, None, None) {
             Ok(value) => value,
             Err(error) => {
                 return OpenContextResult {
@@ -81,7 +81,8 @@ pub fn open_session_context(
         };
     };
 
-    let target_tier = cap_tier(adapter_cap, resolved.host, resolved.pane_verified);
+    let host_cap = cap_tier(adapter_cap, resolved.host, resolved.pane_verified);
+    let target_tier = min_context_tier(host_cap, resolved.discovered_tier);
     if target_tier == ContextOpenTier::None {
         return OpenContextResult {
             context_open_tier: ContextOpenTier::None,
@@ -97,6 +98,17 @@ pub fn open_session_context(
         message: outcome
             .detail
             .or_else(|| fallback_message(target_tier, outcome.achieved_tier, resolved.host)),
+    }
+}
+
+fn min_context_tier(left: ContextOpenTier, right: ContextOpenTier) -> ContextOpenTier {
+    use ContextOpenTier::{AppActivate, ExactPane, None, WindowFocus};
+
+    match (left, right) {
+        (None, _) | (_, None) => None,
+        (AppActivate, _) | (_, AppActivate) => AppActivate,
+        (WindowFocus, _) | (_, WindowFocus) => WindowFocus,
+        (ExactPane, ExactPane) => ExactPane,
     }
 }
 
@@ -121,6 +133,7 @@ mod tests {
                 pid: std::process::id(),
                 started_at_ms: 1_700_000_000_000,
             }),
+            verified_terminal: None,
             latest_metric: None,
         }
     }
@@ -142,5 +155,43 @@ mod tests {
         let session = session_with_root(notch_protocol::AgentSource::Cursor);
         let result = open_session_context(&session, Some(&adapter));
         assert!(result.context_open_tier != ContextOpenTier::None || result.message.is_some());
+    }
+
+    #[test]
+    fn verified_terminal_metadata_allows_exact_pane_target() {
+        let mut session = session_with_root(notch_protocol::AgentSource::Generic);
+        session.verified_terminal = Some(VerifiedTerminalContext {
+            terminal_session_id: Some("0".into()),
+            tab_id: Some("1".into()),
+            pane_id: Some("0".into()),
+            window_handle: None,
+        });
+        let mut adapter = AdapterCapabilities::template(notch_protocol::AgentSource::Generic);
+        adapter.context_open = true;
+        adapter.context_open_tier = ContextOpenTier::ExactPane;
+        let resolved = resolve::resolve_session(&session).expect("resolve").expect("some");
+        assert!(resolved.pane_verified);
+        let host_cap = cap_tier(
+            adapter.context_open_tier,
+            resolved.host,
+            resolved.pane_verified,
+        );
+        assert_eq!(host_cap, ContextOpenTier::ExactPane);
+    }
+
+    #[test]
+    fn discovery_tier_never_inflates_adapter_capability() {
+        assert_eq!(
+            min_context_tier(ContextOpenTier::AppActivate, ContextOpenTier::ExactPane),
+            ContextOpenTier::AppActivate
+        );
+        assert_eq!(
+            min_context_tier(ContextOpenTier::ExactPane, ContextOpenTier::WindowFocus),
+            ContextOpenTier::WindowFocus
+        );
+        assert_eq!(
+            min_context_tier(ContextOpenTier::ExactPane, ContextOpenTier::None),
+            ContextOpenTier::None
+        );
     }
 }

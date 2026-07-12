@@ -159,11 +159,9 @@ impl DecisionBroker {
             .map(|active| self.reply_for_active(&nonce, active))
             .unwrap_or_else(|| self.neutral_reply(&nonce, DecisionDeliveryState::Expired));
 
-        let retain_active = self
-            .active
-            .lock()
-            .get(&nonce)
-            .is_some_and(|active| matches!(active.internal_state, InternalDeliveryState::Chosen { .. }));
+        let retain_active = self.active.lock().get(&nonce).is_some_and(|active| {
+            matches!(active.internal_state, InternalDeliveryState::Chosen { .. })
+        });
         if !retain_active {
             self.active.lock().remove(&nonce);
         }

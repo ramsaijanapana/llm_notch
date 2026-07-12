@@ -31,7 +31,221 @@ export const DECISION_HOOK_FAIL_OPEN_EXIT_CODE = 0 as const
 
 export const MIGRATION_REGISTRY_VERSION = 1 as const
 
-export type AgentSource = 'cursor' | 'claudeCode' | 'codex' | 'generic' | 'unknown'
+export type AgentSource =
+  | 'cursor'
+  | 'claudeCode'
+  | 'codex'
+  | 'gemini'
+  | 'antigravityCli'
+  | 'copilotCli'
+  | 'qwen'
+  | 'generic'
+  | 'unknown'
+
+/** Catalog IDs are stable, extensible slugs and intentionally not AgentSource. */
+export type AgentCatalogId = string
+
+export type AgentAdapterFamily =
+  | 'nativeHooks'
+  | 'jsonlHooks'
+  | 'eventLogWatcher'
+  | 'ideExtensionBridge'
+  | 'genericProtocol'
+  | 'undetermined'
+
+export type AgentIntegrationMaturity = 'verifiedCurrent' | 'declaredUnverified'
+
+export type AgentCapability =
+  | 'sessionEvents'
+  | 'toolEvents'
+  | 'attentionEvents'
+  | 'decisionResponse'
+  | 'questionResponse'
+  | 'contextOpen'
+  | 'processAttribution'
+  | 'quotaTracking'
+  | 'terminalNavigation'
+  | 'sshMonitoring'
+  | 'soundAlerts'
+
+export type CapabilityAvailability = 'supported' | 'partial' | 'unsupported' | 'unknown'
+
+export type CapabilityEvidenceQuality =
+  | 'unverified'
+  | 'publiclyAdvertised'
+  | 'vendorDocumented'
+  | 'verifiedLocally'
+
+export interface AgentCapabilityEvidence {
+  capability: AgentCapability
+  availability: CapabilityAvailability
+  quality: CapabilityEvidenceQuality
+  note: string
+}
+
+export interface AgentConfigTarget {
+  platform: 'any' | 'windows' | 'macOs' | 'linux'
+  scope: 'user' | 'project'
+  pathTemplate: string
+  format: 'json' | 'toml'
+}
+
+export interface AgentCatalogEntry {
+  id: AgentCatalogId
+  displayName: string
+  aliases: string[]
+  executableNames: string[]
+  adapterFamily: AgentAdapterFamily
+  maturity: AgentIntegrationMaturity
+  capabilities: AgentCapabilityEvidence[]
+  configTargets: AgentConfigTarget[]
+}
+
+export interface QuotaSnapshotView {
+  service: string
+  displayName: string
+  availability: 'available' | 'unavailable'
+  used?: number | null
+  remaining?: number | null
+  limit?: number | null
+  unit?: string | null
+  resetAtMs?: number | null
+  observedAtMs?: number | null
+  reliability?: string | null
+  freshness?: string | null
+  authentication?: string | null
+  message?: string | null
+}
+
+export type RemoteAvailability = 'available' | 'unavailable'
+
+export type SshHostKeyPolicy = 'strict' | 'acceptNew'
+
+export interface RemoteHostConfigView {
+  id: string
+  destination: string
+  port?: number | null
+  identityFile?: string | null
+  hostKeyPolicy: SshHostKeyPolicy
+  connectTimeoutSeconds: number
+}
+
+export type RemoteHostConfigInput = RemoteHostConfigView
+
+export type RemoteConnectionState =
+  | 'disconnected'
+  | 'connecting'
+  | 'authenticating'
+  | 'streaming'
+  | 'failed'
+  | { backoff: { attempt: number; delayMs: number } }
+
+export interface RemoteHostView {
+  config: RemoteHostConfigView
+  availability: RemoteAvailability
+  connectionState: RemoteConnectionState
+  message?: string | null
+  lastConnectedAtMs?: number | null
+}
+
+export interface RemoteBackendStatus {
+  availability: RemoteAvailability
+  message?: string | null
+  sshExecutablePresent?: boolean | null
+  relayBinaryPresent?: boolean | null
+}
+
+export type RemoteDeploymentStep =
+  | { type: 'probeTarget' }
+  | { type: 'createPrivateDirectory'; remoteDirectory: string }
+  | { type: 'uploadTemporary'; remotePath: string }
+  | { type: 'verifySha256'; expectedSha256: string }
+  | { type: 'activateAtomically'; remotePath: string }
+  | { type: 'startStdioRelay'; remotePath: string; eventSpoolDir: string }
+
+export interface RemoteDeploymentPlanView {
+  hostId: string
+  steps: RemoteDeploymentStep[]
+  availability: RemoteAvailability
+  message?: string | null
+}
+
+export interface RemoteDeploymentResultView {
+  hostId: string
+  availability: RemoteAvailability
+  completedSteps: RemoteDeploymentStep[]
+  probedTarget?: RemoteTargetView | null
+  message?: string | null
+}
+
+export interface RemoteTargetView {
+  os: 'linux' | 'macos' | 'windows'
+  architecture: 'x86_64' | 'aarch64'
+}
+
+export interface RemoteConnectionStatusView {
+  hostId: string
+  availability: RemoteAvailability
+  connectionState: RemoteConnectionState
+  message?: string | null
+}
+
+export type SoundEvent = 'approval' | 'question' | 'completed' | 'failed' | 'notification'
+
+export interface SoundAsset {
+  path: string
+  sizeBytes: number
+  durationMs: number
+}
+
+export interface SoundTheme {
+  schemaVersion: number
+  id: string
+  name: string
+  author: string
+  events: Partial<Record<SoundEvent, SoundAsset>>
+}
+
+export interface SoundRouting {
+  enabled: boolean
+  volume: number
+  quietHours?: { startMinute: number; endMinute: number } | null
+  eventVolume: Partial<Record<SoundEvent, number>>
+  agentVolume: Record<string, number>
+}
+
+export interface SoundRoutingPreview {
+  audible: boolean
+  effectiveVolume?: number | null
+  reason?: string | null
+}
+
+export interface SoundPlayRequest {
+  themeId: string
+  event: SoundEvent
+  routing: SoundRouting
+  agent?: string
+  localMinute: number
+}
+
+export interface SoundPlayResult {
+  played: boolean
+  effectiveVolume?: number | null
+  reason?: string | null
+  backendId: string
+}
+
+export interface SoundPackValidation {
+  theme: SoundTheme
+  trusted: boolean
+  installed: boolean
+  message: string
+}
+
+export interface ImportSoundPackRequest {
+  packBase64: string
+  install: boolean
+}
 
 export type SessionStatus =
   | 'starting'
@@ -170,6 +384,9 @@ export interface PublicSettings {
   historyRetentionHours: number
   /** Optional alert sound; off by default and never activates windows. */
   alertSoundEnabled?: boolean
+  /** Installed theme id; falls back to builtin.8-bit when unset. */
+  selectedSoundThemeId?: string
+  soundRouting?: SoundRouting
 }
 
 export interface MetricsFrame {

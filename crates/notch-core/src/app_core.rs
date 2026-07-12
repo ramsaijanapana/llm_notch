@@ -3,7 +3,7 @@ use std::sync::Arc;
 use notch_protocol::{
     AdapterCapabilities, AgentSession, AppSnapshot, AttentionCapability, AttentionKind,
     AttributionQuality, EventLevel, MetricsFrame, PROTOCOL_VERSION, PublicSettings, SessionEvent,
-    SessionStatus, StreamFrame, StreamPayload,
+    SessionStatus, StreamFrame, StreamPayload, VerifiedTerminalContext,
 };
 use parking_lot::RwLock;
 use uuid::Uuid;
@@ -334,6 +334,28 @@ impl<C: Clock, R: SessionRepository, S: StreamSink> AppCore<C, R, S> {
         Ok(())
     }
 
+    pub fn set_verified_terminal(
+        &self,
+        session_id: &str,
+        terminal: VerifiedTerminalContext,
+    ) -> CoreResult<()> {
+        validate_session_id(session_id)?;
+        let mut inner = self.inner.write();
+        let session = inner
+            .registry
+            .get_mut(session_id)
+            .ok_or_else(|| CoreError::SessionNotFound(session_id.to_string()))?;
+        session.verified_terminal = Some(terminal);
+        self.repository.upsert_session(session)?;
+        let updated = session.clone();
+        self.queue_payload(
+            &mut inner,
+            StreamPayload::SessionUpsert { session: updated },
+        );
+        self.flush_pending(&mut inner);
+        Ok(())
+    }
+
     pub fn heartbeat(&self) {
         let mut inner = self.inner.write();
         self.queue_payload(&mut inner, StreamPayload::Heartbeat);
@@ -448,6 +470,7 @@ impl<C: Clock, R: SessionRepository, S: StreamSink> AppCore<C, R, S> {
                     last_event_at_ms: cmd.occurred_at_ms,
                     ended_at_ms: None,
                     process_root: None,
+                    verified_terminal: None,
                     latest_metric: None,
                 })?;
 
@@ -982,7 +1005,7 @@ mod tests {
     use crate::traits::VecStreamSink;
     use notch_protocol::{
         AgentAggregate, AgentSource, AttributionQuality, HostMetricSample, IoQuality,
-        MetricAvailability, MetricQuality, MetricSample, SessionEventKind,
+        MetricAvailability, MetricQuality, MetricSample, SessionEventKind, SoundRouting,
     };
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -1008,6 +1031,8 @@ mod tests {
             show_over_fullscreen: false,
             history_retention_hours: 24,
             alert_sound_enabled: false,
+            selected_sound_theme_id: None,
+            sound_routing: SoundRouting::default(),
         }
     }
 
@@ -1330,6 +1355,7 @@ mod tests {
             last_event_at_ms: 0,
             ended_at_ms: None,
             process_root: None,
+            verified_terminal: None,
             latest_metric: None,
         };
         registry.upsert_session(session).unwrap();

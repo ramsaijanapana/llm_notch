@@ -1,0 +1,18 @@
+{
+  "model": "gemini-2.5-pro",
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "run_shell_command",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "audit-shell",
+            "command": "/usr/local/bin/audit-shell.sh",
+            "timeout": 3000
+          }
+        ]
+      }
+    ]
+  }
+}

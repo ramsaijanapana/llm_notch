@@ -1,0 +1,12 @@
+{
+  "session_id": "qwen-session-3b91",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "hook_event_name": "PreToolUse",
+  "permission_mode": "default",
+  "tool_name": "bash",
+  "tool_input": {
+    "command": "git status"
+  },
+  "tool_use_id": "toolu_qwen_01",
+  "timestamp": "2026-07-11T18:01:00.000Z"
+}

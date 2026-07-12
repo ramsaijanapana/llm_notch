@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use notch_protocol::{
     AdapterCapabilities, AgentSession, AgentSource, AttentionKind, AttributionQuality, EventLevel,
     IoQuality, MetricAvailability, MetricQuality, MetricSample, ProcessIdentity, PublicSettings,
-    SessionEvent, SessionEventKind, SessionStatus,
+    SessionEvent, SessionEventKind, SessionStatus, VerifiedTerminalContext,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use uuid::Uuid;
@@ -90,7 +90,8 @@ impl SqliteRepository {
             .prepare(
                 "SELECT id, source, external_session_id, label, workspace_label, status, attention,
                         started_at_ms, last_event_at_ms, ended_at_ms,
-                        process_root_pid, process_root_started_at_ms, latest_metric_json
+                        process_root_pid, process_root_started_at_ms, latest_metric_json,
+                        verified_terminal_json
                  FROM sessions
                  ORDER BY
                     CASE
@@ -108,6 +109,7 @@ impl SqliteRepository {
                 let status: String = row.get(5)?;
                 let attention: String = row.get(6)?;
                 let latest_metric_json: Option<String> = row.get(12)?;
+                let verified_terminal_json: Option<String> = row.get(13)?;
                 Ok(AgentSession {
                     id: row.get(0)?,
                     source: parse_source(&source),
@@ -128,6 +130,8 @@ impl SqliteRepository {
                         }
                         _ => None,
                     },
+                    verified_terminal: verified_terminal_json
+                        .and_then(|json| serde_json::from_str(&json).ok()),
                     latest_metric: latest_metric_json
                         .and_then(|json| serde_json::from_str(&json).ok()),
                 })
@@ -207,14 +211,21 @@ impl SqliteRepository {
             .map(serde_json::to_string)
             .transpose()
             .map_err(db_err)?;
+        let verified_terminal_json = session
+            .verified_terminal
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(db_err)?;
 
         let conn = self.connection();
         conn.execute(
             "INSERT INTO sessions (
                     id, source, external_session_id, label, workspace_label, status, attention,
                     started_at_ms, last_event_at_ms, ended_at_ms,
-                    process_root_pid, process_root_started_at_ms, latest_metric_json
-                ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+                    process_root_pid, process_root_started_at_ms, latest_metric_json,
+                    verified_terminal_json
+                ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
                 ON CONFLICT(id) DO UPDATE SET
                     label=excluded.label,
                     workspace_label=excluded.workspace_label,
@@ -224,7 +235,8 @@ impl SqliteRepository {
                     ended_at_ms=excluded.ended_at_ms,
                     process_root_pid=excluded.process_root_pid,
                     process_root_started_at_ms=excluded.process_root_started_at_ms,
-                    latest_metric_json=excluded.latest_metric_json",
+                    latest_metric_json=excluded.latest_metric_json,
+                    verified_terminal_json=excluded.verified_terminal_json",
             params![
                 session.id,
                 format!("{:?}", session.source),
@@ -239,6 +251,7 @@ impl SqliteRepository {
                 session.process_root.as_ref().map(|p| p.pid),
                 session.process_root.as_ref().map(|p| p.started_at_ms),
                 latest_metric_json,
+                verified_terminal_json,
             ],
         )
         .map_err(db_err)?;
@@ -357,6 +370,44 @@ impl SqliteRepository {
         )
         .map_err(db_err)?;
         Ok(())
+    }
+
+    pub fn load_remote_hosts(&self) -> CoreResult<Vec<(String, String)>> {
+        let conn = self.connection();
+        let mut stmt = conn
+            .prepare("SELECT id, config_json FROM remote_hosts ORDER BY id")
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(db_err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(db_err)
+    }
+
+    pub fn upsert_remote_host(
+        &self,
+        id: &str,
+        config_json: &str,
+        updated_at_ms: i64,
+    ) -> CoreResult<()> {
+        let conn = self.connection();
+        conn.execute(
+            "INSERT INTO remote_hosts (id, config_json, updated_at_ms)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET
+                config_json = excluded.config_json,
+                updated_at_ms = excluded.updated_at_ms",
+            params![id, config_json, updated_at_ms],
+        )
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    pub fn remove_remote_host(&self, id: &str) -> CoreResult<bool> {
+        let conn = self.connection();
+        let deleted = conn
+            .execute("DELETE FROM remote_hosts WHERE id = ?1", [id])
+            .map_err(db_err)?;
+        Ok(deleted > 0)
     }
 
     pub fn upsert_integration(
@@ -803,6 +854,10 @@ fn parse_source(value: &str) -> AgentSource {
         "Cursor" => AgentSource::Cursor,
         "ClaudeCode" => AgentSource::ClaudeCode,
         "Codex" => AgentSource::Codex,
+        "Gemini" => AgentSource::Gemini,
+        "AntigravityCli" => AgentSource::AntigravityCli,
+        "CopilotCli" => AgentSource::CopilotCli,
+        "Qwen" => AgentSource::Qwen,
         "Generic" => AgentSource::Generic,
         _ => AgentSource::Unknown,
     }
@@ -872,6 +927,7 @@ mod tests {
             last_event_at_ms: 1,
             ended_at_ms: None,
             process_root: None,
+            verified_terminal: None,
             latest_metric: None,
         }
     }
@@ -901,6 +957,79 @@ mod tests {
         let events = repo.load_events().unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn verified_terminal_round_trip() {
+        let terminal = VerifiedTerminalContext {
+            terminal_session_id: Some("0".into()),
+            tab_id: Some("1".into()),
+            pane_id: Some("0".into()),
+            window_handle: Some(42),
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notch.db");
+        {
+            let repo = SqliteRepository::open(&path).unwrap();
+            let mut session = sample_session("s1");
+            session.verified_terminal = Some(terminal.clone());
+            repo.upsert_session(&session).unwrap();
+        }
+
+        let repo = SqliteRepository::open(&path).unwrap();
+        let sessions = repo.load_sessions().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].verified_terminal, Some(terminal));
+    }
+
+    #[test]
+    fn verified_terminal_absent_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notch.db");
+        {
+            let repo = SqliteRepository::open(&path).unwrap();
+            repo.upsert_session(&sample_session("s1")).unwrap();
+        }
+
+        let repo = SqliteRepository::open(&path).unwrap();
+        let sessions = repo.load_sessions().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert!(sessions[0].verified_terminal.is_none());
+    }
+
+    #[test]
+    fn legacy_db_migrates_and_persists_verified_terminal() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("v1.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(crate::persistence::migrations::MIGRATION_001)
+                .unwrap();
+            conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
+                .unwrap();
+        }
+
+        let repo = SqliteRepository::open(&path).unwrap();
+        let conn = repo.connection();
+        let version: i64 = conn
+            .query_row("SELECT version FROM schema_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, i64::from(crate::persistence::migrations::CURRENT_SCHEMA_VERSION));
+        drop(conn);
+
+        let mut session = sample_session("legacy");
+        session.verified_terminal = Some(VerifiedTerminalContext {
+            terminal_session_id: Some("legacy-session".into()),
+            tab_id: None,
+            pane_id: None,
+            window_handle: None,
+        });
+        repo.upsert_session(&session).unwrap();
+        assert_eq!(
+            repo.load_sessions().unwrap()[0].verified_terminal,
+            session.verified_terminal
+        );
     }
 
     #[test]
@@ -1050,7 +1179,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, i64::from(crate::persistence::migrations::CURRENT_SCHEMA_VERSION));
         assert_eq!(count, 1);
         assert_eq!(cpu, 9.0);
     }
@@ -1237,5 +1366,34 @@ mod tests {
             assert_eq!(series.points.first().unwrap().at_ms, 0);
             assert_eq!(series.points.last().unwrap().at_ms, 20_000);
         }
+    }
+
+    #[test]
+    fn remote_hosts_persist_roundtrip_and_delete() {
+        let repo = SqliteRepository::in_memory().unwrap();
+        let config = r#"{"id":"dev-box","destination":"dev@example.internal","hostKeyPolicy":"strict","connectTimeoutSeconds":10}"#;
+
+        repo.upsert_remote_host("dev-box", config, 1_000)
+            .unwrap();
+        let loaded = repo.load_remote_hosts().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].0, "dev-box");
+        assert_eq!(loaded[0].1, config);
+
+        let updated = r#"{"id":"dev-box","destination":"dev@lab.internal","hostKeyPolicy":"acceptNew","connectTimeoutSeconds":15}"#;
+        repo.upsert_remote_host("dev-box", updated, 2_000)
+            .unwrap();
+        let loaded = repo.load_remote_hosts().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].1, updated);
+
+        repo.upsert_remote_host("build", config, 3_000).unwrap();
+        assert_eq!(repo.load_remote_hosts().unwrap().len(), 2);
+
+        assert!(repo.remove_remote_host("dev-box").unwrap());
+        let loaded = repo.load_remote_hosts().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].0, "build");
+        assert!(!repo.remove_remote_host("missing").unwrap());
     }
 }

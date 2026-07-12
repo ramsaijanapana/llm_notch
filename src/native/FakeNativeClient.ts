@@ -1,5 +1,6 @@
 import { NATIVE_COMMANDS } from './commands.ts'
 import type {
+  AgentCatalogEntry,
   AgentSource,
   BackupJournalEntry,
   ConnectorApplyResult,
@@ -11,6 +12,21 @@ import type {
   DecisionResponseRecord,
   DetectedConnector,
   PublicSettings,
+  QuotaSnapshotView,
+  RemoteBackendStatus,
+  RemoteConnectionStatusView,
+  RemoteDeploymentPlanView,
+  RemoteDeploymentResultView,
+  RemoteHostConfigInput,
+  RemoteHostView,
+  SoundEvent,
+  SoundRouting,
+  SoundRoutingPreview,
+  SoundPlayRequest,
+  SoundPlayResult,
+  SoundTheme,
+  SoundPackValidation,
+  ImportSoundPackRequest,
   StreamFrame,
 } from './contracts.ts'
 import { PROTOCOL_VERSION } from './contracts.ts'
@@ -20,6 +36,7 @@ import {
   createPreviewSnapshot,
   DEFAULT_PUBLIC_SETTINGS,
   PREVIEW_ADAPTERS,
+  PREVIEW_AGENT_CATALOG,
   PREVIEW_EVENTS,
 } from './fixtures.ts'
 import { resolveNativePreviewScenario } from './previewRouting.ts'
@@ -35,6 +52,8 @@ import type {
   NativeHistoryResponse,
   OpenSessionResult,
   OverlayMode,
+  RemoteConnectionChangeHandler,
+  RemoteConnectionSubscription,
   SessionEventPage,
   StreamErrorHandler,
   StreamFrameHandler,
@@ -42,6 +61,33 @@ import type {
 } from './types.ts'
 
 const METRIC_TICK_MS = 1_000
+
+function validateRemoteHostConfigInput(config: RemoteHostConfigInput): void {
+  if (
+    !config.id ||
+    config.id.length > 64 ||
+    !/^[a-zA-Z0-9_-]+$/.test(config.id)
+  ) {
+    throw new NativeClientError('remote-host-invalid', 'remote host id is invalid')
+  }
+  if (
+    !config.destination ||
+    config.destination.length > 255 ||
+    config.destination.startsWith('-') ||
+    /[^a-zA-Z0-9._@%[\]:-]/.test(config.destination)
+  ) {
+    throw new NativeClientError('remote-host-invalid', 'SSH destination is invalid')
+  }
+  if (config.port === 0) {
+    throw new NativeClientError('remote-host-invalid', 'SSH port must not be zero')
+  }
+  if (config.connectTimeoutSeconds < 1 || config.connectTimeoutSeconds > 120) {
+    throw new NativeClientError(
+      'remote-host-invalid',
+      'connect timeout must be between 1 and 120 seconds',
+    )
+  }
+}
 
 const PREVIEW_DETECTED: DetectedConnector[] = [
   {
@@ -65,7 +111,64 @@ const PREVIEW_DETECTED: DetectedConnector[] = [
     configPresent: false,
     managedEntriesPresent: false,
   },
+  {
+    source: 'gemini',
+    scope: 'user',
+    displayPath: '~/.gemini/settings.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+  },
+  {
+    source: 'qwen',
+    scope: 'user',
+    displayPath: '~/.qwen/settings.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+  },
+  {
+    source: 'antigravityCli',
+    scope: 'user',
+    displayPath: '~/.gemini/antigravity-cli/hooks.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+  },
+  {
+    source: 'copilotCli',
+    scope: 'user',
+    displayPath: '~/.copilot/hooks/llm-notch.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+  },
 ]
+
+function previewConnectorDisplayPath(source: AgentSource): string {
+  switch (source) {
+    case 'claudeCode':
+      return '~/.claude/settings.json'
+    case 'codex':
+      return '~/.codex/hooks.json'
+    case 'gemini':
+      return '~/.gemini/settings.json'
+    case 'qwen':
+      return '~/.qwen/settings.json'
+    case 'antigravityCli':
+      return '~/.gemini/antigravity-cli/hooks.json'
+    case 'copilotCli':
+      return '~/.copilot/hooks/llm-notch.json'
+    case 'cursor':
+    default:
+      return '~/.cursor/hooks.json'
+  }
+}
+
+function sourceFromPlanId(planId: string): AgentSource {
+  for (const adapter of PREVIEW_ADAPTERS) {
+    if (planId.includes(adapter.source)) {
+      return adapter.source
+    }
+  }
+  return 'cursor'
+}
 
 function previewHealthEntry(
   capabilities: ConnectorHealthEntry['capabilities'],
@@ -79,9 +182,7 @@ function previewHealthEntry(
     {
       axis: 'trust',
       outcome: capabilities.requiresExternalTrust ? 'warn' : 'ok',
-      ...(capabilities.requiresExternalTrust
-        ? { failureKind: 'trustRequired' as const }
-        : {}),
+      ...(capabilities.requiresExternalTrust ? { failureKind: 'trustRequired' as const } : {}),
     },
     {
       axis: 'traffic',
@@ -130,12 +231,7 @@ function previewPlan(
         ]
       : [
           {
-            displayPath:
-              source === 'cursor'
-                ? '~/.cursor/hooks.json'
-                : source === 'claudeCode'
-                  ? '~/.claude/settings.json'
-                  : '~/.codex/hooks.json',
+            displayPath: previewConnectorDisplayPath(source),
             baselineSha256: 'abc123',
             diffText:
               operation === 'repair'
@@ -198,6 +294,8 @@ export class FakeNativeClient implements NativeClient {
     },
   ]
   private decisionRecords = new Map<string, DecisionResponseRecord>()
+  private remoteHosts = new Map<string, RemoteHostView>()
+  private remoteConnectionHandlers = new Set<RemoteConnectionChangeHandler>()
 
   async bootstrap(): Promise<BootstrapResult> {
     const scenario = resolveNativePreviewScenario()
@@ -251,6 +349,17 @@ export class FakeNativeClient implements NativeClient {
     return {
       unsubscribe: async () => {
         await this.stopStream()
+      },
+    }
+  }
+
+  async subscribeRemoteConnectionChanges(
+    onChange: RemoteConnectionChangeHandler,
+  ): Promise<RemoteConnectionSubscription> {
+    this.remoteConnectionHandlers.add(onChange)
+    return {
+      unsubscribe: async () => {
+        this.remoteConnectionHandlers.delete(onChange)
       },
     }
   }
@@ -343,6 +452,144 @@ export class FakeNativeClient implements NativeClient {
     }
   }
 
+  async listAgentCatalog(): Promise<AgentCatalogEntry[]> {
+    return PREVIEW_AGENT_CATALOG.map((entry) => ({
+      ...entry,
+      aliases: [...entry.aliases],
+      executableNames: [...entry.executableNames],
+      capabilities: entry.capabilities.map((capability) => ({ ...capability })),
+      configTargets: entry.configTargets.map((target) => ({ ...target })),
+    }))
+  }
+
+  async listQuotaSnapshots(): Promise<QuotaSnapshotView[]> {
+    return ['Claude', 'Codex', 'Gemini', 'Kimi', 'GLM', 'DeepSeek'].map((displayName) => ({
+      service: displayName.toLowerCase(),
+      displayName,
+      availability: 'unavailable',
+      message: 'quota provider is not configured',
+    }))
+  }
+
+  async listRemoteHosts(): Promise<RemoteHostView[]> {
+    return [...this.remoteHosts.values()].sort((left, right) =>
+      left.config.id.localeCompare(right.config.id),
+    )
+  }
+
+  async upsertRemoteHost(config: RemoteHostConfigInput): Promise<RemoteHostView> {
+    validateRemoteHostConfigInput(config)
+    const view: RemoteHostView = {
+      config: {
+        id: config.id,
+        destination: config.destination,
+        port: config.port ?? null,
+        identityFile: config.identityFile ?? null,
+        hostKeyPolicy: config.hostKeyPolicy,
+        connectTimeoutSeconds: config.connectTimeoutSeconds,
+      },
+      availability: 'unavailable',
+      connectionState: 'disconnected',
+      message: null,
+      lastConnectedAtMs: null,
+    }
+    this.remoteHosts.set(config.id, view)
+    return view
+  }
+
+  async removeRemoteHost(hostId: string): Promise<void> {
+    if (!this.remoteHosts.delete(hostId)) {
+      throw new NativeClientError(
+        'remote-host-missing',
+        `remote host \`${hostId}\` is not configured`,
+      )
+    }
+  }
+
+  async getRemoteBackendStatus(): Promise<RemoteBackendStatus> {
+    return {
+      availability: 'unavailable',
+      message: 'SSH relay backend is not available in this build. Relay lifecycle is owned by notch-remote.',
+    }
+  }
+
+  async previewRemoteDeploy(hostId: string): Promise<RemoteDeploymentPlanView> {
+    throw new NativeClientError(
+      'remote-backend-unavailable',
+      `SSH relay backend is not available in this build (host: ${hostId})`,
+    )
+  }
+
+  async executeRemoteDeploy(hostId: string): Promise<RemoteDeploymentResultView> {
+    throw new NativeClientError(
+      'remote-backend-unavailable',
+      `SSH relay backend is not available in this build (host: ${hostId})`,
+    )
+  }
+
+  async startRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView> {
+    throw new NativeClientError(
+      'remote-backend-unavailable',
+      `SSH relay backend is not available in this build (host: ${hostId})`,
+    )
+  }
+
+  async stopRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView> {
+    throw new NativeClientError(
+      'remote-backend-unavailable',
+      `SSH relay backend is not available in this build (host: ${hostId})`,
+    )
+  }
+
+  async getRemoteConnectionStatus(hostId: string): Promise<RemoteConnectionStatusView> {
+    return {
+      hostId,
+      availability: 'unavailable',
+      connectionState: 'disconnected',
+      message: 'SSH relay backend is not available in this build. Relay lifecycle is owned by notch-remote.',
+    }
+  }
+
+  async getSoundThemes(): Promise<SoundTheme[]> {
+    return [
+      {
+        schemaVersion: 1,
+        id: 'builtin.8-bit',
+        name: '8-Bit Signals',
+        author: 'LLM Notch',
+        events: {},
+      },
+    ]
+  }
+
+  async previewSoundRouting(request: {
+    routing: SoundRouting
+    event: SoundEvent
+    agent?: string
+    localMinute: number
+  }): Promise<SoundRoutingPreview> {
+    const audible = request.routing.enabled && request.routing.volume > 0
+    return {
+      audible,
+      ...(audible ? { effectiveVolume: request.routing.volume } : {}),
+      ...(audible ? {} : { reason: 'sound is disabled' }),
+    }
+  }
+
+  async playSoundEvent(request: SoundPlayRequest): Promise<SoundPlayResult> {
+    const audible = request.routing.enabled && request.routing.volume > 0
+    return {
+      played: audible,
+      backendId: 'preview',
+      ...(audible ? { effectiveVolume: request.routing.volume } : {}),
+      ...(audible ? {} : { reason: 'sound is disabled' }),
+    }
+  }
+
+  async importSoundPack(_request: ImportSoundPackRequest): Promise<SoundPackValidation> {
+    throw new NativeClientError('invoke-failed', 'Sound pack import is unavailable in preview mode')
+  }
+
   async detectConnectors(): Promise<DetectedConnector[]> {
     await new Promise((resolve) => setTimeout(resolve, 400))
     return PREVIEW_DETECTED.map((entry) => ({ ...entry }))
@@ -359,22 +606,13 @@ export class FakeNativeClient implements NativeClient {
     planId: string,
     _selectedDisplayPaths?: string[],
   ): Promise<ConnectorApplyResult> {
-    const source = planId.includes('claudeCode')
-      ? 'claudeCode'
-      : planId.includes('codex')
-        ? 'codex'
-        : 'cursor'
+    const source = sourceFromPlanId(planId)
     const capabilities =
       PREVIEW_ADAPTERS.find((adapter) => adapter.source === source) ?? PREVIEW_ADAPTERS[0]!
 
     const fileResults: ConnectorFileApplyResult[] = [
       {
-        displayPath:
-          source === 'cursor'
-            ? '~/.cursor/hooks.json'
-            : source === 'claudeCode'
-              ? '~/.claude/settings.json'
-              : '~/.codex/hooks.json',
+        displayPath: previewConnectorDisplayPath(source),
         outcome: 'applied',
         backupJournalId: `backup-${source}-1`,
         appliedHash: 'hash-applied-1',
@@ -420,12 +658,7 @@ export class FakeNativeClient implements NativeClient {
       source,
       fileResults: [
         {
-          displayPath:
-            source === 'cursor'
-              ? '~/.cursor/hooks.json'
-              : source === 'claudeCode'
-                ? '~/.claude/settings.json'
-                : '~/.codex/hooks.json',
+          displayPath: previewConnectorDisplayPath(source),
           outcome: 'applied',
         },
       ],
@@ -522,6 +755,22 @@ export class FakeNativeClient implements NativeClient {
       emittedAtMs: Date.now(),
       payload: { type: 'heartbeat' },
     })
+  }
+
+  simulateRemoteConnectionChange(status: RemoteConnectionStatusView): void {
+    const host = this.remoteHosts.get(status.hostId)
+    if (host) {
+      this.remoteHosts.set(status.hostId, {
+        ...host,
+        availability: status.availability,
+        connectionState: status.connectionState,
+        message: status.message ?? null,
+      })
+    }
+
+    for (const handler of this.remoteConnectionHandlers) {
+      handler(status)
+    }
   }
 }
 

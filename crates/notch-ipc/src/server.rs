@@ -609,6 +609,10 @@ mod tests {
                         pid: None,
                         process_started_at_ms: None,
                         occurred_at_ms: Some(1),
+                        terminal_session_id: None,
+                        tab_id: None,
+                        pane_id: None,
+                        window_handle: None,
                     },
                 )
                 .await
@@ -657,6 +661,10 @@ mod tests {
                         pid: None,
                         process_started_at_ms: None,
                         occurred_at_ms: Some(1),
+                        terminal_session_id: None,
+                        tab_id: None,
+                        pane_id: None,
+                        window_handle: None,
                     },
                 )
                 .await
@@ -691,6 +699,10 @@ mod tests {
                 pid: None,
                 process_started_at_ms: None,
                 occurred_at_ms: Some(1),
+                terminal_session_id: None,
+                tab_id: None,
+                pane_id: None,
+                window_handle: None,
             },
         }
     }

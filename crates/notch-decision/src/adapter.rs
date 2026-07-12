@@ -32,10 +32,16 @@ pub fn build_vendor_stdout(
     };
 
     match source {
-        AgentSource::ClaudeCode => build_claude_stdout(respondable_hook, *action, vendor_context),
-        AgentSource::Cursor | AgentSource::Codex | AgentSource::Generic | AgentSource::Unknown => {
-            Err(AdapterBuildError::CapabilityDisabled)
+        AgentSource::ClaudeCode | AgentSource::Qwen => {
+            build_claude_stdout(respondable_hook, *action, vendor_context)
         }
+        AgentSource::Cursor
+        | AgentSource::Codex
+        | AgentSource::Gemini
+        | AgentSource::AntigravityCli
+        | AgentSource::CopilotCli
+        | AgentSource::Generic
+        | AgentSource::Unknown => Err(AdapterBuildError::CapabilityDisabled),
     }
 }
 

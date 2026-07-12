@@ -1,9 +1,12 @@
 //! Resolve opaque locators from live sessions and process ancestry.
 
-use notch_protocol::{AgentSession, AgentSource, ProcessIdentity};
+use notch_platform::{
+    NavigationTier, ProcessDescriptor, TerminalHost, VerifiedTerminalMetadata, current_navigator,
+};
+use notch_protocol::{AgentSession, AgentSource, ContextOpenTier, ProcessIdentity, VerifiedTerminalContext};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
-use crate::context::locator::{ContextLocator, HostKind, LocatorError};
+use crate::context::locator::{ContextLocator, HostKind, LocatorError, pane_verified_for_host};
 
 const MAX_PARENT_HOPS: usize = 15;
 
@@ -11,6 +14,7 @@ const MAX_PARENT_HOPS: usize = 15;
 pub struct ResolvedContext {
     pub locator: ContextLocator,
     pub host: HostKind,
+    pub discovered_tier: ContextOpenTier,
     pub pane_verified: bool,
 }
 
@@ -18,34 +22,134 @@ pub fn resolve_session(session: &AgentSession) -> Result<Option<ResolvedContext>
     let Some(root) = session.process_root.as_ref() else {
         return Ok(None);
     };
-    let host = detect_host_for_root(root)?;
-    let pane_verified = pane_verified_for_host(host, session);
+    let verified_terminal = session.verified_terminal.as_ref();
+    let discovery = detect_navigation_for_root(root, verified_terminal)?;
+    let host = discovery.host;
     let pane_hint = pane_hint_for_session(session);
-    let locator = ContextLocator::encode(host, Some(root.clone()), pane_hint.as_deref())?;
+    let locator = ContextLocator::encode(
+        host,
+        Some(root.clone()),
+        pane_hint.as_deref(),
+        verified_terminal,
+    )?;
+    let pane_verified = pane_verified_for_host(host, &locator.verified_terminal());
     Ok(Some(ResolvedContext {
         locator,
         host,
+        discovered_tier: discovery.tier,
         pane_verified,
     }))
 }
 
 pub fn detect_host_for_root(root: &ProcessIdentity) -> Result<HostKind, LocatorError> {
+    Ok(detect_navigation_for_root(root, None)?.host)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NavigationDiscovery {
+    host: HostKind,
+    tier: ContextOpenTier,
+}
+
+fn detect_navigation_for_root(
+    root: &ProcessIdentity,
+    verified_terminal: Option<&VerifiedTerminalContext>,
+) -> Result<NavigationDiscovery, LocatorError> {
     let mut system = System::new();
     system.refresh_processes(ProcessesToUpdate::All, true);
     let mut current = root.pid;
+    let mut root_executable = String::new();
     for _ in 0..MAX_PARENT_HOPS {
         let Some(process) = system.process(Pid::from_u32(current)) else {
             break;
         };
-        if let Some(host) = host_from_process_name(&process.name().to_string_lossy()) {
-            return Ok(host);
+        let executable = process.name().to_string_lossy().into_owned();
+        if root_executable.is_empty() {
+            root_executable.clone_from(&executable);
+        }
+        if let Some(host) = host_from_process_name(&executable) {
+            return Ok(discover_verified_process(
+                root,
+                host,
+                &root_executable,
+                &executable,
+                verified_terminal,
+            ));
         }
         let Some(parent) = process.parent() else {
             break;
         };
         current = parent.as_u32();
     }
-    Ok(host_from_source_fallback(root))
+    Ok(NavigationDiscovery {
+        host: host_from_source_fallback(root),
+        tier: ContextOpenTier::None,
+    })
+}
+
+fn discover_verified_process(
+    root: &ProcessIdentity,
+    fallback_host: HostKind,
+    root_executable: &str,
+    terminal_executable: &str,
+    verified_terminal: Option<&VerifiedTerminalContext>,
+) -> NavigationDiscovery {
+    let descriptor = ProcessDescriptor {
+        process_id: root.pid,
+        process_started_at_ms: u64::try_from(root.started_at_ms).ok(),
+        executable: root_executable.to_string(),
+        parent_executable: None,
+        terminal_executable: Some(terminal_executable.to_string()),
+        metadata: build_verified_metadata(terminal_executable, verified_terminal),
+    };
+    let locator = current_navigator().discover(&descriptor);
+    NavigationDiscovery {
+        host: map_platform_host(locator.host()).unwrap_or(fallback_host),
+        tier: map_platform_tier(locator.tier()),
+    }
+}
+
+fn build_verified_metadata(
+    terminal_executable: &str,
+    verified_terminal: Option<&VerifiedTerminalContext>,
+) -> VerifiedTerminalMetadata {
+    let mut metadata = VerifiedTerminalMetadata {
+        application_id: Some(terminal_executable.to_string()),
+        ..Default::default()
+    };
+    if let Some(terminal) = verified_terminal {
+        metadata.terminal_session_id = terminal.terminal_session_id.clone();
+        metadata.tab_id = terminal.tab_id.clone();
+        metadata.pane_id = terminal.pane_id.clone();
+        metadata.window_handle = terminal.window_handle;
+    }
+    metadata
+}
+
+fn map_platform_host(host: &TerminalHost) -> Option<HostKind> {
+    match host {
+        TerminalHost::WindowsTerminal => Some(HostKind::WindowsTerminal),
+        TerminalHost::VsCode => Some(HostKind::VsCode),
+        TerminalHost::Cursor => Some(HostKind::Cursor),
+        TerminalHost::MacTerminal => Some(HostKind::TerminalApp),
+        TerminalHost::ITerm2 => Some(HostKind::ITerm2),
+        TerminalHost::ConsoleHost
+        | TerminalHost::PowerShell
+        | TerminalHost::WezTerm
+        | TerminalHost::Wsl
+        | TerminalHost::Tmux
+        | TerminalHost::Other(_)
+        | TerminalHost::Unknown => None,
+    }
+}
+
+fn map_platform_tier(tier: NavigationTier) -> ContextOpenTier {
+    match tier {
+        NavigationTier::Unsupported => ContextOpenTier::None,
+        NavigationTier::AppActivate => ContextOpenTier::AppActivate,
+        NavigationTier::WindowFocus => ContextOpenTier::WindowFocus,
+        NavigationTier::ExactPane => ContextOpenTier::ExactPane,
+    }
 }
 
 fn host_from_process_name(name: &str) -> Option<HostKind> {
@@ -78,19 +182,14 @@ fn host_from_source_fallback(_root: &ProcessIdentity) -> HostKind {
 fn host_from_source(source: AgentSource) -> HostKind {
     match source {
         AgentSource::Cursor => HostKind::Cursor,
-        AgentSource::ClaudeCode | AgentSource::Codex | AgentSource::Generic => {
-            HostKind::UnknownHost
-        }
+        AgentSource::ClaudeCode
+        | AgentSource::Codex
+        | AgentSource::Gemini
+        | AgentSource::Qwen
+        | AgentSource::AntigravityCli
+        | AgentSource::CopilotCli
+        | AgentSource::Generic => HostKind::UnknownHost,
         AgentSource::Unknown => HostKind::UnknownHost,
-    }
-}
-
-fn pane_verified_for_host(host: HostKind, session: &AgentSession) -> bool {
-    match host {
-        HostKind::TerminalApp | HostKind::ITerm2 => {
-            session.workspace_label.is_some() && session.process_root.is_some()
-        }
-        _ => false,
     }
 }
 
@@ -127,7 +226,17 @@ mod tests {
             last_event_at_ms: 2,
             ended_at_ms: None,
             process_root: root,
+            verified_terminal: None,
             latest_metric: None,
+        }
+    }
+
+    fn wt_verified_terminal() -> VerifiedTerminalContext {
+        VerifiedTerminalContext {
+            terminal_session_id: Some("0".into()),
+            tab_id: Some("1".into()),
+            pane_id: Some("0".into()),
+            window_handle: None,
         }
     }
 
@@ -150,6 +259,92 @@ mod tests {
             Some(HostKind::TerminalApp)
         );
         assert_eq!(host_from_process_name("iTerm2"), Some(HostKind::ITerm2));
+    }
+
+    #[test]
+    fn verified_ancestry_without_window_or_pane_ids_caps_at_app_activation() {
+        let discovery = discover_verified_process(
+            &ProcessIdentity {
+                pid: 42,
+                started_at_ms: 1_700_000_000_000,
+            },
+            HostKind::WindowsTerminal,
+            "agent.exe",
+            "WindowsTerminal.exe",
+            None,
+        );
+
+        assert_eq!(discovery.host, HostKind::WindowsTerminal);
+        assert_eq!(discovery.tier, ContextOpenTier::AppActivate);
+    }
+
+    #[test]
+    fn verified_wt_metadata_enables_exact_pane_discovery() {
+        let discovery = discover_verified_process(
+            &ProcessIdentity {
+                pid: 42,
+                started_at_ms: 1_700_000_000_000,
+            },
+            HostKind::WindowsTerminal,
+            "agent.exe",
+            "WindowsTerminal.exe",
+            Some(&wt_verified_terminal()),
+        );
+
+        assert_eq!(discovery.host, HostKind::WindowsTerminal);
+        assert_eq!(discovery.tier, ContextOpenTier::ExactPane);
+    }
+
+    #[test]
+    fn resolve_session_carries_verified_terminal_into_locator() {
+        let mut session = sample_session(
+            AgentSource::Generic,
+            Some(ProcessIdentity {
+                pid: 42,
+                started_at_ms: 1_700_000_000_000,
+            }),
+        );
+        session.verified_terminal = Some(wt_verified_terminal());
+        let resolved = resolve_session(&session).expect("resolve").expect("some");
+        assert!(resolved.pane_verified);
+        assert_eq!(
+            resolved.locator.verified_terminal(),
+            wt_verified_terminal()
+        );
+    }
+
+    #[test]
+    fn resolve_session_without_verified_terminal_keeps_pane_unverified() {
+        let session = sample_session(
+            AgentSource::Generic,
+            Some(ProcessIdentity {
+                pid: 42,
+                started_at_ms: 1_700_000_000_000,
+            }),
+        );
+        let resolved = resolve_session(&session).expect("resolve").expect("some");
+        assert!(!resolved.pane_verified);
+        assert_eq!(resolved.locator.verified_terminal(), VerifiedTerminalContext::default());
+    }
+
+    #[test]
+    fn platform_tier_mapping_preserves_order_without_inflation() {
+        assert_eq!(
+            map_platform_tier(NavigationTier::Unsupported),
+            ContextOpenTier::None
+        );
+        assert_eq!(
+            map_platform_tier(NavigationTier::AppActivate),
+            ContextOpenTier::AppActivate
+        );
+        assert_eq!(
+            map_platform_tier(NavigationTier::WindowFocus),
+            ContextOpenTier::WindowFocus
+        );
+        assert_eq!(
+            map_platform_tier(NavigationTier::ExactPane),
+            ContextOpenTier::ExactPane
+        );
     }
 
     #[test]

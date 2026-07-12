@@ -43,9 +43,8 @@ pub fn preview_rollback(
         return Err(ConnectorError::NotFound("backup file missing".into()));
     }
 
-    let (backup_bytes, backup_hash) = read_and_hash(&backup_path).map_err(|error| {
-        ConnectorError::Internal(format!("read backup failed: {error}"))
-    })?;
+    let (backup_bytes, backup_hash) = read_and_hash(&backup_path)
+        .map_err(|error| ConnectorError::Internal(format!("read backup failed: {error}")))?;
     let backup_text = String::from_utf8_lossy(&backup_bytes).into_owned();
     if backup_hash != backup.content_sha256 {
         return Err(ConnectorError::RollbackHashMismatch);

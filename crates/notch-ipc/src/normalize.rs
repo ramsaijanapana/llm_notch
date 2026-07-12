@@ -4,6 +4,8 @@ use notch_protocol::{
     AgentSession, AgentSource, AttentionKind, EventLevel, ProcessIdentity, SessionEvent,
     SessionEventKind, SessionStatus,
 };
+
+use crate::collector::verified_terminal_from_ingest;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -113,6 +115,7 @@ fn build_session(
             .pid
             .zip(payload.process_started_at_ms)
             .map(|(pid, started_at_ms)| ProcessIdentity { pid, started_at_ms }),
+        verified_terminal: verified_terminal_from_ingest(payload),
         latest_metric: None,
     })
 }
@@ -139,6 +142,10 @@ fn parse_source(value: &str) -> IpcResult<AgentSource> {
         "cursor" => Ok(AgentSource::Cursor),
         "claudecode" | "claude_code" | "claude-code" => Ok(AgentSource::ClaudeCode),
         "codex" => Ok(AgentSource::Codex),
+        "gemini" | "geminicli" | "gemini-cli" => Ok(AgentSource::Gemini),
+        "antigravitycli" | "antigravity-cli" | "antigravity" => Ok(AgentSource::AntigravityCli),
+        "copilotcli" | "copilot-cli" | "copilot" => Ok(AgentSource::CopilotCli),
+        "qwen" | "qwen-cli" | "qwencode" => Ok(AgentSource::Qwen),
         "generic" => Ok(AgentSource::Generic),
         "unknown" => Ok(AgentSource::Unknown),
         other => Err(IpcError::FrameRejected(format!(
@@ -214,10 +221,10 @@ fn default_summary(kind: SessionEventKind) -> String {
 mod tests {
     use super::*;
     use crate::wire::IngestPayload;
+    use notch_protocol::VerifiedTerminalContext;
 
-    #[test]
-    fn normalizes_session_upsert_without_raw_fields() {
-        let payload = IngestPayload {
+    fn base_payload() -> IngestPayload {
+        IngestPayload {
             source: "cursor".into(),
             event: "sessionStart".into(),
             session_id: None,
@@ -231,15 +238,195 @@ mod tests {
             pid: Some(42),
             process_started_at_ms: Some(1_700_000_000_000),
             occurred_at_ms: Some(1_700_000_000_000),
-        };
+            terminal_session_id: None,
+            tab_id: None,
+            pane_id: None,
+            window_handle: None,
+        }
+    }
+
+    #[test]
+    fn normalizes_session_upsert_without_raw_fields() {
+        let payload = base_payload();
         let normalized = normalize_ingest(&payload, 1_700_000_000_000).expect("normalize");
         match normalized {
             NormalizedIngest::SessionUpsert(session) => {
                 assert_eq!(session.source, AgentSource::Cursor);
                 assert_eq!(session.external_session_id, "ext-1");
                 assert!(session.label.contains("Build"));
+                assert!(session.verified_terminal.is_none());
             }
             _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn normalizes_verified_terminal_when_collector_fields_present() {
+        let mut payload = base_payload();
+        payload.terminal_session_id = Some("0".into());
+        payload.tab_id = Some("1".into());
+        payload.pane_id = Some("0".into());
+        let normalized = normalize_ingest(&payload, 1_700_000_000_000).expect("normalize");
+        match normalized {
+            NormalizedIngest::SessionUpsert(session) => {
+                assert_eq!(
+                    session.verified_terminal,
+                    Some(VerifiedTerminalContext {
+                        terminal_session_id: Some("0".into()),
+                        tab_id: Some("1".into()),
+                        pane_id: Some("0".into()),
+                        window_handle: None,
+                    })
+                );
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn normalizes_partial_terminal_metadata_without_inventing_missing_fields() {
+        let mut payload = base_payload();
+        payload.terminal_session_id = Some("5720ee6d-6474-47b0-88db-fa7e10e60d37".into());
+        let normalized = normalize_ingest(&payload, 1_700_000_000_000).expect("normalize");
+        match normalized {
+            NormalizedIngest::SessionUpsert(session) => {
+                let terminal = session.verified_terminal.expect("terminal");
+                assert_eq!(
+                    terminal.terminal_session_id.as_deref(),
+                    Some("5720ee6d-6474-47b0-88db-fa7e10e60d37")
+                );
+                assert!(terminal.tab_id.is_none());
+                assert!(terminal.pane_id.is_none());
+            }
+            _ => panic!("expected upsert"),
+        }
+    }
+
+    #[test]
+    fn normalizes_gemini_source_aliases() {
+        for alias in ["gemini", "geminicli", "gemini-cli"] {
+            let payload = IngestPayload {
+                source: alias.into(),
+                event: "sessionStart".into(),
+                session_id: None,
+                external_session_id: Some("ext-gemini".into()),
+                label: None,
+                workspace_label: None,
+                status: Some("running".into()),
+                attention: None,
+                summary: None,
+                tool_name: None,
+                pid: None,
+                process_started_at_ms: None,
+                occurred_at_ms: Some(1_700_000_000_000),
+                terminal_session_id: None,
+                tab_id: None,
+                pane_id: None,
+                window_handle: None,
+            };
+            let normalized = normalize_ingest(&payload, 1_700_000_000_000).expect("normalize");
+            match normalized {
+                NormalizedIngest::SessionUpsert(session) => {
+                    assert_eq!(session.source, AgentSource::Gemini);
+                }
+                _ => panic!("expected upsert"),
+            }
+        }
+    }
+
+    #[test]
+    fn normalizes_antigravity_source_aliases() {
+        for alias in ["antigravityCli", "antigravity-cli", "antigravity"] {
+            let payload = IngestPayload {
+                source: alias.into(),
+                event: "tool".into(),
+                session_id: None,
+                external_session_id: Some("conv-1".into()),
+                label: None,
+                workspace_label: Some("llm_notch".into()),
+                status: None,
+                attention: None,
+                summary: Some("Tool activity observed".into()),
+                tool_name: Some("run_command".into()),
+                pid: None,
+                process_started_at_ms: None,
+                occurred_at_ms: Some(1_700_000_000_000),
+                terminal_session_id: None,
+                tab_id: None,
+                pane_id: None,
+                window_handle: None,
+            };
+            let normalized = normalize_ingest(&payload, 1_700_000_000_000).expect("normalize");
+            match normalized {
+                NormalizedIngest::SessionEvent { source, .. } => {
+                    assert_eq!(source, AgentSource::AntigravityCli);
+                }
+                _ => panic!("expected session event"),
+            }
+        }
+    }
+
+    #[test]
+    fn normalizes_copilot_source_aliases() {
+        for alias in ["copilotCli", "copilot-cli", "copilot"] {
+            let payload = IngestPayload {
+                source: alias.into(),
+                event: "sessionStart".into(),
+                session_id: None,
+                external_session_id: Some("copilot-1".into()),
+                label: None,
+                workspace_label: Some("llm_notch".into()),
+                status: Some("running".into()),
+                attention: None,
+                summary: None,
+                tool_name: None,
+                pid: None,
+                process_started_at_ms: None,
+                occurred_at_ms: Some(1_700_000_000_000),
+                terminal_session_id: None,
+                tab_id: None,
+                pane_id: None,
+                window_handle: None,
+            };
+            let normalized = normalize_ingest(&payload, 1_700_000_000_000).expect("normalize");
+            match normalized {
+                NormalizedIngest::SessionUpsert(session) => {
+                    assert_eq!(session.source, AgentSource::CopilotCli);
+                }
+                _ => panic!("expected upsert"),
+            }
+        }
+    }
+
+    #[test]
+    fn normalizes_qwen_source_aliases() {
+        for alias in ["qwen", "qwen-cli", "qwencode"] {
+            let payload = IngestPayload {
+                source: alias.into(),
+                event: "sessionStart".into(),
+                session_id: None,
+                external_session_id: Some("qwen-1".into()),
+                label: None,
+                workspace_label: Some("llm_notch".into()),
+                status: Some("running".into()),
+                attention: None,
+                summary: None,
+                tool_name: None,
+                pid: None,
+                process_started_at_ms: None,
+                occurred_at_ms: Some(1_700_000_000_000),
+                terminal_session_id: None,
+                tab_id: None,
+                pane_id: None,
+                window_handle: None,
+            };
+            let normalized = normalize_ingest(&payload, 1_700_000_000_000).expect("normalize");
+            match normalized {
+                NormalizedIngest::SessionUpsert(session) => {
+                    assert_eq!(session.source, AgentSource::Qwen);
+                }
+                _ => panic!("expected upsert"),
+            }
         }
     }
 }

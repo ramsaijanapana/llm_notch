@@ -129,6 +129,10 @@ pub fn normalize_event(
         pid: None,
         process_started_at_ms: None,
         occurred_at_ms,
+        terminal_session_id: None,
+        tab_id: None,
+        pane_id: None,
+        window_handle: None,
     };
 
     Ok(NormalizedCodexEvent {

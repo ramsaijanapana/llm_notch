@@ -12,6 +12,13 @@ pub enum AgentSource {
     Cursor,
     ClaudeCode,
     Codex,
+    Gemini,
+    #[serde(alias = "antigravity-cli", alias = "antigravity", alias = "antigravitycli")]
+    AntigravityCli,
+    #[serde(alias = "copilot-cli", alias = "copilot", alias = "copilotcli")]
+    CopilotCli,
+    #[serde(alias = "qwen-cli", alias = "qwencode")]
+    Qwen,
     Generic,
     Unknown,
 }
@@ -135,6 +142,27 @@ pub struct ProcessIdentity {
     pub started_at_ms: i64,
 }
 
+/// Verified terminal navigation identifiers supplied by a collector or OS bridge.
+///
+/// Callers must not populate these values by parsing mutable window titles.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, rename_all = "camelCase")]
+pub struct VerifiedTerminalContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub terminal_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tab_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub window_handle: Option<u64>,
+}
+
 /// Quality metadata carried beside every per-agent and aggregate sample.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -243,6 +271,9 @@ pub struct AgentSession {
     pub process_root: Option<ProcessIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub verified_terminal: Option<VerifiedTerminalContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub latest_metric: Option<MetricSample>,
 }
 
@@ -322,9 +353,13 @@ impl AdapterCapabilities {
     /// Shipped template defaults aligned with `docs/integrations/capability-matrix.md`.
     pub fn template(source: AgentSource) -> Self {
         let (attention, requires_external_trust) = match source {
-            AgentSource::ClaudeCode => (AttentionCapability::Partial, false),
+            AgentSource::ClaudeCode | AgentSource::Qwen => (AttentionCapability::Partial, false),
             AgentSource::Codex => (AttentionCapability::None, true),
             AgentSource::Generic => (AttentionCapability::Full, false),
+            AgentSource::Gemini | AgentSource::CopilotCli => {
+                (AttentionCapability::Partial, false)
+            }
+            AgentSource::AntigravityCli => (AttentionCapability::None, false),
             AgentSource::Cursor | AgentSource::Unknown => (AttentionCapability::None, false),
         };
 
@@ -392,8 +427,57 @@ pub enum ResourceAlertKind {
     MemoryHigh,
 }
 
+/// Sound event kinds mapped by installed themes (never invent new variants here).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub enum SoundEvent {
+    Approval,
+    Question,
+    Completed,
+    Failed,
+    Notification,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub struct QuietHours {
+    #[ts(type = "number")]
+    pub start_minute: u16,
+    #[ts(type = "number")]
+    pub end_minute: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, rename_all = "camelCase")]
+pub struct SoundRouting {
+    pub enabled: bool,
+    pub volume: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub quiet_hours: Option<QuietHours>,
+    #[serde(default)]
+    pub event_volume: BTreeMap<SoundEvent, f32>,
+    #[serde(default)]
+    pub agent_volume: BTreeMap<String, f32>,
+}
+
+impl Default for SoundRouting {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            volume: 0.8,
+            quiet_hours: None,
+            event_volume: BTreeMap::new(),
+            agent_volume: BTreeMap::new(),
+        }
+    }
+}
+
 /// User-visible settings safe to expose to overlay and dashboard surfaces.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export, rename_all = "camelCase")]
 pub struct PublicSettings {
@@ -410,6 +494,13 @@ pub struct PublicSettings {
     /// Optional alert sound; off by default and never activates windows.
     #[serde(default)]
     pub alert_sound_enabled: bool,
+    /// Installed theme id; falls back to `builtin.8-bit` when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub selected_sound_theme_id: Option<String>,
+    /// Per-event and quiet-hours routing applied to native playback.
+    #[serde(default)]
+    pub sound_routing: SoundRouting,
 }
 
 /// One live metrics update delivered to renderer subscribers.

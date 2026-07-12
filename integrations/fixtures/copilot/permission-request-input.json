@@ -1,0 +1,9 @@
+{
+  "sessionId": "copilot-session-8f2a",
+  "timestamp": 1718123456792,
+  "cwd": "/Users/dev/projects/llm_notch",
+  "toolName": "bash",
+  "toolArgs": {
+    "command": "rm -rf node_modules"
+  }
+}

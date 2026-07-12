@@ -21,6 +21,7 @@ use services::{
     AlertNotifier, AutostartService, BACKGROUND_LAUNCH_ARG, DEFAULT_DASHBOARD_SHORTCUT,
     GlobalShortcutService, SharedTrayService, TrayMenuAction, TrayMenuModel, TrayService,
 };
+use services::remote::{DesktopRemoteRegistry, RemoteRegistryConfig, SharedRemoteRegistry};
 use state::{HostState, SystemClock, register_builtin_adapters};
 use stream::StreamHub;
 use tauri::{Manager, RunEvent, Wry};
@@ -124,8 +125,15 @@ pub(crate) fn synchronize_tray_model(
     let mut tray = tray
         .lock()
         .map_err(|_| "tray service lock poisoned".to_string())?;
-    let resource_alert =
-        alert_notifier.observe(&host.active_alerts(), host.settings().alert_sound_enabled);
+    let themes_root = services::sound_theme::themes_root_from_app(app)?;
+    let settings = host.settings();
+    let sound_ctx = services::alerts::sound_context_from_settings(&settings, &themes_root);
+    let snapshot = host.snapshot();
+    let resource_alert = alert_notifier.observe(
+        &host.active_alerts(),
+        &snapshot.sessions,
+        &sound_ctx,
+    );
     let model = tray
         .model()
         .clone()
@@ -180,6 +188,21 @@ pub fn run() {
             commands::settings::purge_history,
             commands::settings::set_startup_enabled,
             commands::settings::set_global_shortcut,
+            commands::catalog::list_agent_catalog,
+            commands::services::list_quota_snapshots,
+            commands::services::get_sound_themes,
+            commands::services::preview_sound_routing,
+            commands::services::play_sound_event,
+            commands::services::import_sound_pack,
+            commands::remote::list_remote_hosts,
+            commands::remote::upsert_remote_host,
+            commands::remote::remove_remote_host,
+            commands::remote::get_remote_backend_status,
+            commands::remote::preview_remote_deploy,
+            commands::remote::execute_remote_deploy,
+            commands::remote::start_remote_relay,
+            commands::remote::stop_remote_relay,
+            commands::remote::get_remote_connection_status,
             commands::integration::integration_health,
             commands::integration::preview_connector_change,
             commands::integration::apply_connector_change,
@@ -202,7 +225,7 @@ pub fn run() {
             );
             let core = Arc::new(AppCore::new(
                 SystemClock,
-                repository,
+                Arc::clone(&repository),
                 Arc::clone(&stream_hub),
                 default_settings(),
             )?);
@@ -320,6 +343,21 @@ pub fn run() {
             app.manage(Arc::clone(&tray));
             host.attach_tray_hooks(app.handle().clone(), Arc::clone(&tray));
 
+            let remote_registry: SharedRemoteRegistry = Arc::new(Mutex::new(
+                DesktopRemoteRegistry::with_config_and_repository(
+                    RemoteRegistryConfig::new(
+                        services::remote::detect_ssh_executable(),
+                        services::remote::detect_scp_executable(),
+                        runtime::relay_path::resolve_relay_binary_path(app.handle()),
+                    )
+                    .with_relay_binaries_dir(runtime::relay_path::resolve_relay_binaries_directory(
+                        app.handle(),
+                    )),
+                    Some(repository),
+                ),
+            ));
+            app.manage(Arc::clone(&remote_registry));
+
             if let Err(error) =
                 AutostartService::sync_with_settings(app.handle(), host.settings().autostart_enabled)
             {
@@ -327,6 +365,10 @@ pub fn run() {
             }
 
             host.start_background();
+            host.start_remote_relay_supervisor(
+                app.handle().clone(),
+                Arc::clone(&remote_registry),
+            );
             let signal_host = Arc::clone(&host);
             let signal_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -336,6 +378,7 @@ pub fn run() {
                 }
             });
             let helper_path = runtime::helper_path::resolve_helper_path(app.handle());
+            let relay_path = runtime::relay_path::resolve_relay_binary_path(app.handle());
             let initial_snapshot = host.snapshot();
             info!(
                 protocol_version = notch_protocol::PROTOCOL_VERSION,
@@ -343,6 +386,8 @@ pub fn run() {
                 database = %database_path.display(),
                 helper = %helper_path.display(),
                 helper_exists = helper_path.is_file(),
+                relay = %relay_path.display(),
+                relay_exists = relay_path.is_file(),
                 windows = ?app.webview_windows().keys().collect::<Vec<_>>(),
                 "llm_notch desktop host initialized"
             );
@@ -421,6 +466,8 @@ fn default_settings() -> PublicSettings {
         show_over_fullscreen: false,
         history_retention_hours: 24,
         alert_sound_enabled: false,
+        selected_sound_theme_id: None,
+        sound_routing: notch_protocol::SoundRouting::default(),
     }
 }
 

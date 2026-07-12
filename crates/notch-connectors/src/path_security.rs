@@ -306,7 +306,10 @@ pub fn write_exclusive_file(path: &Path, content: &[u8]) -> Result<(), Connector
         ))
     })?;
     file.sync_all().map_err(|error| {
-        ConnectorError::Internal(format!("exclusive sync failed for {}: {error}", path.display()))
+        ConnectorError::Internal(format!(
+            "exclusive sync failed for {}: {error}",
+            path.display()
+        ))
     })?;
     Ok(())
 }

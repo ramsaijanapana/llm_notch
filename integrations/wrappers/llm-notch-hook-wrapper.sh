@@ -9,6 +9,9 @@
 # Environment:
 #   LLM_NOTCH_HOOK_BIN   — path to signed helper (default: llm-notch-hook)
 #   LLM_NOTCH_HOOK_TIMEOUT_SEC — max wait seconds (default: 2)
+#   LLM_NOTCH_EVENT_SPOOL — when set on a remote host, spool hook events into the relay
+#                           runtime directory instead of local desktop IPC. Use `1` for
+#                           ~/.llm-notch or an explicit private path matching relay --event-spool.
 
 set -eu
 

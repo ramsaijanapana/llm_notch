@@ -4,6 +4,7 @@ import type { AttentionKind } from "./AttentionKind";
 import type { MetricSample } from "./MetricSample";
 import type { ProcessIdentity } from "./ProcessIdentity";
 import type { SessionStatus } from "./SessionStatus";
+import type { VerifiedTerminalContext } from "./VerifiedTerminalContext";
 
 /**
  * Canonical agent session record exchanged between host and UI.
@@ -20,4 +21,4 @@ externalSessionId: string,
 /**
  * Privacy-preserving display label.
  */
-label: string, workspaceLabel?: string, status: SessionStatus, attention: AttentionKind, startedAtMs: number, lastEventAtMs: number, endedAtMs?: number, processRoot?: ProcessIdentity, latestMetric?: MetricSample, };
+label: string, workspaceLabel?: string, status: SessionStatus, attention: AttentionKind, startedAtMs: number, lastEventAtMs: number, endedAtMs?: number, processRoot?: ProcessIdentity, verifiedTerminal?: VerifiedTerminalContext, latestMetric?: MetricSample, };

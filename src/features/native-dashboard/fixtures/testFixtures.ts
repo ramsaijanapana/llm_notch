@@ -4,6 +4,8 @@ import type {
   MetricQuality,
   MetricSample,
   PublicSettings,
+  RemoteBackendStatus,
+  RemoteHostView,
   SessionEvent,
 } from '../../../native/contracts'
 import type { IntegrationCardState, MetricsHistoryBundle } from '../types/contracts'
@@ -140,6 +142,14 @@ export const mockAdapters: AdapterCapabilities[] = [
     processAttribution: 'heuristic',
   },
   {
+    source: 'gemini',
+    events: true,
+    attention: 'partial',
+    decisionResponse: false,
+    contextOpen: true,
+    processAttribution: 'heuristic',
+  },
+  {
     source: 'generic',
     events: false,
     attention: 'none',
@@ -269,5 +279,25 @@ export const mockAgentMetrics: Record<string, MetricSample> = {
     quality: metricQuality({ attribution: 'shared' }),
   }),
 }
+
+export const mockRemoteBackendStatus: RemoteBackendStatus = {
+  availability: 'unavailable',
+  message: 'SSH relay backend is not available in this build.',
+}
+
+export const mockRemoteHosts: RemoteHostView[] = [
+  {
+    config: {
+      id: 'dev-box',
+      destination: 'dev@example.internal',
+      port: 22,
+      hostKeyPolicy: 'strict',
+      connectTimeoutSeconds: 30,
+    },
+    availability: 'unavailable',
+    connectionState: 'disconnected',
+    message: 'SSH relay backend is not available in this build.',
+  },
+]
 
 export const FIXED_NOW_MS = now

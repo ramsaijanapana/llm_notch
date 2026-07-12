@@ -1,0 +1,146 @@
+name: Build desktop installers
+
+# Unsigned draft installers for all platforms. Protected macOS publication requires
+# APPLE_* secrets and .github/workflows/release-macos-signed.yml. Windows uses
+# .github/workflows/release-windows-signed.yml with WINDOWS_CERTIFICATE_* secrets.
+#
+# Relay sidecars for SSH remote deploy are built unsigned on native runners and
+# bundled into desktop installers when present; they are not Authenticode/codesign
+# verified (relay signing is not yet wired — see scripts/signing/README.md).
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'app-v*'
+
+concurrency:
+  group: installers-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  relay-sidecars:
+    name: Relay sidecar (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+          - runner: macos-latest
+            target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - run: npm run native:prepare-relay -- --target ${{ matrix.target }}
+
+      - name: Verify relay sidecar artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          sidecar="src-tauri/binaries/llm-notch-relay-${{ matrix.target }}"
+          test -f "$sidecar"
+          ls -lh "$sidecar"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-sidecar-${{ matrix.target }}
+          path: src-tauri/binaries/llm-notch-relay-${{ matrix.target }}
+          if-no-files-found: error
+
+  installers:
+    name: ${{ matrix.label }}
+    needs: relay-sidecars
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64 installer
+            platform: windows-latest
+            args: ''
+          - label: macOS Apple Silicon DMG
+            platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+          - label: macOS Intel DMG
+            platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: relay-sidecar-*
+          path: src-tauri/binaries
+          merge-multiple: true
+
+      - run: npm ci
+
+      - name: Prepare host-target hook + relay sidecars
+        run: npm run native:prepare-helper -- ${{ matrix.args }}
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Ad-hoc signing keeps CI artifacts testable. Protected production releases must use
+          # the Developer ID, notarization, and Authenticode gates documented in scripts/signing.
+          APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.platform, 'macos') && '-' || '' }}
+          LLM_NOTCH_SKIP_HELPER_BUILD: '1'
+        with:
+          tagName: app-v__VERSION__
+          releaseName: LLM Notch v__VERSION__
+          releaseBody: Download the installer for your platform. This draft must pass the repository signing gates before publication. Unsigned relay sidecars for SSH remote deploy are attached separately.
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+          uploadUpdaterJson: false
+          args: ${{ matrix.args }}
+
+  relay-sidecar-release:
+    name: Attach relay sidecars to draft release
+    needs: [relay-sidecars, installers]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: relay-sidecar-*
+          path: relay-sidecars
+          merge-multiple: true
+
+      - name: Upload unsigned relay sidecars (not Authenticode/codesign verified)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          shopt -s nullglob
+          files=(relay-sidecars/llm-notch-relay-*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No relay sidecars to upload." >&2
+            exit 1
+          fi
+          gh release upload "$tag" "${files[@]}" --clobber

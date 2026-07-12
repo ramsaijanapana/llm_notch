@@ -1,0 +1,24 @@
+[package]
+name = "notch-services"
+description = "Extensible quota tracking and sound services for LLM Notch"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+chrono.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+ureq.workspace = true
+zip = "2.2.2"
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+rodio = { version = "0.21.1", default-features = false, features = ["playback"] }

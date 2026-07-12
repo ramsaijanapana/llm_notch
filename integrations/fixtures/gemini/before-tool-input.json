@@ -1,0 +1,11 @@
+{
+  "session_id": "gemini-session-7c4a",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "hook_event_name": "BeforeTool",
+  "tool_name": "write_file",
+  "tool_input": {
+    "file_path": "src/example.ts",
+    "content": "export const value = 1;\n"
+  },
+  "timestamp": "2026-07-11T18:01:00.000Z"
+}

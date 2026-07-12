@@ -289,6 +289,7 @@ mod tests {
             last_event_at_ms: 1,
             ended_at_ms: None,
             process_root: None,
+            verified_terminal: None,
             latest_metric: None,
         }
     }

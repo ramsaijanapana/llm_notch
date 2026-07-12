@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type {
   AdapterCapabilities,
   AgentAggregate,
+  AgentCatalogEntry,
   AgentSession,
   AgentSource,
   BackupJournalEntry,
@@ -19,10 +20,16 @@ import type {
   HostMetricSample,
   MetricSample,
   PublicSettings,
+  QuotaSnapshotView,
+  RemoteBackendStatus,
+  RemoteDeploymentPlanView,
+  RemoteDeploymentResultView,
+  RemoteHostConfigInput,
+  RemoteHostView,
   SessionEvent,
 } from '../../../native/contracts'
 
-export const DASHBOARD_TABS = ['sessions', 'metrics', 'integrations', 'settings'] as const
+export const DASHBOARD_TABS = ['sessions', 'metrics', 'integrations', 'remote', 'settings'] as const
 export type DashboardTab = (typeof DASHBOARD_TABS)[number]
 
 export type DashboardLoadState = 'loading' | 'ready' | 'error' | 'empty'
@@ -33,7 +40,13 @@ export type OnboardingStep = 0 | 1 | 2 | 3 | 4
 
 export type OnboardingIntegrationChoice = AgentSource | 'none'
 
-export type ApplyProgressPhase = 'applying' | 'backingUp' | 'writing' | 'verifying' | 'done' | 'failed'
+export type ApplyProgressPhase =
+  | 'applying'
+  | 'backingUp'
+  | 'writing'
+  | 'verifying'
+  | 'done'
+  | 'failed'
 
 export interface ApplyProgressEntry {
   displayPath: string
@@ -109,10 +122,19 @@ export type SettingsChangeHandler = (patch: Partial<PublicSettings>) => void
 export type IntegrationActionHandler = (source: AgentSource) => void
 export type HistoryRangeChangeHandler = (range: MetricsHistoryRange) => void
 export type PurgeHistoryHandler = () => void
-export type PurgeScopeChangeHandler = (patch: Partial<import('../../../native/contracts').PurgeScope>) => void
+export type PurgeScopeChangeHandler = (
+  patch: Partial<import('../../../native/contracts').PurgeScope>,
+) => void
 export type DisplayChangeHandler = (displayId: string | null) => void
 export type OnboardingIntegrationChangeHandler = (choice: OnboardingIntegrationChoice) => void
 export type AutostartChangeHandler = (enabled: boolean) => void
+
+export interface AgentStatusEntry {
+  source: AgentSource
+  status: ConnectorUserStatus
+  activeSessions?: number | undefined
+  attentionSessions?: number | undefined
+}
 
 export interface DashboardShellProps {
   loadState: DashboardLoadState
@@ -121,9 +143,11 @@ export interface DashboardShellProps {
   onTabChange: TabChangeHandler
   shortcutsEnabled?: boolean | undefined
   reducedMotion?: boolean | undefined
+  agentStatuses?: AgentStatusEntry[] | undefined
   sessionsPanel: ReactNode
   metricsPanel: ReactNode
   integrationsPanel: ReactNode
+  remotePanel: ReactNode
   settingsPanel: ReactNode
 }
 
@@ -191,10 +215,14 @@ export interface MetricsPanelProps {
   historyLoadState?: DashboardLoadState | undefined
   historyError?: string | undefined
   disabledHistoryRanges?: MetricsHistoryRange[] | undefined
+  quotas?: QuotaSnapshotView[] | undefined
+  onRefreshQuotas?: (() => void) | undefined
+  quotaRefreshState?: 'idle' | 'loading' | undefined
 }
 
 export interface IntegrationsPanelProps {
   integrations: IntegrationCardState[]
+  catalog?: AgentCatalogEntry[] | undefined
   backups: BackupJournalEntry[]
   pendingPlan?: PendingPlanReview | undefined
   applyProgress?: ApplyProgressEntry[] | undefined
@@ -219,6 +247,25 @@ export interface DecisionSurfaceProps {
   onAnswer?: ((text: string) => void) | undefined
 }
 
+export interface RemotePanelProps {
+  hosts: RemoteHostView[]
+  sessions?: AgentSession[] | undefined
+  backendStatus: RemoteBackendStatus
+  pendingDeployPlan?: RemoteDeploymentPlanView | undefined
+  pendingDeployResult?: RemoteDeploymentResultView | undefined
+  deployBusy?: boolean | undefined
+  loadState?: DashboardLoadState | undefined
+  lifecycleActionsAvailable?: boolean | undefined
+  hostConfigActionsAvailable?: boolean | undefined
+  onPlanDeploy: (hostId: string) => void
+  onExecuteDeploy?: ((hostId: string) => void) | undefined
+  onStartRelay: (hostId: string) => void
+  onStopRelay: (hostId: string) => void
+  onDismissPlan: () => void
+  onAddHost?: ((config: RemoteHostConfigInput) => void) | undefined
+  onRemoveHost?: ((hostId: string) => void) | undefined
+}
+
 export interface SettingsPanelProps {
   settings: PublicSettings
   displays: DisplayOption[]
@@ -228,6 +275,13 @@ export interface SettingsPanelProps {
   onDisplayChange: DisplayChangeHandler
   shortcutLabel: string
   onSettingsChange: SettingsChangeHandler
+  soundThemes?: import('../../../native/contracts').SoundTheme[] | undefined
+  soundImportMessage?: string | undefined
+  soundImportError?: string | undefined
+  soundImportBusy?: boolean | undefined
+  onImportSoundPack?: ((file: File) => void) | undefined
+  onPreviewSoundTheme?: ((themeId: string, event: import('../../../native/contracts').SoundEvent) => void) | undefined
+  soundPlaybackSupported?: boolean | undefined
   purgeScope?: import('../../../native/contracts').PurgeScope | undefined
   onPurgeScopeChange?: PurgeScopeChangeHandler | undefined
   onPurgeHistory: PurgeHistoryHandler
@@ -237,4 +291,10 @@ export interface SettingsPanelProps {
   loadState?: DashboardLoadState | undefined
 }
 
-export type { ConnectorFileApplyResult, ConnectorFilePreview, DecisionDeliveryState, DecisionKind }
+export type {
+  ConnectorFileApplyResult,
+  ConnectorFilePreview,
+  DecisionDeliveryState,
+  DecisionKind,
+  RemoteHostConfigInput,
+}

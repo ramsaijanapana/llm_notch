@@ -20,6 +20,8 @@ pub enum AlertKind {
 pub struct ActiveAlert {
     pub kind: AlertKind,
     pub session_id: Option<String>,
+    /// Populated for `NewAttention` alerts so native sound routing can map events.
+    pub attention: Option<AttentionKind>,
     pub message: String,
     pub raised_at_ms: i64,
 }
@@ -87,6 +89,7 @@ impl AlertEvaluator {
             let alert = ActiveAlert {
                 kind: AlertKind::NewAttention,
                 session_id: Some(session_id.to_string()),
+                attention: Some(attention),
                 message: format!("Session requires attention: {attention:?}"),
                 raised_at_ms: now_ms,
             };
@@ -113,6 +116,7 @@ impl AlertEvaluator {
             let alert = ActiveAlert {
                 kind: AlertKind::CpuCritical,
                 session_id: None,
+                attention: None,
                 message: format!("Host CPU sustained above {:.0}%", CPU_CRITICAL_THRESHOLD),
                 raised_at_ms: now_ms,
             };
@@ -126,6 +130,7 @@ impl AlertEvaluator {
             let alert = ActiveAlert {
                 kind: AlertKind::CpuWarn,
                 session_id: None,
+                attention: None,
                 message: format!("Host CPU sustained above {:.0}%", CPU_WARN_THRESHOLD),
                 raised_at_ms: now_ms,
             };
@@ -143,6 +148,7 @@ impl AlertEvaluator {
             let alert = ActiveAlert {
                 kind: AlertKind::MemoryHigh,
                 session_id: None,
+                attention: None,
                 message: format!("Aggregate RSS sustained above {} bytes", rss_threshold),
                 raised_at_ms: now_ms,
             };

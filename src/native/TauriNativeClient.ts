@@ -1,7 +1,9 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
-import { NATIVE_COMMANDS } from './commands.ts'
+import { listen } from '@tauri-apps/api/event'
+import { NATIVE_COMMANDS, NATIVE_EVENTS } from './commands.ts'
 import type {
   AdapterCapabilities,
+  AgentCatalogEntry,
   AppSnapshot,
   BackupJournalEntry,
   ConnectorApplyResult,
@@ -12,7 +14,22 @@ import type {
   DecisionResponseRecord,
   DetectedConnector,
   PublicSettings,
+  QuotaSnapshotView,
+  RemoteBackendStatus,
+  RemoteConnectionStatusView,
+  RemoteDeploymentPlanView,
+  RemoteDeploymentResultView,
+  RemoteHostConfigInput,
+  RemoteHostView,
   SessionEvent,
+  SoundEvent,
+  SoundRouting,
+  SoundRoutingPreview,
+  SoundPlayRequest,
+  SoundPlayResult,
+  SoundTheme,
+  SoundPackValidation,
+  ImportSoundPackRequest,
   StreamFrame,
 } from './contracts.ts'
 import { PROTOCOL_VERSION } from './contracts.ts'
@@ -27,6 +44,8 @@ import type {
   NativeHistoryResponse,
   OpenSessionResult,
   OverlayMode,
+  RemoteConnectionChangeHandler,
+  RemoteConnectionSubscription,
   SessionEventPage,
   StreamErrorHandler,
   StreamFrameHandler,
@@ -68,6 +87,7 @@ export class TauriNativeClient implements NativeClient {
   private lastSequence: number | null = null
   private onFrame: StreamFrameHandler | null = null
   private onError: StreamErrorHandler | null = null
+  private remoteConnectionUnlisten: (() => void) | null = null
 
   async bootstrap(): Promise<BootstrapResult> {
     try {
@@ -122,6 +142,35 @@ export class TauriNativeClient implements NativeClient {
       unsubscribe: async () => {
         await this.unsubscribe()
       },
+    }
+  }
+
+  async subscribeRemoteConnectionChanges(
+    onChange: RemoteConnectionChangeHandler,
+  ): Promise<RemoteConnectionSubscription> {
+    if (this.remoteConnectionUnlisten) {
+      throw new NativeClientError(
+        'not-available',
+        'Remote connection subscription is already active',
+      )
+    }
+
+    try {
+      const unlisten = await listen<RemoteConnectionStatusView>(
+        NATIVE_EVENTS.remoteConnectionChanged,
+        (event) => {
+          onChange(event.payload)
+        },
+      )
+      this.remoteConnectionUnlisten = unlisten
+
+      return {
+        unsubscribe: async () => {
+          await this.unsubscribeRemoteConnectionChanges()
+        },
+      }
+    } catch (error) {
+      throw toNativeError(error, 'Failed to subscribe to remote connection changes')
     }
   }
 
@@ -194,6 +243,139 @@ export class TauriNativeClient implements NativeClient {
       return await invoke<IntegrationHealthReport>(NATIVE_COMMANDS.integrationHealth)
     } catch (error) {
       throw toNativeError(error, 'Failed to fetch integration health')
+    }
+  }
+
+  async listAgentCatalog(): Promise<AgentCatalogEntry[]> {
+    try {
+      return await invoke<AgentCatalogEntry[]>(NATIVE_COMMANDS.listAgentCatalog)
+    } catch (error) {
+      throw toNativeError(error, 'Failed to load agent catalog')
+    }
+  }
+
+  async listQuotaSnapshots(): Promise<QuotaSnapshotView[]> {
+    try {
+      return await invoke<QuotaSnapshotView[]>(NATIVE_COMMANDS.listQuotaSnapshots)
+    } catch (error) {
+      throw toNativeError(error, 'Failed to load quota snapshots')
+    }
+  }
+
+  async listRemoteHosts(): Promise<RemoteHostView[]> {
+    try {
+      return await invoke<RemoteHostView[]>(NATIVE_COMMANDS.listRemoteHosts)
+    } catch (error) {
+      throw toNativeError(error, 'Failed to load remote hosts')
+    }
+  }
+
+  async upsertRemoteHost(config: RemoteHostConfigInput): Promise<RemoteHostView> {
+    try {
+      return await invoke<RemoteHostView>(NATIVE_COMMANDS.upsertRemoteHost, { config })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to save remote host')
+    }
+  }
+
+  async removeRemoteHost(hostId: string): Promise<void> {
+    try {
+      await invoke(NATIVE_COMMANDS.removeRemoteHost, { hostId })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to remove remote host')
+    }
+  }
+
+  async getRemoteBackendStatus(): Promise<RemoteBackendStatus> {
+    try {
+      return await invoke<RemoteBackendStatus>(NATIVE_COMMANDS.getRemoteBackendStatus)
+    } catch (error) {
+      throw toNativeError(error, 'Failed to load remote backend status')
+    }
+  }
+
+  async previewRemoteDeploy(hostId: string): Promise<RemoteDeploymentPlanView> {
+    try {
+      return await invoke<RemoteDeploymentPlanView>(NATIVE_COMMANDS.previewRemoteDeploy, {
+        hostId,
+      })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to preview remote deployment')
+    }
+  }
+
+  async executeRemoteDeploy(hostId: string): Promise<RemoteDeploymentResultView> {
+    try {
+      return await invoke<RemoteDeploymentResultView>(NATIVE_COMMANDS.executeRemoteDeploy, {
+        hostId,
+      })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to execute remote deployment')
+    }
+  }
+
+  async startRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView> {
+    try {
+      return await invoke<RemoteConnectionStatusView>(NATIVE_COMMANDS.startRemoteRelay, {
+        hostId,
+      })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to start remote relay')
+    }
+  }
+
+  async stopRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView> {
+    try {
+      return await invoke<RemoteConnectionStatusView>(NATIVE_COMMANDS.stopRemoteRelay, { hostId })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to stop remote relay')
+    }
+  }
+
+  async getRemoteConnectionStatus(hostId: string): Promise<RemoteConnectionStatusView> {
+    try {
+      return await invoke<RemoteConnectionStatusView>(NATIVE_COMMANDS.getRemoteConnectionStatus, {
+        hostId,
+      })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to load remote connection status')
+    }
+  }
+
+  async getSoundThemes(): Promise<SoundTheme[]> {
+    try {
+      return await invoke<SoundTheme[]>(NATIVE_COMMANDS.getSoundThemes)
+    } catch (error) {
+      throw toNativeError(error, 'Failed to load sound themes')
+    }
+  }
+
+  async previewSoundRouting(request: {
+    routing: SoundRouting
+    event: SoundEvent
+    agent?: string
+    localMinute: number
+  }): Promise<SoundRoutingPreview> {
+    try {
+      return await invoke<SoundRoutingPreview>(NATIVE_COMMANDS.previewSoundRouting, { request })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to preview sound routing')
+    }
+  }
+
+  async playSoundEvent(request: SoundPlayRequest): Promise<SoundPlayResult> {
+    try {
+      return await invoke<SoundPlayResult>(NATIVE_COMMANDS.playSoundEvent, { request })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to play sound event')
+    }
+  }
+
+  async importSoundPack(request: ImportSoundPackRequest): Promise<SoundPackValidation> {
+    try {
+      return await invoke<SoundPackValidation>(NATIVE_COMMANDS.importSoundPack, { request })
+    } catch (error) {
+      throw toNativeError(error, 'Failed to import sound pack')
     }
   }
 
@@ -313,6 +495,12 @@ export class TauriNativeClient implements NativeClient {
     // preview clients follow the same rules without dropping intermediate IDs.
     this.lastSequence = frame.sequence
     this.onFrame?.(frame)
+  }
+
+  private async unsubscribeRemoteConnectionChanges(): Promise<void> {
+    const unlisten = this.remoteConnectionUnlisten
+    this.remoteConnectionUnlisten = null
+    unlisten?.()
   }
 
   private async unsubscribe(): Promise<void> {

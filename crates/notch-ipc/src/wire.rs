@@ -111,6 +111,18 @@ pub struct IngestPayload {
     pub process_started_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub occurred_at_ms: Option<i64>,
+    /// Verified terminal session identifier (for example Windows Terminal `WT_SESSION`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_session_id: Option<String>,
+    /// Verified tab index or identifier for exact-pane navigation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_id: Option<String>,
+    /// Verified pane index or identifier for exact-pane navigation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane_id: Option<String>,
+    /// Native window handle for verified window-focus activation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_handle: Option<u64>,
 }
 
 /// Hook-side decision wait registration payload.
@@ -296,6 +308,20 @@ pub fn validate_ingest_payload(payload: &IngestPayload) -> IpcResult<()> {
     {
         return Err(IpcError::FrameRejected(
             "processStartedAtMs must be positive".into(),
+        ));
+    }
+    if let Some(value) = &payload.terminal_session_id {
+        crate::collector::validate_terminal_id_field(value, "terminalSessionId")?;
+    }
+    if let Some(value) = &payload.tab_id {
+        crate::collector::validate_terminal_id_field(value, "tabId")?;
+    }
+    if let Some(value) = &payload.pane_id {
+        crate::collector::validate_terminal_id_field(value, "paneId")?;
+    }
+    if payload.window_handle.is_some_and(|value| value == 0) {
+        return Err(IpcError::FrameRejected(
+            "windowHandle must be positive when provided".into(),
         ));
     }
     Ok(())

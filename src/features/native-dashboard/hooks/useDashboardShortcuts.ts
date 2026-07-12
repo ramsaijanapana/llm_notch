@@ -41,12 +41,14 @@ type UseRovingTablistOptions<T extends string> = {
   items: readonly T[]
   selectedId: T
   onSelect: (id: T) => void
+  orientation?: 'horizontal' | 'vertical' | undefined
 }
 
 export function useRovingTablist<T extends string>({
   items,
   selectedId,
   onSelect,
+  orientation = 'horizontal',
 }: UseRovingTablistOptions<T>) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
@@ -58,12 +60,14 @@ export function useRovingTablist<T extends string>({
     (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
       const lastIndex = items.length - 1
       let nextIndex: number | null = null
+      const prevKey = orientation === 'vertical' ? 'ArrowUp' : 'ArrowLeft'
+      const nextKey = orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight'
 
       switch (event.key) {
-        case 'ArrowLeft':
+        case prevKey:
           nextIndex = index === 0 ? lastIndex : index - 1
           break
-        case 'ArrowRight':
+        case nextKey:
           nextIndex = index === lastIndex ? 0 : index + 1
           break
         case 'Home':
@@ -83,7 +87,7 @@ export function useRovingTablist<T extends string>({
         focusTab(nextIndex)
       }
     },
-    [focusTab, items, onSelect],
+    [focusTab, items, onSelect, orientation],
   )
 
   const setTabRef = useCallback((index: number, element: HTMLButtonElement | null) => {

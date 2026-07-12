@@ -1,23 +1,27 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  agentLabel,
+  type AgentStatusEntry,
   type ApplyProgressEntry,
+  agentLabel,
   type ConnectFileSelection,
   type DashboardLoadState,
   DashboardShell,
   type DashboardTab,
   type IntegrationCardState,
+  IntegrationsPanel,
   type MetricSeriesCoverage,
   type MetricsHistoryBundle,
   type MetricsHistoryRange,
-  IntegrationsPanel,
   MetricsPanel,
+  OnboardingFlow,
   type OnboardingStep,
   type PendingPlanReview,
+  RemotePanel,
   SessionsPanel,
   SettingsPanel,
-  OnboardingFlow,
 } from '../features/native-dashboard'
+import dashboardStyles from '../features/native-dashboard/styles/dashboard.module.css'
+import { applyRemoteConnectionStatus } from '../features/native-dashboard/utils/remoteHosts'
 import {
   type OverlayConnectionState,
   type OverlayCpuSample,
@@ -26,6 +30,7 @@ import {
   OverlayShell,
 } from '../features/native-overlay'
 import type {
+  AgentCatalogEntry,
   AgentSession,
   AgentSource,
   AppSnapshot,
@@ -36,8 +41,19 @@ import type {
   DecisionResponseRecord,
   DetectedConnector,
   PublicSettings,
+  QuotaSnapshotView,
+  RemoteBackendStatus,
+  RemoteDeploymentPlanView,
+  RemoteDeploymentResultView,
+  RemoteHostView,
+  SoundRouting,
+  SoundTheme,
 } from '../native/contracts.ts'
-import type { ConnectorUserStatus, IntegrationHealthReport, NativeHistoryResponse } from '../native/types.ts'
+import type {
+  ConnectorUserStatus,
+  IntegrationHealthReport,
+  NativeHistoryResponse,
+} from '../native/types.ts'
 import { useNativeState } from '../state/NativeStateProvider.tsx'
 
 const SHORTCUT_LABEL = 'CmdOrCtrl+Shift+Space'
@@ -50,6 +66,45 @@ const EMPTY_SETTINGS: PublicSettings = {
   samplingIntervalMs: 1_000,
   showOverFullscreen: false,
   historyRetentionHours: 24,
+  soundRouting: {
+    enabled: true,
+    volume: 0.8,
+    quietHours: null,
+    eventVolume: {},
+    agentVolume: {},
+  },
+}
+
+function soundRoutingFromSettings(settings: PublicSettings): SoundRouting {
+  return (
+    settings.soundRouting ?? {
+      enabled: true,
+      volume: 0.8,
+      quietHours: null,
+      eventVolume: {},
+      agentVolume: {},
+    }
+  )
+}
+
+function soundPlaybackSupportedOnPlatform(platform: OverlayPlatform): boolean {
+  return platform === 'windows' || platform === 'macos'
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Could not read sound pack file'))
+        return
+      }
+      const commaIndex = reader.result.indexOf(',')
+      resolve(commaIndex >= 0 ? reader.result.slice(commaIndex + 1) : reader.result)
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read sound pack file'))
+    reader.readAsDataURL(file)
+  })
 }
 
 function currentPlatform(): OverlayPlatform {
@@ -330,6 +385,7 @@ function defaultConnectorStatus(): ConnectorUserStatus {
 export function NativeDashboardSurface() {
   const { state, dispatch, client, prefersReducedMotion } = useNativeState()
   const fullscreenPreferenceSupported = currentPlatform() !== 'windows'
+  const soundPlaybackSupported = soundPlaybackSupportedOnPlatform(currentPlatform())
   const snapshot = useCurrentSnapshot()
   const settings = state.settings ?? EMPTY_SETTINGS
   const sessions = state.sessionOrder
@@ -341,6 +397,22 @@ export function NativeDashboardSurface() {
     return emptyHistory(end - 15 * 60_000, end)
   })
   const [health, setHealth] = useState<IntegrationHealthReport | null>(null)
+  const [agentCatalog, setAgentCatalog] = useState<AgentCatalogEntry[]>([])
+  const [quotaSnapshots, setQuotaSnapshots] = useState<QuotaSnapshotView[]>([])
+  const [quotaRefreshState, setQuotaRefreshState] = useState<'idle' | 'loading'>('idle')
+  const [soundThemes, setSoundThemes] = useState<SoundTheme[]>([])
+  const [soundImportBusy, setSoundImportBusy] = useState(false)
+  const [soundImportMessage, setSoundImportMessage] = useState<string>()
+  const [soundImportError, setSoundImportError] = useState<string>()
+  const [remoteHosts, setRemoteHosts] = useState<RemoteHostView[]>([])
+  const [remoteBackendStatus, setRemoteBackendStatus] = useState<RemoteBackendStatus>({
+    availability: 'unavailable',
+    message: 'SSH relay backend is not available in this build.',
+  })
+  const [remoteLoadState, setRemoteLoadState] = useState<DashboardLoadState>('loading')
+  const [remoteDeployPlan, setRemoteDeployPlan] = useState<RemoteDeploymentPlanView>()
+  const [remoteDeployResult, setRemoteDeployResult] = useState<RemoteDeploymentResultView>()
+  const [remoteDeployBusy, setRemoteDeployBusy] = useState(false)
   const [backups, setBackups] = useState<import('../native/contracts.ts').BackupJournalEntry[]>([])
   const [pendingPlan, setPendingPlan] = useState<PendingPlanReview>()
   const [pendingPlanQueue, setPendingPlanQueue] = useState<PendingPlanReview[]>([])
@@ -364,10 +436,64 @@ export function NativeDashboardSurface() {
   const [connectSelections, setConnectSelections] = useState<ConnectFileSelection[]>([])
   const [connectScope, setConnectScope] = useState<ConnectorScope>('user')
   const [pendingDecisions, setPendingDecisions] = useState<DecisionRequest[]>([])
-  const [decisionRecords, setDecisionRecords] = useState<
-    Record<string, DecisionResponseRecord>
-  >({})
+  const [decisionRecords, setDecisionRecords] = useState<Record<string, DecisionResponseRecord>>({})
   const writeActionsAvailable = client.mode === 'preview' || client.mode === 'tauri'
+  const remoteLifecycleAvailable =
+    writeActionsAvailable && remoteBackendStatus.availability === 'available'
+
+  useEffect(() => {
+    let cancelled = false
+    setRemoteLoadState('loading')
+    void Promise.all([client.listRemoteHosts(), client.getRemoteBackendStatus()])
+      .then(([hosts, backendStatus]) => {
+        if (!cancelled) {
+          setRemoteHosts(hosts)
+          setRemoteBackendStatus(backendStatus)
+          setRemoteLoadState('ready')
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setRemoteHosts([])
+          setRemoteBackendStatus({
+            availability: 'unavailable',
+            message: error instanceof Error ? error.message : 'Remote backend status failed to load',
+          })
+          setRemoteLoadState('error')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client])
+
+  useEffect(() => {
+    let cancelled = false
+    let subscription: { unsubscribe: () => Promise<void> } | null = null
+
+    void client
+      .subscribeRemoteConnectionChanges((status) => {
+        if (cancelled) return
+        setRemoteHosts((hosts) => applyRemoteConnectionStatus(hosts, status))
+      })
+      .then((activeSubscription) => {
+        if (cancelled) {
+          void activeSubscription.unsubscribe()
+          return
+        }
+        subscription = activeSubscription
+      })
+      .catch(() => {
+        // Remote connection events are optional in preview builds.
+      })
+
+    return () => {
+      cancelled = true
+      if (subscription) {
+        void subscription.unsubscribe()
+      }
+    }
+  }, [client])
 
   useEffect(() => {
     if (!state.metrics) return
@@ -498,8 +624,45 @@ export function NativeDashboardSurface() {
     }
   }, [client, dispatch, state.historyRange])
 
+  const refreshQuotas = useCallback(() => {
+    setQuotaRefreshState('loading')
+    void client
+      .listQuotaSnapshots()
+      .then((snapshots) => {
+        setQuotaSnapshots(snapshots)
+        setQuotaRefreshState('idle')
+      })
+      .catch(() => {
+        setQuotaRefreshState('idle')
+      })
+  }, [client])
+
   useEffect(() => {
     let cancelled = false
+    void client.listAgentCatalog().then((catalog) => {
+      if (!cancelled) setAgentCatalog(catalog)
+    })
+    void client
+      .getSoundThemes()
+      .then((themes) => {
+        if (!cancelled) setSoundThemes(themes)
+      })
+      .catch(() => {
+        if (!cancelled) setSoundThemes([])
+      })
+    void client
+      .listQuotaSnapshots()
+      .then((snapshots) => {
+        if (!cancelled) setQuotaSnapshots(snapshots)
+      })
+      .catch(() => {
+        if (!cancelled) setQuotaSnapshots([])
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setActionError(error instanceof Error ? error.message : 'Agent catalog failed to load')
+        }
+      })
     void client
       .getIntegrationHealth()
       .then((report) => {
@@ -549,13 +712,12 @@ export function NativeDashboardSurface() {
     .map((adapter) => {
       const healthEntry = health?.adapters.find((entry) => entry.source === adapter.source)
       const detected = detectedConnectors.find((entry) => entry.source === adapter.source)
-      const lastEventAtMs = sessions
-        .filter((session) => session.source === adapter.source)
-        .reduce<number | undefined>(
-          (latest, session) =>
-            latest === undefined ? session.lastEventAtMs : Math.max(latest, session.lastEventAtMs),
-          undefined,
-        )
+      const sourceSessions = sessions.filter((session) => session.source === adapter.source)
+      const lastEventAtMs = sourceSessions.reduce<number | undefined>(
+        (latest, session) =>
+          latest === undefined ? session.lastEventAtMs : Math.max(latest, session.lastEventAtMs),
+        undefined,
+      )
       return {
         adapter,
         status: healthEntry?.status ?? defaultConnectorStatus(),
@@ -565,6 +727,18 @@ export function NativeDashboardSurface() {
           detected?.managedEntriesPresent ?? healthEntry?.status === 'connected',
       }
     })
+
+  const agentStatuses: AgentStatusEntry[] = integrationCards.map((card) => {
+    const sourceSessions = sessions.filter((session) => session.source === card.adapter.source)
+    return {
+      source: card.adapter.source,
+      status: card.status,
+      activeSessions: sourceSessions.filter(
+        (session) => session.status === 'running' || session.status === 'waiting',
+      ).length,
+      attentionSessions: sourceSessions.filter((session) => session.attention !== 'none').length,
+    }
+  })
 
   const updateSettings = (patch: Partial<PublicSettings>) => {
     setActionError(undefined)
@@ -617,7 +791,7 @@ export function NativeDashboardSurface() {
           detected.map((entry) => ({
             source: entry.source,
             displayPath: entry.displayPath,
-            selected: entry.configPresent,
+            selected: entry.scope === 'user',
           })),
         )
         setDetectLoadState('ready')
@@ -641,9 +815,7 @@ export function NativeDashboardSurface() {
       return next
     })
     setConnectSelections((current) =>
-      current.map((entry) =>
-        entry.displayPath === displayPath ? { ...entry, selected } : entry,
-      ),
+      current.map((entry) => (entry.displayPath === displayPath ? { ...entry, selected } : entry)),
     )
   }
 
@@ -666,11 +838,7 @@ export function NativeDashboardSurface() {
 
   const applyPendingPlan = () => {
     const plansToApply =
-      pendingPlanQueue.length > 0
-        ? pendingPlanQueue
-        : pendingPlan
-          ? [pendingPlan]
-          : []
+      pendingPlanQueue.length > 0 ? pendingPlanQueue : pendingPlan ? [pendingPlan] : []
     if (plansToApply.length === 0) return
     setActionError(undefined)
     const allFilePaths = plansToApply.flatMap((entry) => entry.selectedFilePaths)
@@ -714,9 +882,7 @@ export function NativeDashboardSurface() {
 
   const previewAllSelectedConnectors = () => {
     const selectedSources = [
-      ...new Set(
-        connectSelections.filter((entry) => entry.selected).map((entry) => entry.source),
-      ),
+      ...new Set(connectSelections.filter((entry) => entry.selected).map((entry) => entry.source)),
     ]
     if (selectedSources.length === 0) return
     setActionError(undefined)
@@ -761,9 +927,7 @@ export function NativeDashboardSurface() {
   }
 
   const selectedDecision = pendingDecisions[0]
-  const selectedDecisionRecord = selectedDecision
-    ? decisionRecords[selectedDecision.id]
-    : undefined
+  const selectedDecisionRecord = selectedDecision ? decisionRecords[selectedDecision.id] : undefined
 
   const historyRange = state.historyRange as MetricsHistoryRange
   const disabledHistoryRanges: MetricsHistoryRange[] = [
@@ -801,15 +965,101 @@ export function NativeDashboardSurface() {
     }
   }, [dispatch, historyRange, settings.historyRetentionHours])
 
+  const refreshRemoteHosts = () => {
+    void Promise.all([client.listRemoteHosts(), client.getRemoteBackendStatus()])
+      .then(([hosts, backendStatus]) => {
+        setRemoteHosts(hosts)
+        setRemoteBackendStatus(backendStatus)
+        setRemoteLoadState('ready')
+      })
+      .catch((error: unknown) => {
+        setRemoteLoadState('error')
+        setActionError(error instanceof Error ? error.message : 'Remote refresh failed')
+      })
+  }
+
+  const planRemoteDeploy = (hostId: string) => {
+    setActionError(undefined)
+    setRemoteDeployResult(undefined)
+    void client
+      .previewRemoteDeploy(hostId)
+      .then((plan) => setRemoteDeployPlan(plan))
+      .catch((error: unknown) => {
+        setRemoteDeployPlan(undefined)
+        setActionError(error instanceof Error ? error.message : 'Remote deploy preview failed')
+      })
+  }
+
+  const executeRemoteDeploy = (hostId: string) => {
+    setActionError(undefined)
+    setRemoteDeployBusy(true)
+    void client
+      .executeRemoteDeploy(hostId)
+      .then((result) => {
+        setRemoteDeployResult(result)
+        setRemoteDeployBusy(false)
+      })
+      .catch((error: unknown) => {
+        setRemoteDeployResult(undefined)
+        setRemoteDeployBusy(false)
+        setActionError(error instanceof Error ? error.message : 'Remote deploy execution failed')
+      })
+  }
+
+  const startRemoteRelay = (hostId: string) => {
+    setActionError(undefined)
+    void client
+      .startRemoteRelay(hostId)
+      .then((status) => {
+        setRemoteHosts((hosts) => applyRemoteConnectionStatus(hosts, status))
+      })
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Remote relay start failed')
+      })
+  }
+
+  const stopRemoteRelay = (hostId: string) => {
+    setActionError(undefined)
+    void client
+      .stopRemoteRelay(hostId)
+      .then((status) => {
+        setRemoteHosts((hosts) => applyRemoteConnectionStatus(hosts, status))
+      })
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Remote relay stop failed')
+      })
+  }
+
+  const addRemoteHost = (config: import('../native/contracts.ts').RemoteHostConfigInput) => {
+    setActionError(undefined)
+    void client
+      .upsertRemoteHost(config)
+      .then(() => refreshRemoteHosts())
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Remote host save failed')
+      })
+  }
+
+  const removeRemoteHost = (hostId: string) => {
+    setActionError(undefined)
+    void client
+      .removeRemoteHost(hostId)
+      .then(() => refreshRemoteHosts())
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Remote host remove failed')
+      })
+  }
+
   return (
     <>
       <div
         data-dashboard-background
+        className={dashboardStyles.dashboardBackdrop}
         inert={onboardingOpen ? true : undefined}
         aria-hidden={onboardingOpen ? 'true' : undefined}
       >
         {actionError ? (
-          <p role="alert" style={{ padding: '0.5rem 1rem', color: 'var(--color-error)' }}>
+          <p role="alert" className={dashboardStyles.actionError}>
             {actionError}
           </p>
         ) : null}
@@ -820,6 +1070,7 @@ export function NativeDashboardSurface() {
           onTabChange={setActiveTab}
           shortcutsEnabled={!onboardingOpen}
           reducedMotion={prefersReducedMotion}
+          agentStatuses={agentStatuses}
           sessionsPanel={
             <SessionsPanel
               sessions={sessions}
@@ -865,11 +1116,15 @@ export function NativeDashboardSurface() {
               historyLoadState={historyLoadState}
               historyError={state.historyError ?? undefined}
               disabledHistoryRanges={disabledHistoryRanges}
+              quotas={quotaSnapshots}
+              onRefreshQuotas={refreshQuotas}
+              quotaRefreshState={quotaRefreshState}
             />
           }
           integrationsPanel={
             <IntegrationsPanel
               integrations={integrationCards}
+              catalog={agentCatalog}
               backups={backups}
               pendingPlan={pendingPlan}
               applyProgress={applyProgress}
@@ -925,6 +1180,30 @@ export function NativeDashboardSurface() {
               loadState={loadState}
             />
           }
+          remotePanel={
+            <RemotePanel
+              hosts={remoteHosts}
+              sessions={sessions}
+              backendStatus={remoteBackendStatus}
+              pendingDeployPlan={remoteDeployPlan}
+              pendingDeployResult={remoteDeployResult}
+              deployBusy={remoteDeployBusy}
+              loadState={remoteLoadState}
+              lifecycleActionsAvailable={remoteLifecycleAvailable}
+              hostConfigActionsAvailable={writeActionsAvailable}
+              onPlanDeploy={planRemoteDeploy}
+              onExecuteDeploy={executeRemoteDeploy}
+              onStartRelay={startRemoteRelay}
+              onStopRelay={stopRemoteRelay}
+              onDismissPlan={() => {
+                setRemoteDeployPlan(undefined)
+                setRemoteDeployResult(undefined)
+                setRemoteDeployBusy(false)
+              }}
+              onAddHost={addRemoteHost}
+              onRemoveHost={removeRemoteHost}
+            />
+          }
           settingsPanel={
             <SettingsPanel
               settings={settings}
@@ -932,6 +1211,7 @@ export function NativeDashboardSurface() {
               displayLoadState={displayLoadState}
               displayError={displayError ?? undefined}
               fullscreenPreferenceSupported={fullscreenPreferenceSupported}
+              soundPlaybackSupported={soundPlaybackSupported}
               onDisplayChange={updateDisplay}
               shortcutLabel={SHORTCUT_LABEL}
               onSettingsChange={updateSettings}
@@ -973,6 +1253,67 @@ export function NativeDashboardSurface() {
               }}
               onPurgeCancel={() => setPurgeConfirmOpen(false)}
               loadState={loadState}
+              soundThemes={soundThemes}
+              soundImportBusy={soundImportBusy}
+              soundImportMessage={soundImportMessage}
+              soundImportError={soundImportError}
+              onPreviewSoundTheme={(themeId, event) => {
+                const now = new Date()
+                const routing = soundRoutingFromSettings(settings)
+                void client
+                  .playSoundEvent({
+                    themeId,
+                    event,
+                    routing: {
+                      ...routing,
+                      enabled: true,
+                    },
+                    localMinute: now.getHours() * 60 + now.getMinutes(),
+                  })
+                  .then((result) => {
+                    if (!result.played || result.backendId === 'stub') {
+                      setSoundImportError(
+                        result.reason ??
+                          'Native sound playback is unavailable on this platform',
+                      )
+                      return
+                    }
+                    setSoundImportMessage('Preview played')
+                    setSoundImportError(undefined)
+                  })
+                  .catch((error: unknown) => {
+                    setSoundImportError(
+                      error instanceof Error ? error.message : 'Sound preview failed',
+                    )
+                  })
+              }}
+              onImportSoundPack={(file) => {
+                setSoundImportBusy(true)
+                setSoundImportMessage(undefined)
+                setSoundImportError(undefined)
+                void readFileAsBase64(file)
+                  .then((packBase64) =>
+                    client.importSoundPack({
+                      packBase64,
+                      install: true,
+                    }),
+                  )
+                  .then((result) => {
+                    setSoundImportMessage(result.message)
+                    return client.getSoundThemes()
+                  })
+                  .then((themes) => {
+                    setSoundThemes(themes)
+                  })
+                  .catch((error: unknown) => {
+                    setSoundImportError(
+                      error instanceof Error ? error.message : 'Sound pack import failed',
+                    )
+                  })
+                  .finally(() => {
+                    setSoundImportBusy(false)
+                  })
+              }}
             />
           }
         />

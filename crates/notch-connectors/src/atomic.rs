@@ -75,7 +75,8 @@ pub fn durable_replace(from: &Path, to: &Path) -> Result<(), ConnectorError> {
         };
         if ok.is_err() {
             // Fallback to rename swap when ReplaceFileW fails (e.g. cross-volume).
-            let backup = to.with_extension(format!("llm-notch.pre-replace.{}", Uuid::new_v4().simple()));
+            let backup =
+                to.with_extension(format!("llm-notch.pre-replace.{}", Uuid::new_v4().simple()));
             let _ = fs::remove_file(&backup);
             fs::rename(to, &backup).map_err(|error| {
                 ConnectorError::Internal(format!("backup rename failed: {error}"))
@@ -118,7 +119,10 @@ mod tests {
             Ok(())
         })
         .expect("write");
-        assert_eq!(count, 2, "expected revalidation before temp create and replace");
+        assert_eq!(
+            count, 2,
+            "expected revalidation before temp create and replace"
+        );
         assert_eq!(fs::read(&target).expect("read"), b"new");
     }
 
