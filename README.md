@@ -1,6 +1,6 @@
 # llm_notch
 
-llm_notch is a local-first Tauri 2 desktop monitor for LLM agent sessions. The native app has two windows:
+LLM Notch is a local-first Tauri 2 desktop monitor for LLM agent sessions. The native app has two windows:
 
 - `overlay`: a transparent, non-activating compact/peek island
 - `dashboard`: sessions, local metrics, integration capability status, and settings
@@ -51,9 +51,9 @@ npm run build
 npm run native:check
 ```
 
-## Helper packaging
+## Helper and relay packaging
 
-Tauri bundles `llm-notch-hook` as an external binary. The deterministic preparation script builds the helper and copies it to Tauri's required target-suffixed path:
+Tauri bundles `llm-notch-hook` and `llm-notch-relay` as external binaries. The deterministic preparation script builds both sidecars and copies them to Tauri's required target-suffixed paths:
 
 ```bash
 # Host release target
@@ -64,9 +64,12 @@ npm run native:prepare-helper -- --debug
 
 # Explicit cross target (toolchain/SDK must already be installed)
 npm run native:prepare-helper -- --target x86_64-pc-windows-msvc
+
+# Relay-only sidecar for SSH remote deploy (skips hook build/copy)
+npm run native:prepare-relay -- --target x86_64-unknown-linux-gnu
 ```
 
-`tauri build` runs the release helper preparation automatically. The helper is not launched through a guest shell API; reviewed vendor hooks invoke its installed absolute path.
+`tauri build` runs the release helper preparation automatically. The hook is not launched through a guest shell API; reviewed vendor hooks invoke its installed absolute path. The relay is resolved at host startup for remote deploy previews and SSH relay lifecycle actions.
 
 ## IPC security and lifecycle
 
@@ -114,9 +117,20 @@ Current limitations:
 
 ## Integration setup
 
-Nothing under `integrations/` is installed automatically. Use the dashboard's read-only preview, then follow [the manual installation guide](docs/integrations/installation.md) and review the exact template diff. Wrappers are fail-open and emit neutral output so monitoring cannot block an agent workflow.
+First-run setup detects and preselects the bundled Cursor, Claude Code, Codex, and Gemini CLI connectors. One consolidated confirmation applies the reviewed diffs; unrelated settings are preserved, every changed file is backed up, and repair/removal/rollback remain available from the dashboard. Wrappers are fail-open and emit neutral output so monitoring cannot block an agent workflow.
 
-Capability claims are documented in [the integration matrix](docs/integrations/capability-matrix.md). Protocol v1 is observation-only: `decisionResponse` and `contextOpen` are false for the bundled vendor templates.
+Capability claims are documented in [the integration matrix](docs/integrations/capability-matrix.md). Approval and context-open controls remain capability-gated and are never shown for an unverified vendor response path.
+
+## Desktop installers
+
+Tauri produces native Windows installers and macOS disk images with the bundled `llm-notch-hook` sidecar. The `Build desktop installers` workflow creates a **draft** release with unsigned (ad-hoc on macOS) artifacts. Protected production releases use separate workflows and remain **blocked** until repository secrets are configured:
+
+| Workflow | Secrets | Status without secrets |
+|----------|---------|------------------------|
+| `.github/workflows/release-windows-signed.yml` | `WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD` ([Tauri v2 docs](https://v2.tauri.app/distribute/sign/windows/)) | Tag push **fails closed** at configure gate; manual `mode=draft-unsigned` (+ optional `dry_run`) produces explicitly **UNSIGNED** smoke artifacts |
+| `.github/workflows/release-macos-signed.yml` | `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_ID_PASSWORD`, `APPLE_TEAM_ID` | `signed-macos` job skipped; readiness job reports missing secrets |
+
+See `scripts/signing/README.md` for the full gate checklist.
 
 ## Platform status
 
@@ -126,6 +140,11 @@ Capability claims are documented in [the integration matrix](docs/integrations/c
 
 ## Release signing
 
-Local builds are unsigned. A distributable macOS release requires a Developer ID certificate, hardened runtime/entitlements review, signing of the app and embedded helper, notarization, and stapling. Windows distribution requires an Authenticode certificate and signing of both the executable/installer and helper.
+Local builds are unsigned. A distributable macOS release requires a Developer ID certificate, hardened runtime/entitlements review, signing of the app and embedded helper, notarization, and stapling. Windows distribution requires an Authenticode `.pfx` certificate and signing of both the executable/installer and embedded helper via `scripts/signing/sign-windows.ps1`.
 
-This repository does not claim that an installer is signed, notarized, or production-ready unless those release steps were actually performed.
+| Platform | Required repository secrets | Signed workflow |
+|----------|----------------------------|-----------------|
+| Windows | `WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD` | `.github/workflows/release-windows-signed.yml` (tag push = signed only; fails without secrets) |
+| macOS | `APPLE_*` (see `scripts/signing/README.md`) | separate macOS worker (not in Windows workflow) |
+
+This repository does not claim that an installer is signed, notarized, or production-ready unless those release steps were actually performed and CI signature verification passed.

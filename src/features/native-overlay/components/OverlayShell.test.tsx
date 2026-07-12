@@ -114,6 +114,33 @@ describe('CompactIsland via OverlayShell', () => {
     expect(screen.getAllByTestId(/session-dot-/)).toHaveLength(6)
     expect(screen.getByTestId('session-overflow')).toHaveTextContent('+2')
   })
+
+  it('shows connection hint in compact mode when disconnected with cached sessions', () => {
+    render(
+      <OverlayShell
+        {...createOverlayProps({
+          connectionState: 'ipcError',
+          errorMessage: 'Stream channel closed',
+        })}
+      />,
+    )
+
+    expect(screen.getByTestId('compact-status-hint')).toHaveTextContent('Stream channel closed')
+  })
+
+  it('shows resync hint in compact mode while sessions remain visible', () => {
+    render(
+      <OverlayShell
+        {...createOverlayProps({
+          connectionState: 'stale',
+          staleMessage: 'Resyncing native stream after sequence gap.',
+        })}
+      />,
+    )
+
+    expect(screen.getByTestId('compact-status-hint')).toHaveTextContent(/Resyncing native stream/)
+    expect(screen.getAllByTestId(/session-dot-/).length).toBeGreaterThan(0)
+  })
 })
 
 describe('PeekPanel via OverlayShell', () => {
@@ -121,14 +148,42 @@ describe('PeekPanel via OverlayShell', () => {
     cleanup()
   })
 
-  it('lists attention items before session rows and omits vendor decision controls', () => {
+  it('lists attention items before session rows and omits vendor decision controls by default', () => {
     render(<OverlayShell {...createOverlayProps({ mode: 'peek' })} />)
 
     expect(screen.getByTestId('attention-section')).toBeInTheDocument()
     expect(screen.getByTestId('session-row-session-1')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /deny/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^allow$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^deny$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /submit answer/i })).not.toBeInTheDocument()
+  })
+
+  it('shows allow/deny controls when an actionable decision is wired in', async () => {
+    const user = userEvent.setup()
+    const onDecisionAllow = vi.fn()
+    render(
+      <OverlayShell
+        {...createOverlayProps({
+          mode: 'peek',
+          pendingDecision: {
+            id: 'dec-1',
+            sessionId: 'session-2',
+            source: 'claudeCode',
+            kind: 'permission',
+            summary: 'Allow npm test',
+            hasActionablePayload: true,
+            createdAtMs: Date.now(),
+          },
+          decisionControlsEnabled: true,
+          onDecisionAllow,
+          onDecisionDeny: vi.fn(),
+        })}
+      />,
+    )
+
+    expect(screen.getByTestId('overlay-decision-prompt')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^allow$/i }))
+    expect(onDecisionAllow).toHaveBeenCalledTimes(1)
   })
 
   it('shows footer combined metrics and All I/O quality label', () => {

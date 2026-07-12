@@ -81,6 +81,7 @@ $env:LLM_NOTCH_HOOK_BIN = "C:\dev\llm_notch\target\debug\llm-notch-hook.exe"
 
 ```
 %USERPROFILE%\.cursor\hooks\llm-notch-hook-wrapper.ps1
+%USERPROFILE%\.cursor\hooks\llm-notch-wt-collector.ps1
 ```
 
 Invoke with:
@@ -88,6 +89,30 @@ Invoke with:
 ```text
 pwsh -NoProfile -File "%USERPROFILE%\.cursor\hooks\llm-notch-hook-wrapper.ps1" -Source cursor -VendorEvent sessionStart
 ```
+
+The hook wrapper dot-sources `llm-notch-wt-collector.ps1` from the same directory when present. For profile-level collection (recommended), also see [`integrations/windows-terminal/README.md`](../../integrations/windows-terminal/README.md).
+
+### Windows Terminal collector
+
+Windows Terminal shell integration sets `WT_SESSION` per tab/pane. Tab and pane **indices are not** published by WT env vars; the collector only passes through `LLM_NOTCH_TAB_ID` / `LLM_NOTCH_PANE_ID` when you configure them.
+
+```powershell
+. "$env:USERPROFILE\.cursor\hooks\llm-notch-wt-collector.ps1"
+Export-LlmNotchWtCollectorEnv
+# Optional fixed layout (user-declared, not auto-discovered):
+# Export-LlmNotchWtCollectorEnv -TabId '1' -PaneId '0'
+```
+
+## Bundled sidecar resolution (desktop host)
+
+At startup the Tauri host resolves the helper via `src-tauri/src/runtime/helper_path.rs`:
+
+1. `app.path().executable_dir()/llm-notch-hook[.exe]` — sidecar next to the desktop exe (packaged `externalBin`)
+2. `app.path().resource_dir()/llm-notch-hook[.exe]` — bundled resources fallback
+3. `LLM_NOTCH_HOOK_BIN` when set and the file exists (development / CI injection)
+4. `target/debug/llm-notch-hook[.exe]` for local development
+
+The resolved path is logged as `helper` / `helper_exists` in the host initialization line.
 
 ## Runtime descriptor (helper discovers host)
 

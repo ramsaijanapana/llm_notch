@@ -1,5 +1,34 @@
 import { NATIVE_COMMANDS } from './commands.ts'
-import type { PublicSettings, StreamFrame } from './contracts.ts'
+import type {
+  AgentCatalogEntry,
+  AgentSource,
+  BackupJournalEntry,
+  ConnectorApplyResult,
+  ConnectorFileApplyResult,
+  ConnectorPlanPreview,
+  ConnectorScope,
+  DecisionRequest,
+  DecisionResponse,
+  DecisionResponseRecord,
+  DetectedConnector,
+  ImportSoundPackRequest,
+  PublicSettings,
+  QuotaSnapshotView,
+  RemoteBackendStatus,
+  RemoteConnectionStatusView,
+  RemoteDeploymentPlanView,
+  RemoteDeploymentResultView,
+  RemoteHostConfigInput,
+  RemoteHostView,
+  SoundEvent,
+  SoundPackValidation,
+  SoundPlayRequest,
+  SoundPlayResult,
+  SoundRouting,
+  SoundRoutingPreview,
+  SoundTheme,
+  StreamFrame,
+} from './contracts.ts'
 import { PROTOCOL_VERSION } from './contracts.ts'
 import { NativeClientError } from './errors.ts'
 import {
@@ -7,20 +36,26 @@ import {
   createPreviewSnapshot,
   DEFAULT_PUBLIC_SETTINGS,
   PREVIEW_ADAPTERS,
+  PREVIEW_AGENT_CATALOG,
   PREVIEW_EVENTS,
 } from './fixtures.ts'
 import { resolveNativePreviewScenario } from './previewRouting.ts'
 import { coalesceStreamFrames } from './streamProcessor.ts'
 import type {
   BootstrapResult,
-  ConnectorPreview,
-  IntegrationHealthEntry,
-  IntegrationHealthReport,
+  ConnectorHealthChangeHandler,
+  ConnectorHealthEntry,
+  ConnectorHealthReport,
+  ConnectorHealthSubscription,
+  HealthProbeResult,
   NativeClient,
   NativeDisplayOption,
   NativeHistoryRange,
   NativeHistoryResponse,
+  OpenSessionResult,
   OverlayMode,
+  RemoteConnectionChangeHandler,
+  RemoteConnectionSubscription,
   SessionEventPage,
   StreamErrorHandler,
   StreamFrameHandler,
@@ -29,32 +64,256 @@ import type {
 
 const METRIC_TICK_MS = 1_000
 
-function integrationStatusForAdapter(
-  adapter: IntegrationHealthEntry['capabilities'],
-): IntegrationHealthEntry['status'] {
-  if (!adapter.events) {
-    return 'unavailable'
+function validateRemoteHostConfigInput(config: RemoteHostConfigInput): void {
+  if (!config.id || config.id.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(config.id)) {
+    throw new NativeClientError('remote-host-invalid', 'remote host id is invalid')
   }
-
-  if (adapter.attention === 'none' || adapter.processAttribution === 'unknown') {
-    return 'degraded'
+  if (
+    !config.destination ||
+    config.destination.length > 255 ||
+    config.destination.startsWith('-') ||
+    /[^a-zA-Z0-9._@%[\]:-]/.test(config.destination)
+  ) {
+    throw new NativeClientError('remote-host-invalid', 'SSH destination is invalid')
   }
-
-  return 'healthy'
+  if (config.port === 0) {
+    throw new NativeClientError('remote-host-invalid', 'SSH port must not be zero')
+  }
+  if (config.connectTimeoutSeconds < 1 || config.connectTimeoutSeconds > 120) {
+    throw new NativeClientError(
+      'remote-host-invalid',
+      'connect timeout must be between 1 and 120 seconds',
+    )
+  }
 }
 
-function summarizeIntegrationHealth(
-  adapters: IntegrationHealthEntry[],
-): IntegrationHealthReport['overall'] {
-  if (adapters.every((entry) => entry.status === 'healthy')) {
-    return 'healthy'
+const PREVIEW_DETECTED: DetectedConnector[] = [
+  {
+    source: 'cursor',
+    scope: 'user',
+    displayPath: '~/.cursor/hooks.json',
+    configPresent: true,
+    managedEntriesPresent: false,
+    executablePresent: true,
+    executablePath: 'C:\\Program Files\\cursor\\cursor.cmd',
+    processRunning: true,
+    runningProcessName: 'cursor',
+  },
+  {
+    source: 'claudeCode',
+    scope: 'user',
+    displayPath: '~/.claude/settings.json',
+    configPresent: true,
+    managedEntriesPresent: false,
+    executablePresent: false,
+  },
+  {
+    source: 'codex',
+    scope: 'user',
+    displayPath: '~/.codex/hooks.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+    executablePresent: true,
+    executablePath: 'C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd',
+  },
+  {
+    source: 'gemini',
+    scope: 'user',
+    displayPath: '~/.gemini/settings.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+    executablePresent: false,
+  },
+  {
+    source: 'qwen',
+    scope: 'user',
+    displayPath: '~/.qwen/settings.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+    executablePresent: false,
+  },
+  {
+    source: 'antigravityCli',
+    scope: 'user',
+    displayPath: '~/.gemini/antigravity-cli/hooks.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+    executablePresent: false,
+  },
+  {
+    source: 'copilotCli',
+    scope: 'user',
+    displayPath: '~/.copilot/hooks/llm-notch.json',
+    configPresent: false,
+    managedEntriesPresent: false,
+    executablePresent: false,
+  },
+]
+
+function previewConnectorDisplayPath(source: AgentSource): string {
+  switch (source) {
+    case 'claudeCode':
+      return '~/.claude/settings.json'
+    case 'codex':
+      return '~/.codex/hooks.json'
+    case 'gemini':
+      return '~/.gemini/settings.json'
+    case 'qwen':
+      return '~/.qwen/settings.json'
+    case 'antigravityCli':
+      return '~/.gemini/antigravity-cli/hooks.json'
+    case 'copilotCli':
+      return '~/.copilot/hooks/llm-notch.json'
+    case 'cursor':
+    default:
+      return '~/.cursor/hooks.json'
+  }
+}
+
+function sourceFromPlanId(planId: string): AgentSource {
+  for (const adapter of PREVIEW_ADAPTERS) {
+    if (planId.includes(adapter.source)) {
+      return adapter.source
+    }
+  }
+  return 'cursor'
+}
+
+function previewHealthEntry(
+  capabilities: ConnectorHealthEntry['capabilities'],
+): ConnectorHealthEntry {
+  const detected = PREVIEW_DETECTED.find((entry) => entry.source === capabilities.source)
+  const installationOutcome = detected?.managedEntriesPresent
+    ? ('ok' as const)
+    : detected?.configPresent
+      ? ('warn' as const)
+      : detected?.executablePresent
+        ? ('fail' as const)
+        : ('fail' as const)
+  const installationFailureKind = detected?.managedEntriesPresent
+    ? undefined
+    : detected?.configPresent
+      ? ('configDrift' as const)
+      : detected?.executablePresent
+        ? ('notInstalled' as const)
+        : ('agentNotFound' as const)
+
+  const probes: HealthProbeResult[] = [
+    {
+      axis: 'installation',
+      outcome: installationOutcome,
+      ...(installationFailureKind ? { failureKind: installationFailureKind } : {}),
+      ...(detected?.executablePresent && !detected.configPresent
+        ? {
+            detail: detected.executablePath
+              ? `CLI installed at ${detected.executablePath} — hook config missing`
+              : 'CLI installed — hook config missing',
+          }
+        : {}),
+      ...(detected?.configPresent && !detected.managedEntriesPresent
+        ? { detail: 'Hook config present — llm_notch hooks need repair' }
+        : {}),
+    },
+    {
+      axis: 'trust',
+      outcome: capabilities.requiresExternalTrust ? 'warn' : 'ok',
+      ...(capabilities.requiresExternalTrust ? { failureKind: 'trustRequired' as const } : {}),
+    },
+    {
+      axis: 'traffic',
+      outcome:
+        detected?.managedEntriesPresent && capabilities.events
+          ? 'warn'
+          : detected?.managedEntriesPresent
+            ? 'fail'
+            : 'fail',
+      ...(!detected?.managedEntriesPresent ? { failureKind: 'noTraffic' as const } : {}),
+    },
+    { axis: 'helper', outcome: 'ok' },
+  ]
+
+  let status: ConnectorHealthEntry['status'] = 'notFound'
+  if (detected?.managedEntriesPresent) {
+    status = capabilities.events ? 'waitingFirstEvent' : 'waitingFirstEvent'
+  } else if (detected?.configPresent) {
+    status = 'driftDetected'
+  } else if (detected?.executablePresent) {
+    status = 'notInstalled'
+  } else if (detected) {
+    status = detected.configPresent ? 'driftDetected' : 'notFound'
   }
 
-  if (adapters.some((entry) => entry.status === 'healthy' || entry.status === 'degraded')) {
-    return 'degraded'
+  let detail: string | undefined
+  if (detected?.configPresent && !detected.managedEntriesPresent) {
+    detail = 'Hook config exists but llm_notch entries are missing — use Repair.'
+  } else if (detected?.executablePresent && !detected.configPresent) {
+    detail = 'Agent CLI is installed — use Connect to wire llm_notch hooks.'
+  } else if (detected?.managedEntriesPresent) {
+    detail = 'Hooks installed; waiting for the first agent event.'
   }
 
-  return 'unavailable'
+  return {
+    source: capabilities.source,
+    status,
+    probes,
+    capabilities,
+    ...(detail !== undefined ? { detail } : {}),
+  }
+}
+
+function previewPlan(
+  source: AgentSource,
+  scope: ConnectorScope,
+  operation: 'install' | 'repair' | 'rollback' = 'install',
+): ConnectorPlanPreview {
+  const files =
+    operation === 'rollback'
+      ? [
+          {
+            displayPath: '~/.cursor/hooks.json',
+            baselineSha256: 'abc123',
+            diffText: '-  "llm_notch": ...\n+  (restored entries)',
+            foreignEntriesPreserved: ['other-hook'],
+            isNewFile: false,
+          },
+        ]
+      : [
+          {
+            displayPath: previewConnectorDisplayPath(source),
+            baselineSha256: 'abc123',
+            diffText:
+              operation === 'repair'
+                ? '  hooks: {\n+    "llm_notch": { "command": "/path/to/helper" }\n  }'
+                : '+  "llm_notch": { "command": "/path/to/helper" }\n   "other-hook": preserved',
+            foreignEntriesPreserved: ['other-hook'],
+            isNewFile: source === 'codex',
+          },
+        ]
+
+  return {
+    planId: `preview-${source}-${operation}-${scope}`,
+    source,
+    scope,
+    summary:
+      operation === 'repair'
+        ? `Repair llm_notch entries for ${source}.`
+        : operation === 'rollback'
+          ? 'Restore this file from backup.'
+          : `Connect ${source} using user-scope hooks.`,
+    expiresAtMs: Date.now() + 300_000,
+    files,
+    externalTrustActions:
+      source === 'codex'
+        ? [
+            {
+              kind: 'codexHooksReview',
+              instructions:
+                'Open the Codex CLI, run /hooks, review each llm_notch hook definition, and trust it.',
+            },
+          ]
+        : [],
+    backupDisplayHint: '~/.cursor/hooks.json.bak-20260711',
+  }
 }
 
 export class FakeNativeClient implements NativeClient {
@@ -69,6 +328,23 @@ export class FakeNativeClient implements NativeClient {
   private overlayMode: OverlayMode = 'collapsed'
   private acknowledgedSessions = new Set<string>()
   private bootstrapCount = 0
+  private backups: BackupJournalEntry[] = []
+  private pendingDecisions: DecisionRequest[] = [
+    {
+      id: 'decision-preview-1',
+      sessionId: 'sess-claude-review',
+      source: 'claudeCode',
+      kind: 'approval',
+      summary: 'Allow running: npm test --coverage',
+      hasActionablePayload: false,
+      createdAtMs: Date.now() - 30_000,
+      expiresAtMs: Date.now() + 120_000,
+    },
+  ]
+  private decisionRecords = new Map<string, DecisionResponseRecord>()
+  private remoteHosts = new Map<string, RemoteHostView>()
+  private remoteConnectionHandlers = new Set<RemoteConnectionChangeHandler>()
+  private connectorHealthHandlers = new Set<ConnectorHealthChangeHandler>()
 
   async bootstrap(): Promise<BootstrapResult> {
     const scenario = resolveNativePreviewScenario()
@@ -104,7 +380,7 @@ export class FakeNativeClient implements NativeClient {
     onError: StreamErrorHandler,
   ): Promise<StreamSubscription> {
     if (this.subscribed) {
-      throw new NativeClientError('not-available', 'Preview stream is already active')
+      throw new NativeClientError('stream-closed', 'Preview stream already active')
     }
 
     this.subscribed = true
@@ -119,12 +395,6 @@ export class FakeNativeClient implements NativeClient {
       })
     }, METRIC_TICK_MS)
 
-    if (resolveNativePreviewScenario() === 'resync') {
-      queueMicrotask(() => {
-        this.simulateResyncRequired('Preview stream requested resync')
-      })
-    }
-
     return {
       unsubscribe: async () => {
         await this.stopStream()
@@ -132,12 +402,36 @@ export class FakeNativeClient implements NativeClient {
     }
   }
 
-  async openDashboard(): Promise<void> {
-    return
+  async subscribeRemoteConnectionChanges(
+    onChange: RemoteConnectionChangeHandler,
+  ): Promise<RemoteConnectionSubscription> {
+    this.remoteConnectionHandlers.add(onChange)
+    return {
+      unsubscribe: async () => {
+        this.remoteConnectionHandlers.delete(onChange)
+      },
+    }
   }
 
-  async openSession(_sessionId: string): Promise<void> {
-    return
+  async subscribeConnectorHealthChanges(
+    onChange: ConnectorHealthChangeHandler,
+  ): Promise<ConnectorHealthSubscription> {
+    this.connectorHealthHandlers.add(onChange)
+    return {
+      unsubscribe: async () => {
+        this.connectorHealthHandlers.delete(onChange)
+      },
+    }
+  }
+
+  async openDashboard(): Promise<void> {}
+
+  async openSession(_sessionId: string): Promise<OpenSessionResult> {
+    return {
+      contextOpenTier: 'appActivate',
+      activated: true,
+      message: 'Preview context navigation activated.',
+    }
   }
 
   async setOverlayMode(mode: OverlayMode): Promise<void> {
@@ -146,19 +440,6 @@ export class FakeNativeClient implements NativeClient {
 
   async acknowledgeLocalAttention(sessionId: string): Promise<void> {
     this.acknowledgedSessions.add(sessionId)
-    const session = createPreviewSnapshot().sessions.find((entry) => entry.id === sessionId)
-    if (!session) {
-      return
-    }
-
-    this.emit({
-      sequence: ++this.sequence,
-      emittedAtMs: Date.now(),
-      payload: {
-        type: 'sessionUpsert',
-        session: { ...session, attention: 'none', status: 'running' },
-      },
-    })
   }
 
   async updateSettings(settings: PublicSettings): Promise<PublicSettings> {
@@ -171,59 +452,35 @@ export class FakeNativeClient implements NativeClient {
     return this.settings
   }
 
-  async purgeHistory(): Promise<void> {
-    return
-  }
+  async purgeHistory(_scope?: import('./contracts.ts').PurgeScope): Promise<void> {}
 
   async getHistory(range: NativeHistoryRange): Promise<NativeHistoryResponse> {
-    const metrics = createPreviewMetricsFrame()
-    const duration = range === '15m' ? 15 * 60_000 : range === '1h' ? 60 * 60_000 : 24 * 60 * 60_000
     const endMs = Date.now()
-    const series = (points: NativeHistoryResponse['host']['points']) => ({
-      points,
-      actualFirstMs: points[0]?.atMs ?? null,
-      actualLastMs: points.at(-1)?.atMs ?? null,
-      totalPoints: points.length,
-      returnedPoints: points.length,
+    const sinceMs =
+      range === '15m'
+        ? endMs - 15 * 60 * 1_000
+        : range === '1h'
+          ? endMs - 60 * 60 * 1_000
+          : endMs - 24 * 60 * 60 * 1_000
+
+    const emptySeries = {
+      points: [],
+      actualFirstMs: null,
+      actualLastMs: null,
+      totalPoints: 0,
+      returnedPoints: 0,
       downsampled: false,
       truncated: false,
-    })
+    }
+
     return {
       range,
-      sinceMs: endMs - duration,
+      sinceMs,
       endMs,
-      host: series([
-        {
-          atMs: metrics.host.atMs,
-          cpuHostPercent: metrics.host.cpuHostPercent,
-          cpuCorePercent: metrics.host.cpuHostPercent,
-          rssBytes: metrics.host.usedMemoryBytes,
-        },
-      ]),
-      aggregate: series([
-        {
-          atMs: metrics.aggregate.atMs,
-          cpuHostPercent: metrics.aggregate.cpuHostPercent,
-          cpuCorePercent: metrics.aggregate.cpuCorePercent,
-          rssBytes: metrics.aggregate.rssBytes,
-        },
-      ]),
-      agents: Object.entries(metrics.agents).map(([sessionId, sample]) => ({
-        sessionId,
-        ...series([
-          {
-            atMs: sample.atMs,
-            cpuHostPercent: sample.cpuHostPercent,
-            cpuCorePercent: sample.cpuCorePercent,
-            rssBytes: sample.rssBytes,
-          },
-        ]),
-      })),
+      host: emptySeries,
+      aggregate: emptySeries,
+      agents: [],
     }
-  }
-
-  async listDisplays(): Promise<NativeDisplayOption[]> {
-    return [{ id: 'preview-primary', label: 'Preview display', primary: true }]
   }
 
   async getSessionEvents(
@@ -231,12 +488,11 @@ export class FakeNativeClient implements NativeClient {
     beforeSequence?: number,
     limit = 50,
   ): Promise<SessionEventPage> {
-    const eligible = PREVIEW_EVENTS.filter(
-      (event) =>
-        event.sessionId === sessionId &&
-        (beforeSequence === undefined || event.sequence < beforeSequence),
-    ).sort((left, right) => right.sequence - left.sequence)
+    const eligible = PREVIEW_EVENTS.filter((event) => event.sessionId === sessionId)
+      .filter((event) => beforeSequence === undefined || event.sequence < beforeSequence)
+      .sort((left, right) => right.sequence - left.sequence)
     const page = eligible.slice(0, limit).reverse()
+
     return {
       sessionId,
       events: page,
@@ -245,31 +501,272 @@ export class FakeNativeClient implements NativeClient {
     }
   }
 
-  async getIntegrationHealth(): Promise<IntegrationHealthReport> {
-    const adapters: IntegrationHealthEntry[] = PREVIEW_ADAPTERS.map((capabilities) => {
-      const status = integrationStatusForAdapter(capabilities)
-      return {
-        source: capabilities.source,
-        status,
-        capabilities,
-        detail: status === 'healthy' ? 'Preview adapter ready' : 'Preview adapter limited',
-      }
-    })
+  async listDisplays(): Promise<NativeDisplayOption[]> {
+    return [{ id: 'preview-primary', label: 'Preview Display', primary: true }]
+  }
 
+  async getIntegrationHealth(): Promise<ConnectorHealthReport> {
     return {
       checkedAtMs: Date.now(),
-      overall: summarizeIntegrationHealth(adapters),
-      adapters,
+      adapters: PREVIEW_ADAPTERS.map((capabilities) => previewHealthEntry(capabilities)),
     }
   }
 
-  async previewConnector(source: ConnectorPreview['source']): Promise<ConnectorPreview> {
-    return {
-      planId: `preview-${source}`,
-      source,
-      summary: 'Preview only — no vendor configuration files were changed.',
-      expiresAtMs: Date.now() + 300_000,
+  async listAgentCatalog(): Promise<AgentCatalogEntry[]> {
+    return PREVIEW_AGENT_CATALOG.map((entry) => ({
+      ...entry,
+      aliases: [...entry.aliases],
+      executableNames: [...entry.executableNames],
+      capabilities: entry.capabilities.map((capability) => ({ ...capability })),
+      configTargets: entry.configTargets.map((target) => ({ ...target })),
+    }))
+  }
+
+  async listQuotaSnapshots(): Promise<QuotaSnapshotView[]> {
+    return ['Claude', 'Codex', 'Gemini', 'Kimi', 'GLM', 'DeepSeek'].map((displayName) => ({
+      service: displayName.toLowerCase(),
+      displayName,
+      availability: 'unavailable',
+      message: 'quota provider is not configured',
+    }))
+  }
+
+  async listRemoteHosts(): Promise<RemoteHostView[]> {
+    return [...this.remoteHosts.values()].sort((left, right) =>
+      left.config.id.localeCompare(right.config.id),
+    )
+  }
+
+  async upsertRemoteHost(config: RemoteHostConfigInput): Promise<RemoteHostView> {
+    validateRemoteHostConfigInput(config)
+    const view: RemoteHostView = {
+      config: {
+        id: config.id,
+        destination: config.destination,
+        port: config.port ?? null,
+        identityFile: config.identityFile ?? null,
+        hostKeyPolicy: config.hostKeyPolicy,
+        connectTimeoutSeconds: config.connectTimeoutSeconds,
+      },
+      availability: 'unavailable',
+      connectionState: 'disconnected',
+      message: null,
+      lastConnectedAtMs: null,
     }
+    this.remoteHosts.set(config.id, view)
+    return view
+  }
+
+  async removeRemoteHost(hostId: string): Promise<void> {
+    if (!this.remoteHosts.delete(hostId)) {
+      throw new NativeClientError(
+        'remote-host-missing',
+        `remote host \`${hostId}\` is not configured`,
+      )
+    }
+  }
+
+  async getRemoteBackendStatus(): Promise<RemoteBackendStatus> {
+    return {
+      availability: 'unavailable',
+      message:
+        'SSH relay backend is not available in this build. Relay lifecycle is owned by notch-remote.',
+    }
+  }
+
+  async previewRemoteDeploy(hostId: string): Promise<RemoteDeploymentPlanView> {
+    throw new NativeClientError(
+      'remote-backend-unavailable',
+      `SSH relay backend is not available in this build (host: ${hostId})`,
+    )
+  }
+
+  async executeRemoteDeploy(hostId: string): Promise<RemoteDeploymentResultView> {
+    throw new NativeClientError(
+      'remote-backend-unavailable',
+      `SSH relay backend is not available in this build (host: ${hostId})`,
+    )
+  }
+
+  async startRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView> {
+    throw new NativeClientError(
+      'remote-backend-unavailable',
+      `SSH relay backend is not available in this build (host: ${hostId})`,
+    )
+  }
+
+  async stopRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView> {
+    throw new NativeClientError(
+      'remote-backend-unavailable',
+      `SSH relay backend is not available in this build (host: ${hostId})`,
+    )
+  }
+
+  async getRemoteConnectionStatus(hostId: string): Promise<RemoteConnectionStatusView> {
+    return {
+      hostId,
+      availability: 'unavailable',
+      connectionState: 'disconnected',
+      message:
+        'SSH relay backend is not available in this build. Relay lifecycle is owned by notch-remote.',
+    }
+  }
+
+  async getSoundThemes(): Promise<SoundTheme[]> {
+    return [
+      {
+        schemaVersion: 1,
+        id: 'builtin.8-bit',
+        name: '8-Bit Signals',
+        author: 'LLM Notch',
+        events: {},
+      },
+    ]
+  }
+
+  async previewSoundRouting(request: {
+    routing: SoundRouting
+    event: SoundEvent
+    agent?: string
+    localMinute: number
+  }): Promise<SoundRoutingPreview> {
+    const audible = request.routing.enabled && request.routing.volume > 0
+    return {
+      audible,
+      ...(audible ? { effectiveVolume: request.routing.volume } : {}),
+      ...(audible ? {} : { reason: 'sound is disabled' }),
+    }
+  }
+
+  async playSoundEvent(request: SoundPlayRequest): Promise<SoundPlayResult> {
+    const audible = request.routing.enabled && request.routing.volume > 0
+    return {
+      played: audible,
+      backendId: 'preview',
+      ...(audible ? { effectiveVolume: request.routing.volume } : {}),
+      ...(audible ? {} : { reason: 'sound is disabled' }),
+    }
+  }
+
+  async importSoundPack(_request: ImportSoundPackRequest): Promise<SoundPackValidation> {
+    throw new NativeClientError('invoke-failed', 'Sound pack import is unavailable in preview mode')
+  }
+
+  async detectConnectors(): Promise<DetectedConnector[]> {
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    return PREVIEW_DETECTED.map((entry) => ({ ...entry }))
+  }
+
+  async previewConnector(
+    source: ConnectorPlanPreview['source'],
+    scope: ConnectorScope = 'user',
+  ): Promise<ConnectorPlanPreview> {
+    return previewPlan(source, scope, 'install')
+  }
+
+  async applyConnectorChange(
+    planId: string,
+    _selectedDisplayPaths?: string[],
+  ): Promise<ConnectorApplyResult> {
+    const source = sourceFromPlanId(planId)
+    const capabilities =
+      PREVIEW_ADAPTERS.find((adapter) => adapter.source === source) ?? PREVIEW_ADAPTERS[0]!
+
+    const fileResults: ConnectorFileApplyResult[] = [
+      {
+        displayPath: previewConnectorDisplayPath(source),
+        outcome: 'applied',
+        backupJournalId: `backup-${source}-1`,
+        appliedHash: 'hash-applied-1',
+      },
+    ]
+
+    if (planId.includes('partial')) {
+      fileResults.push({
+        displayPath: '~/.cursor/hooks.secondary.json',
+        outcome: 'failed',
+        errorCode: 'lockContention',
+        message: 'File locked by another process',
+      })
+    }
+
+    for (const result of fileResults) {
+      if (result.backupJournalId) {
+        this.backups.push({
+          id: result.backupJournalId,
+          planId,
+          source,
+          displayPath: result.displayPath,
+          backupDisplayPath: `${result.displayPath}.bak-preview`,
+          contentSha256: 'sha-backup',
+          ...(result.appliedHash ? { appliedHash: result.appliedHash } : {}),
+          operation: 'create',
+          recordedAtMs: Date.now(),
+        })
+      }
+    }
+
+    return { planId, source, fileResults, capabilities }
+  }
+
+  async removeConnector(
+    source: AgentSource,
+    _scope: ConnectorScope = 'user',
+  ): Promise<ConnectorApplyResult> {
+    const capabilities =
+      PREVIEW_ADAPTERS.find((adapter) => adapter.source === source) ?? PREVIEW_ADAPTERS[0]!
+    return {
+      planId: `remove-${source}`,
+      source,
+      fileResults: [
+        {
+          displayPath: previewConnectorDisplayPath(source),
+          outcome: 'applied',
+        },
+      ],
+      capabilities,
+    }
+  }
+
+  async repairConnector(
+    source: AgentSource,
+    scope: ConnectorScope = 'user',
+  ): Promise<ConnectorPlanPreview> {
+    return previewPlan(source, scope, 'repair')
+  }
+
+  async rollbackConnector(backupId: string): Promise<ConnectorPlanPreview> {
+    const backup = this.backups.find((entry) => entry.id === backupId)
+    return previewPlan(backup?.source ?? 'cursor', 'user', 'rollback')
+  }
+
+  async listConnectorBackups(): Promise<BackupJournalEntry[]> {
+    return [...this.backups]
+  }
+
+  async getPendingDecisions(): Promise<DecisionRequest[]> {
+    return this.pendingDecisions.filter((request) => !this.decisionRecords.has(request.id))
+  }
+
+  async respondDecision(
+    requestId: string,
+    response: DecisionResponse,
+  ): Promise<DecisionResponseRecord> {
+    const request = this.pendingDecisions.find((entry) => entry.id === requestId)
+    if (!request) {
+      throw new NativeClientError('not-available', `Unknown decision request: ${requestId}`)
+    }
+    const record: DecisionResponseRecord = {
+      requestId,
+      response,
+      respondedAtMs: Date.now(),
+      deliveryState: request.hasActionablePayload ? 'pending' : 'delivered',
+      ...(request.hasActionablePayload
+        ? { deliveryDetail: 'Awaiting agent hook delivery confirmation.' }
+        : {}),
+    }
+    this.decisionRecords.set(requestId, record)
+    return record
   }
 
   getOverlayModeForTests(): OverlayMode {
@@ -302,7 +799,6 @@ export class FakeNativeClient implements NativeClient {
     this.errorHandler = null
   }
 
-  /** Test helper to simulate backend resync signals without exposing in production UI. */
   simulateResyncRequired(reason: string): void {
     this.errorHandler?.(
       new NativeClientError('resync-required', reason || 'Preview stream requested resync'),
@@ -314,7 +810,6 @@ export class FakeNativeClient implements NativeClient {
     })
   }
 
-  /** Test helper to inject an out-of-order frame. */
   simulateSequenceGap(): void {
     this.sequence += 5
     this.emit({
@@ -323,17 +818,45 @@ export class FakeNativeClient implements NativeClient {
       payload: { type: 'heartbeat' },
     })
   }
+
+  simulateRemoteConnectionChange(status: RemoteConnectionStatusView): void {
+    const host = this.remoteHosts.get(status.hostId)
+    if (host) {
+      this.remoteHosts.set(status.hostId, {
+        ...host,
+        availability: status.availability,
+        connectionState: status.connectionState,
+        message: status.message ?? null,
+      })
+    }
+
+    for (const handler of this.remoteConnectionHandlers) {
+      handler(status)
+    }
+  }
 }
 
 export function createFakeNativeClient(): FakeNativeClient {
   return new FakeNativeClient()
 }
 
-/** Ensures preview clients never masquerade as production hosts. */
-export function assertPreviewClient(client: NativeClient): asserts client is FakeNativeClient {
-  if (client.mode !== 'preview') {
+export function createPreviewNativeClient(): FakeNativeClient {
+  return new FakeNativeClient()
+}
+
+export function isPreviewNativeClient(client: NativeClient): client is FakeNativeClient {
+  return client.mode === 'preview'
+}
+
+export function assertPreviewNativeClient(client: NativeClient): FakeNativeClient {
+  if (!isPreviewNativeClient(client)) {
     throw new NativeClientError('not-available', 'Expected preview native client')
   }
+  return client
+}
+
+export function assertPreviewClient(client: NativeClient): asserts client is FakeNativeClient {
+  assertPreviewNativeClient(client)
 }
 
 export function validatePreviewProtocol(snapshotProtocolVersion: number): void {
@@ -345,5 +868,4 @@ export function validatePreviewProtocol(snapshotProtocolVersion: number): void {
   }
 }
 
-/** Command map kept for test parity with the Tauri seam. */
 export const PREVIEW_COMMAND_SURFACE = NATIVE_COMMANDS

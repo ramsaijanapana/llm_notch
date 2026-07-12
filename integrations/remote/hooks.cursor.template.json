@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "_comment": "REMOTE HOST TEMPLATE — spools into ~/.llm-notch for relay --event-spool pairing. Do not use on the desktop machine; local Cursor hooks keep default IPC. {{LLM_NOTCH_HELPER}} is replaced with the absolute remote llm-notch-hook path.",
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "LLM_NOTCH_EVENT_SPOOL=1 \"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event sessionStart --hook-mode",
+        "timeout": 2
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "LLM_NOTCH_EVENT_SPOOL=1 \"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event preToolUse --hook-mode",
+        "timeout": 2
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "LLM_NOTCH_EVENT_SPOOL=1 \"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event postToolUse --hook-mode",
+        "timeout": 2
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "LLM_NOTCH_EVENT_SPOOL=1 \"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event postToolUseFailure --hook-mode",
+        "timeout": 2
+      }
+    ],
+    "stop": [
+      {
+        "command": "LLM_NOTCH_EVENT_SPOOL=1 \"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event stop --hook-mode",
+        "timeout": 2
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "LLM_NOTCH_EVENT_SPOOL=1 \"{{LLM_NOTCH_HELPER}}\" hook --source cursor --vendor-event sessionEnd --hook-mode",
+        "timeout": 2
+      }
+    ]
+  }
+}

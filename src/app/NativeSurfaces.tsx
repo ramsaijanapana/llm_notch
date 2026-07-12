@@ -1,22 +1,33 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  type AgentStatusEntry,
+  type ApplyProgressEntry,
   agentLabel,
+  type ConnectFileSelection,
   type DashboardLoadState,
   DashboardShell,
   type DashboardTab,
   type IntegrationCardState,
-  type IntegrationDiffPreview,
   IntegrationsPanel,
   type MetricSeriesCoverage,
   type MetricsHistoryBundle,
   type MetricsHistoryRange,
   MetricsPanel,
   OnboardingFlow,
-  type OnboardingIntegrationChoice,
   type OnboardingStep,
+  type PendingPlanReview,
+  RemotePanel,
   SessionsPanel,
   SettingsPanel,
 } from '../features/native-dashboard'
+import { useIntegrationHealth } from '../features/native-dashboard/hooks/useIntegrationHealth'
+import dashboardStyles from '../features/native-dashboard/styles/dashboard.module.css'
+import { bestDetectedConnector } from '../features/native-dashboard/utils/integrationLabels'
+import { applyRemoteConnectionStatus } from '../features/native-dashboard/utils/remoteHosts'
+import {
+  deriveSessionsEmptyMessage,
+  findSessionForDecision,
+} from '../features/native-dashboard/utils/sessionHelpers'
 import {
   type OverlayConnectionState,
   type OverlayCpuSample,
@@ -24,12 +35,36 @@ import {
   type OverlayPlatform,
   OverlayShell,
 } from '../features/native-overlay'
-import type { AgentSession, AgentSource, AppSnapshot, PublicSettings } from '../native/contracts.ts'
-import type { IntegrationHealthReport, NativeHistoryResponse } from '../native/types.ts'
+import type {
+  AgentCatalogEntry,
+  AgentSession,
+  AgentSource,
+  AppSnapshot,
+  ConnectorApplyResult,
+  ConnectorFileApplyResult,
+  ConnectorScope,
+  DecisionRequest,
+  DecisionResponseRecord,
+  DetectedConnector,
+  PublicSettings,
+  QuotaSnapshotView,
+  RemoteBackendStatus,
+  RemoteDeploymentPlanView,
+  RemoteDeploymentResultView,
+  RemoteHostView,
+  SoundRouting,
+  SoundTheme,
+} from '../native/contracts.ts'
+import type {
+  ConnectorUserStatus,
+  IntegrationHealthReport,
+  NativeHistoryResponse,
+} from '../native/types.ts'
 import { useNativeState } from '../state/NativeStateProvider.tsx'
 
 const SHORTCUT_LABEL = 'CmdOrCtrl+Shift+Space'
 const ONBOARDING_KEY = 'llm-notch:onboarding-complete:v1'
+const DECISION_POLL_INTERVAL_MS = 500
 
 const EMPTY_SETTINGS: PublicSettings = {
   overlayEnabled: true,
@@ -38,6 +73,45 @@ const EMPTY_SETTINGS: PublicSettings = {
   samplingIntervalMs: 1_000,
   showOverFullscreen: false,
   historyRetentionHours: 24,
+  soundRouting: {
+    enabled: true,
+    volume: 0.8,
+    quietHours: null,
+    eventVolume: {},
+    agentVolume: {},
+  },
+}
+
+function soundRoutingFromSettings(settings: PublicSettings): SoundRouting {
+  return (
+    settings.soundRouting ?? {
+      enabled: true,
+      volume: 0.8,
+      quietHours: null,
+      eventVolume: {},
+      agentVolume: {},
+    }
+  )
+}
+
+function soundPlaybackSupportedOnPlatform(platform: OverlayPlatform): boolean {
+  return platform === 'windows' || platform === 'macos'
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Could not read sound pack file'))
+        return
+      }
+      const commaIndex = reader.result.indexOf(',')
+      resolve(commaIndex >= 0 ? reader.result.slice(commaIndex + 1) : reader.result)
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read sound pack file'))
+    reader.readAsDataURL(file)
+  })
 }
 
 function currentPlatform(): OverlayPlatform {
@@ -54,9 +128,10 @@ function deriveOverlayConnection(
   if (connection === 'disconnected') return 'ipcError'
   if (connection === 'incompatible-protocol') return 'coreError'
   if (connection === 'resyncing') return 'stale'
-  if (connection === 'loading') return 'warmingUp'
-  if (!snapshot || snapshot.sessions.length === 0) return 'empty'
-  if (!snapshot.aggregate) return 'metricsUnavailable'
+  const sessionCount = snapshot?.sessions.length ?? 0
+  if (connection === 'loading' && sessionCount === 0) return 'warmingUp'
+  if (sessionCount === 0) return 'empty'
+  if (!snapshot?.aggregate) return 'metricsUnavailable'
   if (snapshot.aggregate.quality.cpu === 'warmingUp') return 'warmingUp'
   return 'live'
 }
@@ -90,10 +165,65 @@ function useCurrentSnapshot(): AppSnapshot | undefined {
 
 export function NativeOverlaySurface() {
   const { state, client, prefersReducedMotion } = useNativeState()
+  const { health } = useIntegrationHealth(client)
   const snapshot = useCurrentSnapshot()
   const [mode, setMode] = useState<OverlayMode>('compact')
   const [cpuHistory, setCpuHistory] = useState<OverlayCpuSample[]>([])
+  const [pendingDecisions, setPendingDecisions] = useState<DecisionRequest[]>([])
   const aggregate = snapshot?.aggregate
+  const sessions = snapshot?.sessions ?? []
+  const sessionsEmptyMessage = useMemo(
+    () => deriveSessionsEmptyMessage(state.adapters, health),
+    [health, state.adapters],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    const refreshPendingDecisions = () => {
+      void client
+        .getPendingDecisions()
+        .then((requests) => {
+          if (!cancelled) setPendingDecisions(requests)
+        })
+        .catch(() => {
+          if (!cancelled) setPendingDecisions([])
+        })
+    }
+    refreshPendingDecisions()
+    const interval = window.setInterval(refreshPendingDecisions, DECISION_POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [client])
+
+  const overlayDecision = useMemo(
+    () =>
+      pendingDecisions.find(
+        (request) => request.hasActionablePayload && findSessionForDecision(sessions, request),
+      ),
+    [pendingDecisions, sessions],
+  )
+  const overlayAdapter = overlayDecision
+    ? state.adapters.find((adapter) => adapter.source === overlayDecision.source)
+    : undefined
+  const overlayDecisionControlsEnabled =
+    overlayDecision !== undefined &&
+    overlayAdapter?.decisionResponse === true &&
+    overlayDecision.hasActionablePayload
+
+  useEffect(() => {
+    if (overlayDecision?.hasActionablePayload) {
+      setMode('peek')
+    }
+  }, [overlayDecision?.hasActionablePayload])
+
+  const respondToOverlayDecision = (
+    response: import('../native/contracts.ts').DecisionResponse,
+  ) => {
+    if (!overlayDecision) return
+    void client.respondDecision(overlayDecision.id, response).catch(() => {})
+  }
 
   useEffect(() => {
     if (!aggregate) return
@@ -137,6 +267,11 @@ export function NativeOverlaySurface() {
         onAcknowledge={(sessionId) => {
           void client.acknowledgeLocalAttention(sessionId).catch(() => {})
         }}
+        pendingDecision={overlayDecision}
+        decisionControlsEnabled={overlayDecisionControlsEnabled}
+        onDecisionAllow={() => respondToOverlayDecision({ type: 'action', action: 'allow' })}
+        onDecisionDeny={() => respondToOverlayDecision({ type: 'action', action: 'deny' })}
+        emptyMessage={sessionsEmptyMessage}
       />
     </div>
   )
@@ -275,24 +410,50 @@ export function persistedHistoryBundle(
   }
 }
 
-function templatePath(source: AgentSource): string {
-  switch (source) {
-    case 'cursor':
-      return 'integrations/cursor/hooks.json.template'
-    case 'claudeCode':
-      return 'integrations/claude-code/settings.hooks.template.json'
-    case 'codex':
-      return 'integrations/codex/hooks.json.template'
-    case 'generic':
-      return 'integrations/generic/emit-examples.sh'
-    case 'unknown':
-      return 'No supported template'
-  }
+async function runApplyProgress(
+  planId: string,
+  filePaths: string[],
+  apply: (planId: string, selectedDisplayPaths?: string[]) => Promise<ConnectorApplyResult>,
+  onProgress: (entries: ApplyProgressEntry[]) => void,
+  selectedDisplayPaths?: string[],
+): Promise<ConnectorApplyResult> {
+  onProgress(
+    filePaths.map((displayPath) => ({
+      displayPath,
+      phase: 'applying' as const,
+    })),
+  )
+
+  const result = await apply(planId, selectedDisplayPaths)
+  onProgress(
+    result.fileResults.map((file) => ({
+      displayPath: file.displayPath,
+      phase: mapFileResultPhase(file.outcome),
+      message:
+        file.outcome === 'failed'
+          ? (file.message ?? 'Apply failed for this file')
+          : file.outcome === 'skipped'
+            ? (file.message ?? 'No changes needed')
+            : undefined,
+    })),
+  )
+  return result
+}
+
+function mapFileResultPhase(
+  outcome: ConnectorFileApplyResult['outcome'],
+): ApplyProgressEntry['phase'] {
+  return outcome === 'failed' ? 'failed' : 'done'
+}
+
+function defaultConnectorStatus(): ConnectorUserStatus {
+  return 'notInstalled'
 }
 
 export function NativeDashboardSurface() {
   const { state, dispatch, client, prefersReducedMotion } = useNativeState()
   const fullscreenPreferenceSupported = currentPlatform() !== 'windows'
+  const soundPlaybackSupported = soundPlaybackSupportedOnPlatform(currentPlatform())
   const snapshot = useCurrentSnapshot()
   const settings = state.settings ?? EMPTY_SETTINGS
   const sessions = state.sessionOrder
@@ -304,13 +465,104 @@ export function NativeDashboardSurface() {
     return emptyHistory(end - 15 * 60_000, end)
   })
   const [health, setHealth] = useState<IntegrationHealthReport | null>(null)
-  const [pendingDiff, setPendingDiff] = useState<IntegrationDiffPreview>()
+  const [agentCatalog, setAgentCatalog] = useState<AgentCatalogEntry[]>([])
+  const [quotaSnapshots, setQuotaSnapshots] = useState<QuotaSnapshotView[]>([])
+  const [quotaRefreshState, setQuotaRefreshState] = useState<'idle' | 'loading'>('idle')
+  const [soundThemes, setSoundThemes] = useState<SoundTheme[]>([])
+  const [soundImportBusy, setSoundImportBusy] = useState(false)
+  const [soundImportMessage, setSoundImportMessage] = useState<string>()
+  const [soundImportError, setSoundImportError] = useState<string>()
+  const [remoteHosts, setRemoteHosts] = useState<RemoteHostView[]>([])
+  const [remoteBackendStatus, setRemoteBackendStatus] = useState<RemoteBackendStatus>({
+    availability: 'unavailable',
+    message: 'SSH relay backend is not available in this build.',
+  })
+  const [remoteLoadState, setRemoteLoadState] = useState<DashboardLoadState>('loading')
+  const [remoteDeployPlan, setRemoteDeployPlan] = useState<RemoteDeploymentPlanView>()
+  const [remoteDeployResult, setRemoteDeployResult] = useState<RemoteDeploymentResultView>()
+  const [remoteDeployBusy, setRemoteDeployBusy] = useState(false)
+  const [backups, setBackups] = useState<import('../native/contracts.ts').BackupJournalEntry[]>([])
+  const [pendingPlan, setPendingPlan] = useState<PendingPlanReview>()
+  const [pendingPlanQueue, setPendingPlanQueue] = useState<PendingPlanReview[]>([])
+  const [applyProgress, setApplyProgress] = useState<ApplyProgressEntry[]>()
+  const [applyResult, setApplyResult] = useState<ConnectorApplyResult>()
   const [actionError, setActionError] = useState<string>()
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false)
+  const [purgeScope, setPurgeScope] = useState<import('../native/contracts.ts').PurgeScope>({
+    history: true,
+    sessionEvents: true,
+    connectorJournal: false,
+    includeBackups: false,
+  })
   const [onboardingOpen, setOnboardingOpen] = useState(() => !readOnboardingComplete())
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>(0)
-  const [onboardingIntegration, setOnboardingIntegration] =
-    useState<OnboardingIntegrationChoice>('none')
+  const [detectedConnectors, setDetectedConnectors] = useState<DetectedConnector[]>([])
+  const [detectLoadState, setDetectLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>(
+    'loading',
+  )
+  const [detectError, setDetectError] = useState<string>()
+  const [connectSelections, setConnectSelections] = useState<ConnectFileSelection[]>([])
+  const [connectScope, setConnectScope] = useState<ConnectorScope>('user')
+  const [pendingDecisions, setPendingDecisions] = useState<DecisionRequest[]>([])
+  const [decisionRecords, setDecisionRecords] = useState<Record<string, DecisionResponseRecord>>({})
+  const writeActionsAvailable = client.mode === 'preview' || client.mode === 'tauri'
+  const remoteLifecycleAvailable =
+    writeActionsAvailable && remoteBackendStatus.availability === 'available'
+
+  useEffect(() => {
+    let cancelled = false
+    setRemoteLoadState('loading')
+    void Promise.all([client.listRemoteHosts(), client.getRemoteBackendStatus()])
+      .then(([hosts, backendStatus]) => {
+        if (!cancelled) {
+          setRemoteHosts(hosts)
+          setRemoteBackendStatus(backendStatus)
+          setRemoteLoadState('ready')
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setRemoteHosts([])
+          setRemoteBackendStatus({
+            availability: 'unavailable',
+            message:
+              error instanceof Error ? error.message : 'Remote backend status failed to load',
+          })
+          setRemoteLoadState('error')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client])
+
+  useEffect(() => {
+    let cancelled = false
+    let subscription: { unsubscribe: () => Promise<void> } | null = null
+
+    void client
+      .subscribeRemoteConnectionChanges((status) => {
+        if (cancelled) return
+        setRemoteHosts((hosts) => applyRemoteConnectionStatus(hosts, status))
+      })
+      .then((activeSubscription) => {
+        if (cancelled) {
+          void activeSubscription.unsubscribe()
+          return
+        }
+        subscription = activeSubscription
+      })
+      .catch(() => {
+        // Remote connection events are optional in preview builds.
+      })
+
+    return () => {
+      cancelled = true
+      if (subscription) {
+        void subscription.unsubscribe()
+      }
+    }
+  }, [client])
 
   useEffect(() => {
     if (!state.metrics) return
@@ -357,6 +609,8 @@ export function NativeDashboardSurface() {
       ].slice(-900)
       return {
         ...current,
+        requestedStartMs: Math.max(current.requestedStartMs, Date.now() - 15 * 60_000),
+        requestedEndMs: Date.now(),
         hostCpu,
         aggregateCpu,
         aggregateRss,
@@ -370,6 +624,38 @@ export function NativeDashboardSurface() {
       }
     })
   }, [state.metrics, state.sessions])
+
+  useEffect(() => {
+    let cancelled = false
+    const refreshPendingDecisions = () => {
+      void client
+        .getPendingDecisions()
+        .then((requests) => {
+          if (!cancelled) setPendingDecisions(requests)
+        })
+        .catch(() => {
+          if (!cancelled) setPendingDecisions([])
+        })
+    }
+    refreshPendingDecisions()
+    const interval = window.setInterval(refreshPendingDecisions, DECISION_POLL_INTERVAL_MS)
+    const onFocus = () => refreshPendingDecisions()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [client])
+
+  useEffect(() => {
+    const nextDecision = pendingDecisions.find((request) => request.hasActionablePayload)
+    if (!nextDecision) return
+    const session = findSessionForDecision(sessions, nextDecision)
+    if (session && state.selectedSessionId !== session.id) {
+      dispatch({ type: 'SET_SELECTED_SESSION', sessionId: session.id })
+    }
+  }, [dispatch, pendingDecisions, sessions, state.selectedSessionId])
 
   useEffect(() => {
     let cancelled = false
@@ -416,8 +702,46 @@ export function NativeDashboardSurface() {
     }
   }, [client, dispatch, state.historyRange])
 
+  const refreshQuotas = useCallback(() => {
+    setQuotaRefreshState('loading')
+    void client
+      .listQuotaSnapshots()
+      .then((snapshots) => {
+        setQuotaSnapshots(snapshots)
+        setQuotaRefreshState('idle')
+      })
+      .catch(() => {
+        setQuotaRefreshState('idle')
+      })
+  }, [client])
+
   useEffect(() => {
     let cancelled = false
+    setDetectLoadState('loading')
+    void client.listAgentCatalog().then((catalog) => {
+      if (!cancelled) setAgentCatalog(catalog)
+    })
+    void client
+      .getSoundThemes()
+      .then((themes) => {
+        if (!cancelled) setSoundThemes(themes)
+      })
+      .catch(() => {
+        if (!cancelled) setSoundThemes([])
+      })
+    void client
+      .listQuotaSnapshots()
+      .then((snapshots) => {
+        if (!cancelled) setQuotaSnapshots(snapshots)
+      })
+      .catch(() => {
+        if (!cancelled) setQuotaSnapshots([])
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setActionError(error instanceof Error ? error.message : 'Agent catalog failed to load')
+        }
+      })
     void client
       .getIntegrationHealth()
       .then((report) => {
@@ -427,17 +751,54 @@ export function NativeDashboardSurface() {
         if (!cancelled)
           setActionError(error instanceof Error ? error.message : 'Health check failed')
       })
+    void client
+      .detectConnectors()
+      .then((detected) => {
+        if (!cancelled) {
+          setDetectedConnectors(detected)
+          setConnectSelections(
+            detected
+              .filter((entry) => entry.scope === 'user')
+              .filter((entry) => entry.configPresent || entry.executablePresent)
+              .map((entry) => ({
+                source: entry.source,
+                displayPath: entry.displayPath,
+                selected: true,
+              })),
+          )
+          setDetectLoadState('ready')
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setDetectLoadState('error')
+          setDetectError(error instanceof Error ? error.message : 'Detection failed')
+        }
+      })
+    void client
+      .listConnectorBackups()
+      .then((entries) => {
+        if (!cancelled) setBackups(entries)
+      })
+      .catch(() => {
+        if (!cancelled) setBackups([])
+      })
     return () => {
       cancelled = true
     }
   }, [client])
 
   const loadState: DashboardLoadState =
-    state.connection === 'loading' || state.connection === 'resyncing'
+    state.connection === 'loading' || (state.connection === 'resyncing' && sessions.length === 0)
       ? 'loading'
       : state.connection === 'disconnected' || state.connection === 'incompatible-protocol'
         ? 'error'
         : 'ready'
+
+  const sessionsEmptyMessage = useMemo(
+    () => deriveSessionsEmptyMessage(state.adapters, health, detectedConnectors),
+    [detectedConnectors, health, state.adapters],
+  )
 
   const displays = state.displays
   const selectedDisplayMissing =
@@ -454,26 +815,38 @@ export function NativeDashboardSurface() {
       ? 'loading'
       : state.displayStatus
 
-  const integrationCards: IntegrationCardState[] = state.adapters.map((adapter) => {
-    const healthEntry = health?.adapters.find((entry) => entry.source === adapter.source)
-    const lastEventAtMs = sessions
-      .filter((session) => session.source === adapter.source)
-      .reduce<number | undefined>(
+  const integrationCards: IntegrationCardState[] = state.adapters
+    .filter((adapter) => adapter.source !== 'unknown' && adapter.source !== 'generic')
+    .map((adapter) => {
+      const healthEntry = health?.adapters.find((entry) => entry.source === adapter.source)
+      const detected = bestDetectedConnector(detectedConnectors, adapter.source)
+      const sourceSessions = sessions.filter((session) => session.source === adapter.source)
+      const lastEventAtMs = sourceSessions.reduce<number | undefined>(
         (latest, session) =>
           latest === undefined ? session.lastEventAtMs : Math.max(latest, session.lastEventAtMs),
         undefined,
       )
+      return {
+        adapter,
+        status: healthEntry?.status ?? defaultConnectorStatus(),
+        statusDetail: healthEntry?.detail,
+        lastEventAtMs,
+        managedEntriesPresent:
+          detected?.managedEntriesPresent ?? healthEntry?.status === 'connected',
+        executablePresent: detected?.executablePresent,
+        configPresent: detected?.configPresent,
+      }
+    })
+
+  const agentStatuses: AgentStatusEntry[] = integrationCards.map((card) => {
+    const sourceSessions = sessions.filter((session) => session.source === card.adapter.source)
     return {
-      adapter,
-      configured: lastEventAtMs !== undefined,
-      lastEventAtMs,
-      health:
-        healthEntry?.status === 'healthy'
-          ? 'healthy'
-          : healthEntry?.status === 'unavailable'
-            ? 'offline'
-            : 'degraded',
-      previewConfig: `Read-only template: ${templatePath(adapter.source)}`,
+      source: card.adapter.source,
+      status: card.status,
+      activeSessions: sourceSessions.filter(
+        (session) => session.status === 'running' || session.status === 'waiting',
+      ).length,
+      attentionSessions: sourceSessions.filter((session) => session.attention !== 'none').length,
     }
   })
 
@@ -501,22 +874,219 @@ export function NativeDashboardSurface() {
     setOnboardingOpen(false)
   }
 
-  const previewIntegration = (source: AgentSource) => {
+  const refreshBackups = () => {
+    void client
+      .listConnectorBackups()
+      .then(setBackups)
+      .catch(() => setBackups([]))
+  }
+
+  const refreshHealth = useCallback(() => {
+    void client
+      .getIntegrationHealth()
+      .then(setHealth)
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Health check failed')
+      })
+  }, [client])
+
+  useEffect(() => {
+    let cancelled = false
+    let subscription: { unsubscribe: () => Promise<void> } | null = null
+
+    void client
+      .subscribeConnectorHealthChanges(() => {
+        if (cancelled) return
+        refreshHealth()
+      })
+      .then((activeSubscription) => {
+        if (cancelled) {
+          void activeSubscription.unsubscribe()
+          return
+        }
+        subscription = activeSubscription
+      })
+      .catch(() => {
+        // Connector health events are optional in preview builds.
+      })
+
+    return () => {
+      cancelled = true
+      if (subscription) {
+        void subscription.unsubscribe()
+      }
+    }
+  }, [client, refreshHealth])
+
+  const latestSessionEventAtMs = useMemo(
+    () =>
+      sessions.reduce<number | undefined>(
+        (latest, session) =>
+          latest === undefined ? session.lastEventAtMs : Math.max(latest, session.lastEventAtMs),
+        undefined,
+      ),
+    [sessions],
+  )
+
+  useEffect(() => {
+    if (latestSessionEventAtMs === undefined) return
+    refreshHealth()
+  }, [latestSessionEventAtMs, refreshHealth])
+
+  const runDetection = () => {
+    setDetectLoadState('loading')
+    setDetectError(undefined)
+    void client
+      .detectConnectors()
+      .then((detected) => {
+        setDetectedConnectors(detected)
+        setConnectSelections(
+          detected
+            .filter((entry) => entry.scope === 'user')
+            .filter((entry) => entry.configPresent || entry.executablePresent)
+            .map((entry) => ({
+              source: entry.source,
+              displayPath: entry.displayPath,
+              selected: true,
+            })),
+        )
+        setDetectLoadState('ready')
+      })
+      .catch((error: unknown) => {
+        setDetectLoadState('error')
+        setDetectError(error instanceof Error ? error.message : 'Detection failed')
+      })
+  }
+
+  const togglePlanFile = (displayPath: string, selected: boolean) => {
+    setPendingPlan((current) => {
+      if (!current) return current
+      const selectedFilePaths = selected
+        ? [...new Set([...current.selectedFilePaths, displayPath])]
+        : current.selectedFilePaths.filter((path) => path !== displayPath)
+      const next = { ...current, selectedFilePaths }
+      setPendingPlanQueue((queue) =>
+        queue.map((entry) => (entry.plan.planId === current.plan.planId ? next : entry)),
+      )
+      return next
+    })
+    setConnectSelections((current) =>
+      current.map((entry) => (entry.displayPath === displayPath ? { ...entry, selected } : entry)),
+    )
+  }
+
+  const previewConnect = (source: AgentSource, scope: ConnectorScope = 'user') => {
     setActionError(undefined)
     void client
-      .previewConnector(source)
-      .then((preview) => {
-        setPendingDiff({
-          source,
-          summary: preview.summary,
-          before: 'No files inspected or changed by llm_notch.',
-          after: `Review manually: ${templatePath(source)}`,
-        })
+      .previewConnector(source, scope)
+      .then((plan) => {
+        const review = {
+          plan,
+          selectedFilePaths: plan.files.map((file) => file.displayPath),
+        }
+        setPendingPlan(review)
+        setPendingPlanQueue([review])
       })
       .catch((error: unknown) => {
         setActionError(error instanceof Error ? error.message : 'Connector preview failed')
       })
   }
+
+  const applyPendingPlan = () => {
+    const plansToApply =
+      pendingPlanQueue.length > 0 ? pendingPlanQueue : pendingPlan ? [pendingPlan] : []
+    if (plansToApply.length === 0) return
+    setActionError(undefined)
+    const allFilePaths = plansToApply.flatMap((entry) => entry.selectedFilePaths)
+    setApplyProgress(
+      allFilePaths.map((displayPath) => ({ displayPath, phase: 'applying' as const })),
+    )
+    void (async () => {
+      const aggregatedResults: ConnectorApplyResult['fileResults'] = []
+      let lastResult: ConnectorApplyResult | undefined
+      try {
+        for (const entry of plansToApply) {
+          lastResult = await runApplyProgress(
+            entry.plan.planId,
+            entry.selectedFilePaths,
+            (planId, selectedDisplayPaths) =>
+              client.applyConnectorChange(planId, selectedDisplayPaths),
+            setApplyProgress,
+            entry.selectedFilePaths,
+          )
+          aggregatedResults.push(...lastResult.fileResults)
+        }
+        if (lastResult) {
+          setApplyResult({ ...lastResult, fileResults: aggregatedResults })
+        }
+        setPendingPlan(undefined)
+        setPendingPlanQueue([])
+        refreshBackups()
+        refreshHealth()
+      } catch (error: unknown) {
+        setApplyProgress(
+          allFilePaths.map((displayPath) => ({
+            displayPath,
+            phase: 'failed',
+            message: error instanceof Error ? error.message : 'Apply failed',
+          })),
+        )
+        setActionError(error instanceof Error ? error.message : 'Connector apply failed')
+      }
+    })()
+  }
+
+  const previewAllSelectedConnectors = () => {
+    const selectedSources = [
+      ...new Set(connectSelections.filter((entry) => entry.selected).map((entry) => entry.source)),
+    ]
+    if (selectedSources.length === 0) return
+    setActionError(undefined)
+    void (async () => {
+      try {
+        const reviews: PendingPlanReview[] = []
+        for (const source of selectedSources) {
+          const plan = await client.previewConnector(source, connectScope)
+          reviews.push({
+            plan,
+            selectedFilePaths: plan.files
+              .filter((file) => {
+                const selection = connectSelections.find(
+                  (entry) => entry.source === source && entry.displayPath === file.displayPath,
+                )
+                return selection?.selected ?? true
+              })
+              .map((file) => file.displayPath),
+          })
+        }
+        setPendingPlanQueue(reviews)
+        setPendingPlan(reviews[0])
+        setOnboardingStep(3)
+      } catch (error: unknown) {
+        setActionError(error instanceof Error ? error.message : 'Connector preview failed')
+      }
+    })()
+  }
+
+  const respondToDecision = (
+    requestId: string,
+    response: import('../native/contracts.ts').DecisionResponse,
+  ) => {
+    void client
+      .respondDecision(requestId, response)
+      .then((record) => {
+        setDecisionRecords((current) => ({ ...current, [requestId]: record }))
+      })
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Decision response failed')
+      })
+  }
+
+  const selectedDecision =
+    pendingDecisions.find(
+      (request) => request.hasActionablePayload && findSessionForDecision(sessions, request),
+    ) ?? pendingDecisions[0]
+  const selectedDecisionRecord = selectedDecision ? decisionRecords[selectedDecision.id] : undefined
 
   const historyRange = state.historyRange as MetricsHistoryRange
   const disabledHistoryRanges: MetricsHistoryRange[] = [
@@ -554,15 +1124,101 @@ export function NativeDashboardSurface() {
     }
   }, [dispatch, historyRange, settings.historyRetentionHours])
 
+  const refreshRemoteHosts = () => {
+    void Promise.all([client.listRemoteHosts(), client.getRemoteBackendStatus()])
+      .then(([hosts, backendStatus]) => {
+        setRemoteHosts(hosts)
+        setRemoteBackendStatus(backendStatus)
+        setRemoteLoadState('ready')
+      })
+      .catch((error: unknown) => {
+        setRemoteLoadState('error')
+        setActionError(error instanceof Error ? error.message : 'Remote refresh failed')
+      })
+  }
+
+  const planRemoteDeploy = (hostId: string) => {
+    setActionError(undefined)
+    setRemoteDeployResult(undefined)
+    void client
+      .previewRemoteDeploy(hostId)
+      .then((plan) => setRemoteDeployPlan(plan))
+      .catch((error: unknown) => {
+        setRemoteDeployPlan(undefined)
+        setActionError(error instanceof Error ? error.message : 'Remote deploy preview failed')
+      })
+  }
+
+  const executeRemoteDeploy = (hostId: string) => {
+    setActionError(undefined)
+    setRemoteDeployBusy(true)
+    void client
+      .executeRemoteDeploy(hostId)
+      .then((result) => {
+        setRemoteDeployResult(result)
+        setRemoteDeployBusy(false)
+      })
+      .catch((error: unknown) => {
+        setRemoteDeployResult(undefined)
+        setRemoteDeployBusy(false)
+        setActionError(error instanceof Error ? error.message : 'Remote deploy execution failed')
+      })
+  }
+
+  const startRemoteRelay = (hostId: string) => {
+    setActionError(undefined)
+    void client
+      .startRemoteRelay(hostId)
+      .then((status) => {
+        setRemoteHosts((hosts) => applyRemoteConnectionStatus(hosts, status))
+      })
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Remote relay start failed')
+      })
+  }
+
+  const stopRemoteRelay = (hostId: string) => {
+    setActionError(undefined)
+    void client
+      .stopRemoteRelay(hostId)
+      .then((status) => {
+        setRemoteHosts((hosts) => applyRemoteConnectionStatus(hosts, status))
+      })
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Remote relay stop failed')
+      })
+  }
+
+  const addRemoteHost = (config: import('../native/contracts.ts').RemoteHostConfigInput) => {
+    setActionError(undefined)
+    void client
+      .upsertRemoteHost(config)
+      .then(() => refreshRemoteHosts())
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Remote host save failed')
+      })
+  }
+
+  const removeRemoteHost = (hostId: string) => {
+    setActionError(undefined)
+    void client
+      .removeRemoteHost(hostId)
+      .then(() => refreshRemoteHosts())
+      .catch((error: unknown) => {
+        setActionError(error instanceof Error ? error.message : 'Remote host remove failed')
+      })
+  }
+
   return (
     <>
       <div
         data-dashboard-background
+        className={dashboardStyles.dashboardBackdrop}
         inert={onboardingOpen ? true : undefined}
         aria-hidden={onboardingOpen ? 'true' : undefined}
       >
         {actionError ? (
-          <p role="alert" style={{ padding: '0.5rem 1rem', color: 'var(--color-error)' }}>
+          <p role="alert" className={dashboardStyles.actionError}>
             {actionError}
           </p>
         ) : null}
@@ -573,19 +1229,45 @@ export function NativeDashboardSurface() {
           onTabChange={setActiveTab}
           shortcutsEnabled={!onboardingOpen}
           reducedMotion={prefersReducedMotion}
+          agentStatuses={agentStatuses}
           sessionsPanel={
             <SessionsPanel
               sessions={sessions}
               selectedSessionId={state.selectedSessionId ?? undefined}
               events={state.events}
               adapters={state.adapters}
+              pendingDecision={selectedDecision}
+              decisionRecord={selectedDecisionRecord}
               onSelectSession={(sessionId) => dispatch({ type: 'SET_SELECTED_SESSION', sessionId })}
               onOpenContext={(sessionId) => {
                 void client.openSession(sessionId).catch((error: unknown) => {
                   setActionError(error instanceof Error ? error.message : 'Context open failed')
                 })
               }}
+              onDecisionAllow={() =>
+                selectedDecision
+                  ? respondToDecision(selectedDecision.id, { type: 'action', action: 'allow' })
+                  : undefined
+              }
+              onDecisionDeny={() =>
+                selectedDecision
+                  ? respondToDecision(selectedDecision.id, { type: 'action', action: 'deny' })
+                  : undefined
+              }
+              onDecisionAnswer={(text) =>
+                selectedDecision
+                  ? respondToDecision(selectedDecision.id, { type: 'answer', text })
+                  : undefined
+              }
+              onAcknowledge={(sessionId) => {
+                void client.acknowledgeLocalAttention(sessionId).catch((error: unknown) => {
+                  setActionError(
+                    error instanceof Error ? error.message : 'Attention acknowledge failed',
+                  )
+                })
+              }}
               loadState={sessions.length === 0 && loadState === 'ready' ? 'empty' : loadState}
+              emptyMessage={sessionsEmptyMessage}
             />
           }
           metricsPanel={
@@ -601,23 +1283,93 @@ export function NativeDashboardSurface() {
               historyLoadState={historyLoadState}
               historyError={state.historyError ?? undefined}
               disabledHistoryRanges={disabledHistoryRanges}
+              quotas={quotaSnapshots}
+              onRefreshQuotas={refreshQuotas}
+              quotaRefreshState={quotaRefreshState}
             />
           }
           integrationsPanel={
             <IntegrationsPanel
               integrations={integrationCards}
-              pendingDiff={pendingDiff}
-              writeActionsAvailable={false}
-              onPreview={previewIntegration}
-              onApply={() =>
-                setActionError('Automatic connector writes are unavailable in this build.')
-              }
-              onRemove={() =>
-                setActionError('Automatic connector removal is unavailable in this build.')
-              }
-              onConfirmDiff={() => setPendingDiff(undefined)}
-              onCancelDiff={() => setPendingDiff(undefined)}
+              catalog={agentCatalog}
+              detectedConnectors={detectedConnectors}
+              backups={backups}
+              pendingPlan={pendingPlan}
+              applyProgress={applyProgress}
+              applyResult={applyResult}
+              writeActionsAvailable={writeActionsAvailable}
+              onConnect={(source) => previewConnect(source, 'user')}
+              onRepair={(source) => {
+                void client
+                  .repairConnector(source, 'user')
+                  .then((plan) =>
+                    setPendingPlan({
+                      plan,
+                      selectedFilePaths: plan.files.map((file) => file.displayPath),
+                    }),
+                  )
+                  .catch((error: unknown) => {
+                    setActionError(
+                      error instanceof Error ? error.message : 'Connector repair preview failed',
+                    )
+                  })
+              }}
+              onDisable={(source) => {
+                void client
+                  .removeConnector(source, 'user')
+                  .then(() => refreshHealth())
+                  .catch((error: unknown) => {
+                    setActionError(
+                      error instanceof Error ? error.message : 'Connector disable failed',
+                    )
+                  })
+              }}
+              onConfirmPlan={applyPendingPlan}
+              onCancelPlan={() => {
+                setPendingPlan(undefined)
+                setPendingPlanQueue([])
+              }}
+              onTogglePlanFile={togglePlanFile}
+              onRestoreBackup={(backupId) => {
+                void client
+                  .rollbackConnector(backupId)
+                  .then((plan) =>
+                    setPendingPlan({
+                      plan,
+                      selectedFilePaths: plan.files.map((file) => file.displayPath),
+                    }),
+                  )
+                  .catch((error: unknown) => {
+                    setActionError(
+                      error instanceof Error ? error.message : 'Rollback preview failed',
+                    )
+                  })
+              }}
               loadState={loadState}
+            />
+          }
+          remotePanel={
+            <RemotePanel
+              hosts={remoteHosts}
+              sessions={sessions}
+              backendStatus={remoteBackendStatus}
+              pendingDeployPlan={remoteDeployPlan}
+              pendingDeployResult={remoteDeployResult}
+              deployBusy={remoteDeployBusy}
+              loadState={remoteLoadState}
+              lifecycleActionsAvailable={remoteLifecycleAvailable}
+              hostConfigActionsAvailable={writeActionsAvailable}
+              onPlanDeploy={planRemoteDeploy}
+              onExecuteDeploy={executeRemoteDeploy}
+              onStartRelay={startRemoteRelay}
+              onStopRelay={stopRemoteRelay}
+              onDismissPlan={() => {
+                setRemoteDeployPlan(undefined)
+                setRemoteDeployResult(undefined)
+                setRemoteDeployBusy(false)
+              }}
+              onAddHost={addRemoteHost}
+              onRemoveHost={removeRemoteHost}
             />
           }
           settingsPanel={
@@ -627,14 +1379,17 @@ export function NativeDashboardSurface() {
               displayLoadState={displayLoadState}
               displayError={displayError ?? undefined}
               fullscreenPreferenceSupported={fullscreenPreferenceSupported}
+              soundPlaybackSupported={soundPlaybackSupported}
               onDisplayChange={updateDisplay}
               shortcutLabel={SHORTCUT_LABEL}
               onSettingsChange={updateSettings}
               onPurgeHistory={() => setPurgeConfirmOpen(true)}
+              purgeScope={purgeScope}
+              onPurgeScopeChange={(patch) => setPurgeScope((current) => ({ ...current, ...patch }))}
               purgeConfirmOpen={purgeConfirmOpen}
               onPurgeConfirm={() => {
                 void client
-                  .purgeHistory()
+                  .purgeHistory(purgeScope)
                   .then(() => {
                     const endMs = Date.now()
                     const emptySeries = {
@@ -666,6 +1421,66 @@ export function NativeDashboardSurface() {
               }}
               onPurgeCancel={() => setPurgeConfirmOpen(false)}
               loadState={loadState}
+              soundThemes={soundThemes}
+              soundImportBusy={soundImportBusy}
+              soundImportMessage={soundImportMessage}
+              soundImportError={soundImportError}
+              onPreviewSoundTheme={(themeId, event) => {
+                const now = new Date()
+                const routing = soundRoutingFromSettings(settings)
+                void client
+                  .playSoundEvent({
+                    themeId,
+                    event,
+                    routing: {
+                      ...routing,
+                      enabled: true,
+                    },
+                    localMinute: now.getHours() * 60 + now.getMinutes(),
+                  })
+                  .then((result) => {
+                    if (!result.played || result.backendId === 'stub') {
+                      setSoundImportError(
+                        result.reason ?? 'Native sound playback is unavailable on this platform',
+                      )
+                      return
+                    }
+                    setSoundImportMessage('Preview played')
+                    setSoundImportError(undefined)
+                  })
+                  .catch((error: unknown) => {
+                    setSoundImportError(
+                      error instanceof Error ? error.message : 'Sound preview failed',
+                    )
+                  })
+              }}
+              onImportSoundPack={(file) => {
+                setSoundImportBusy(true)
+                setSoundImportMessage(undefined)
+                setSoundImportError(undefined)
+                void readFileAsBase64(file)
+                  .then((packBase64) =>
+                    client.importSoundPack({
+                      packBase64,
+                      install: true,
+                    }),
+                  )
+                  .then((result) => {
+                    setSoundImportMessage(result.message)
+                    return client.getSoundThemes()
+                  })
+                  .then((themes) => {
+                    setSoundThemes(themes)
+                  })
+                  .catch((error: unknown) => {
+                    setSoundImportError(
+                      error instanceof Error ? error.message : 'Sound pack import failed',
+                    )
+                  })
+                  .finally(() => {
+                    setSoundImportBusy(false)
+                  })
+              }}
             />
           }
         />
@@ -681,13 +1496,33 @@ export function NativeDashboardSurface() {
         onDisplayChange={updateDisplay}
         integrationOptions={state.adapters
           .map((adapter) => adapter.source)
-          .filter((source) => source !== 'unknown')}
-        selectedIntegration={onboardingIntegration}
-        onIntegrationChange={setOnboardingIntegration}
+          .filter((source) => source !== 'unknown' && source !== 'generic')}
+        detectedConnectors={detectedConnectors}
+        detectLoadState={detectLoadState}
+        detectError={detectError}
+        onGetStarted={runDetection}
+        connectSelections={connectSelections}
+        onConnectSelectionChange={setConnectSelections}
+        connectScope={connectScope}
+        onConnectScopeChange={setConnectScope}
+        pendingPlan={onboardingStep === 3 ? pendingPlan : undefined}
+        pendingPlanCount={pendingPlanQueue.length || (pendingPlan ? 1 : 0)}
+        applyProgress={onboardingStep === 3 ? applyProgress : undefined}
+        applyResult={onboardingStep === 3 ? applyResult : undefined}
+        onPreviewConnect={previewAllSelectedConnectors}
+        onTogglePlanFile={togglePlanFile}
+        onConfirmApply={() => {
+          applyPendingPlan()
+        }}
+        onSkipConnect={() => {
+          setPendingPlan(undefined)
+          setPendingPlanQueue([])
+          setOnboardingStep(4)
+        }}
         shortcutLabel={SHORTCUT_LABEL}
         autostartEnabled={settings.autostartEnabled}
         onAutostartChange={(autostartEnabled) => updateSettings({ autostartEnabled })}
-        onNext={() => setOnboardingStep((step) => Math.min(2, step + 1) as OnboardingStep)}
+        onNext={() => setOnboardingStep((step) => Math.min(4, step + 1) as OnboardingStep)}
         onBack={() => setOnboardingStep((step) => Math.max(0, step - 1) as OnboardingStep)}
         onSkip={closeOnboarding}
         onFinish={closeOnboarding}

@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "_comment": "TEMPLATE ONLY — not installed automatically. Review diff before applying. Merge into ~/.copilot/hooks/llm-notch.json (user) or .github/hooks/llm-notch.json (project). {{LLM_NOTCH_HELPER}} is replaced at install time with the absolute bundled helper path.",
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source copilotCli --vendor-event sessionStart --hook-mode",
+        "timeoutSec": 5
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source copilotCli --vendor-event preToolUse --hook-mode",
+        "timeoutSec": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source copilotCli --vendor-event postToolUse --hook-mode",
+        "timeoutSec": 5
+      }
+    ],
+    "permissionRequest": [
+      {
+        "type": "command",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source copilotCli --vendor-event permissionRequest --hook-mode",
+        "timeoutSec": 5
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source copilotCli --vendor-event agentStop --hook-mode",
+        "timeoutSec": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source copilotCli --vendor-event sessionEnd --hook-mode",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}

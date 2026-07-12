@@ -1,130 +1,194 @@
 import styles from '../../styles/dashboard.module.css'
 import type { IntegrationsPanelProps } from '../../types/contracts'
 import { agentLabel, formatRelativeTime } from '../../utils/formatters'
+import {
+  bestDetectedConnector,
+  connectorInstallationLayers,
+  effectiveConnectorStatusLabel,
+} from '../../utils/integrationLabels'
 import { EmptyState } from '../shared/EmptyState'
 import { LoadingState } from '../shared/LoadingState'
-
-const HEALTH_LABELS = {
-  healthy: 'Healthy',
-  degraded: 'Degraded',
-  offline: 'Offline',
-  unknown: 'Unknown',
-} as const
+import { ApplyProgressPanel } from './ApplyProgressPanel'
+import { BackupListPanel } from './BackupListPanel'
+import { ConnectorHealthBadge } from './ConnectorHealthBadge'
+import { DiffReviewPanel } from './DiffReviewPanel'
 
 export function IntegrationsPanel({
   integrations,
-  pendingDiff,
-  writeActionsAvailable = false,
-  onPreview,
-  onApply,
-  onRemove,
-  onConfirmDiff,
-  onCancelDiff,
+  catalog = [],
+  detectedConnectors = [],
+  backups,
+  pendingPlan,
+  applyProgress,
+  applyResult,
+  writeActionsAvailable = true,
+  onConnect,
+  onRepair,
+  onDisable,
+  onConfirmPlan,
+  onCancelPlan,
+  onTogglePlanFile,
+  onRestoreBackup,
   loadState = 'ready',
   nowMs = Date.now(),
 }: IntegrationsPanelProps & { nowMs?: number }) {
+  const liveCatalogIds = new Set<string>(
+    integrations.map(({ adapter }) => {
+      if (adapter.source === 'claudeCode') return 'claude-code'
+      if (adapter.source === 'gemini') return 'gemini-cli'
+      return adapter.source
+    }),
+  )
+  const plannedIntegrations = catalog.filter(
+    (entry) => entry.maturity === 'declaredUnverified' && !liveCatalogIds.has(entry.id),
+  )
+
   if (loadState === 'loading') {
     return <LoadingState label="Loading integrations…" />
   }
 
-  if (loadState === 'empty' || integrations.length === 0) {
+  if ((loadState === 'empty' || integrations.length === 0) && plannedIntegrations.length === 0) {
     return (
       <EmptyState
         title="No integrations"
-        description="Add Cursor, Claude Code, Codex, or Generic adapters from this panel."
+        description="Connect Cursor, Claude Code, or Codex from this panel after detection."
       />
     )
   }
 
   return (
     <div className={styles.panelGrid}>
-      <div className={styles.cardsRow}>
-        {integrations.map((integration) => {
-          const { adapter, health, lastEventAtMs, configured, previewConfig } = integration
-          const source = adapter.source
+      {integrations.length > 0 ? (
+        <section aria-labelledby="available-integrations-title">
+          <h2 id="available-integrations-title" className={styles.cardTitle}>
+            Available now
+          </h2>
+          <div className={styles.cardsRow}>
+            {integrations.map((integration) => {
+              const { adapter, status, statusDetail, lastEventAtMs, managedEntriesPresent } =
+                integration
+              const source = adapter.source
+              const detected = bestDetectedConnector(detectedConnectors, source)
+              const layers = connectorInstallationLayers(detected, status, lastEventAtMs)
+              const statusLabel = effectiveConnectorStatusLabel(status, detected)
 
-          return (
-            <article
-              key={source}
-              className={styles.card}
-              aria-label={`${agentLabel(source)} integration`}
-            >
-              <h3 className={styles.cardTitle}>{agentLabel(source)}</h3>
-              <p className={styles.muted}>
-                Health: <span className={styles.badgeInfo}>{HEALTH_LABELS[health]}</span>
-              </p>
-              <p className={styles.muted}>
-                Last event:{' '}
-                {lastEventAtMs ? formatRelativeTime(lastEventAtMs, nowMs) : 'No events yet'}
-              </p>
-              <p className={styles.muted}>Configured: {configured ? 'Yes' : 'No'}</p>
-              <section className={styles.capabilityGrid} aria-label="Capability matrix">
-                <span>Events: {adapter.events ? 'Yes' : 'No'}</span>
-                <span>Attention: {adapter.attention}</span>
-                <span>Decisions: {adapter.decisionResponse ? 'In-app' : 'Notify only'}</span>
-                <span>Context open: {adapter.contextOpen ? 'Yes' : 'No'}</span>
-                <span>Attribution: {adapter.processAttribution}</span>
-              </section>
-              {previewConfig ? (
-                <section aria-label="Config preview">
-                  <pre className={styles.diffBlock}>{previewConfig}</pre>
-                </section>
-              ) : null}
-              <div className={styles.actions}>
-                <button type="button" className={styles.button} onClick={() => onPreview(source)}>
-                  Preview
-                </button>
-                {writeActionsAvailable ? (
-                  <>
-                    <button
-                      type="button"
-                      className={styles.buttonPrimary}
-                      onClick={() => onApply(source)}
-                    >
-                      Apply reviewed plan
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.buttonDanger}
-                      onClick={() => onRemove(source)}
-                    >
-                      Remove
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </article>
-          )
-        })}
-      </div>
-
-      {pendingDiff ? (
-        <section className={styles.confirmDialog} aria-label="Integration diff confirmation">
-          <h3 className={styles.cardTitle}>
-            {writeActionsAvailable ? 'Confirm configuration change' : 'Read-only template preview'}
-          </h3>
-          <p className={styles.muted}>{pendingDiff.summary}</p>
-          <div className={styles.diffPreview}>
-            <p className={styles.metricLabel}>Before</p>
-            <pre className={styles.diffBlock}>{pendingDiff.before}</pre>
-            <p className={styles.metricLabel}>After</p>
-            <pre className={styles.diffBlock}>{pendingDiff.after}</pre>
-          </div>
-          <div className={styles.actions}>
-            <button type="button" className={styles.button} onClick={onCancelDiff}>
-              Cancel
-            </button>
-            <button type="button" className={styles.buttonPrimary} onClick={onConfirmDiff}>
-              {writeActionsAvailable ? 'Confirm apply' : 'Close preview'}
-            </button>
+              return (
+                <article
+                  key={source}
+                  className={styles.card}
+                  aria-label={`${agentLabel(source)} integration`}
+                >
+                  <h3 className={styles.cardTitle}>{agentLabel(source)}</h3>
+                  <ConnectorHealthBadge
+                    source={source}
+                    status={status}
+                    statusLabel={statusLabel}
+                    detail={statusDetail}
+                    detected={detected}
+                  />
+                  <section className={styles.capabilityGrid} aria-label="Installation state">
+                    <span>CLI: {layers.cli}</span>
+                    <span>Hook config: {layers.hookConfig}</span>
+                    <span>llm_notch hooks: {layers.managedHooks}</span>
+                    <span>Process: {layers.process}</span>
+                    <span>Events: {layers.traffic}</span>
+                  </section>
+                  <p className={styles.muted}>
+                    Last event:{' '}
+                    {lastEventAtMs ? formatRelativeTime(lastEventAtMs, nowMs) : 'No events yet'}
+                  </p>
+                  <p className={styles.muted}>
+                    llm_notch entries: {managedEntriesPresent ? 'Present' : 'Not installed'}
+                  </p>
+                  <section className={styles.capabilityGrid} aria-label="Capability matrix">
+                    <span>Events: {adapter.events ? 'Yes' : 'No'}</span>
+                    <span>Attention: {adapter.attention}</span>
+                    <span>Decisions: {adapter.decisionResponse ? 'In-app' : 'Notify only'}</span>
+                    <span>Context open: {adapter.contextOpen ? 'Yes' : 'No'}</span>
+                    <span>Attribution: {adapter.processAttribution}</span>
+                  </section>
+                  <div className={styles.actions}>
+                    {writeActionsAvailable ? (
+                      <>
+                        <button
+                          type="button"
+                          className={styles.buttonPrimary}
+                          onClick={() => onConnect(source)}
+                        >
+                          Connect
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.button}
+                          onClick={() => onRepair(source)}
+                        >
+                          Repair
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.buttonDanger}
+                          onClick={() => onDisable(source)}
+                        >
+                          Disable
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.button}
+                        onClick={() => onConnect(source)}
+                      >
+                        Preview plan
+                      </button>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
           </div>
         </section>
       ) : null}
 
-      <p className={styles.caveat}>
-        Preview is read-only. Automatic connector file writes are not available in this build; apply
-        reviewed templates manually.
-      </p>
+      {plannedIntegrations.length > 0 ? (
+        <section aria-labelledby="planned-integrations-title">
+          <h2 id="planned-integrations-title" className={styles.cardTitle}>
+            Planned integrations
+          </h2>
+          <p className={styles.muted}>
+            Catalog visibility is not an implementation claim. These agents cannot be connected yet.
+          </p>
+          <div className={styles.cardsRow}>
+            {plannedIntegrations.map((entry) => (
+              <article
+                key={entry.id}
+                className={styles.card}
+                aria-label={`${entry.displayName} planned integration`}
+              >
+                <h3 className={styles.cardTitle}>{entry.displayName}</h3>
+                <p className={styles.muted}>Planned · Catalog only</p>
+                <p className={styles.muted}>Adapter family: Not yet verified</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {pendingPlan ? (
+        <DiffReviewPanel
+          plan={pendingPlan.plan}
+          selectedFilePaths={pendingPlan.selectedFilePaths}
+          onToggleFile={(displayPath, selected) => onTogglePlanFile?.(displayPath, selected)}
+          onConfirm={onConfirmPlan}
+          onCancel={onCancelPlan}
+          confirmLabel={writeActionsAvailable ? 'Apply reviewed plan' : 'Close preview'}
+        />
+      ) : null}
+
+      {applyProgress && applyProgress.length > 0 ? (
+        <ApplyProgressPanel progress={applyProgress} result={applyResult} />
+      ) : null}
+
+      <BackupListPanel backups={backups} onRestore={onRestoreBackup} nowMs={nowMs} />
     </div>
   )
 }

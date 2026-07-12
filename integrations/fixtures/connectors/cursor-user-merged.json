@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "hooks/approve-network.sh",
+        "matcher": "curl|wget",
+        "failClosed": true
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "C:\\Apps\\llm-notch-hook.exe --source cursor --vendor-event sessionStart",
+        "timeout": 2
+      }
+    ]
+  }
+}

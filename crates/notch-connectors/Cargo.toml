@@ -1,0 +1,32 @@
+[package]
+name = "notch-connectors"
+description = "Connector detection, preview, merge, apply, health, repair, and rollback for llm_notch"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+notch-agent-catalog.workspace = true
+notch-protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+hex.workspace = true
+parking_lot.workspace = true
+chrono.workspace = true
+directories.workspace = true
+tracing.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

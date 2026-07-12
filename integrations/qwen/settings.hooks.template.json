@@ -1,0 +1,81 @@
+{
+  "_comment": "TEMPLATE FRAGMENT - merge only the hooks object into .qwen/settings.json or ~/.qwen/settings.json. Preserve unrelated settings. Qwen Code ships a Claude-compatible hook surface; the helper uses the qwen wire discriminator. {{LLM_NOTCH_HELPER}} is replaced with the bundled helper absolute path at install time.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-session-start",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source qwen --vendor-event SessionStart --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-pre-tool-use",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source qwen --vendor-event PreToolUse --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-post-tool-use",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source qwen --vendor-event PostToolUse --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-permission-request",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source qwen --vendor-event PermissionRequest --hook-mode",
+            "timeout": 120000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-stop",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source qwen --vendor-event Stop --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-session-end",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source qwen --vendor-event SessionEnd --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ]
+  }
+}

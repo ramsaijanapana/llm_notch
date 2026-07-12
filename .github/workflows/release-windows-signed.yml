@@ -1,0 +1,338 @@
+# Publish Authenticode-signed Windows installers, or (dispatch only) unsigned draft smoke builds.
+#
+# Signed path (default on app-v* tag push):
+#   - Fails closed when repository secrets are absent or empty.
+#   - Signs helper + app via scripts/signing/sign-windows.ps1 (custom signCommand hook).
+#   - Verifies every .exe/.msi reports Get-AuthenticodeSignature Status == Valid.
+#   - Uploads to a draft GitHub Release only after verification succeeds.
+#
+# Required repository secrets (OV / PFX path — see Tauri v2 Windows signing docs):
+#   https://v2.tauri.app/distribute/sign/windows/
+#
+#   | Repository secret              | Tauri doc name                 | Value |
+#   |--------------------------------|--------------------------------|-------|
+#   | WINDOWS_CERTIFICATE_BASE64     | WINDOWS_CERTIFICATE            | Base64-encoded .pfx (e.g. certutil -encode) |
+#   | WINDOWS_CERTIFICATE_PASSWORD   | WINDOWS_CERTIFICATE_PASSWORD   | PFX export password |
+#
+# Optional:
+#   SIGNING_TIMESTAMP_URL — RFC 3161 timestamp server (default: http://timestamp.digicert.com)
+#
+# Unsigned draft path (workflow_dispatch mode=draft-unsigned):
+#   - Never reads signing secrets; never claims signed success.
+#   - Produces unsigned NSIS/MSI for smoke review only.
+#
+# dry_run (workflow_dispatch): build artifacts without creating/uploading a GitHub Release.
+#
+# macOS signing/notarization is intentionally out of scope here (separate workflow).
+
+name: Publish signed Windows installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag; defaults to app-v<tauri version>
+        required: false
+        type: string
+      mode:
+        description: signed requires secrets; draft-unsigned is smoke-only
+        required: true
+        type: choice
+        default: signed
+        options:
+          - signed
+          - draft-unsigned
+      dry_run:
+        description: Build only — skip GitHub Release create/upload
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'app-v*'
+
+concurrency:
+  group: signed-windows-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'signed' }}
+  cancel-in-progress: false
+
+jobs:
+  relay-sidecars:
+    name: Relay sidecar (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+          - runner: macos-latest
+            target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - run: npm run native:prepare-relay -- --target ${{ matrix.target }}
+
+      - name: Verify relay sidecar artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          sidecar="src-tauri/binaries/llm-notch-relay-${{ matrix.target }}"
+          test -f "$sidecar"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-sidecar-${{ matrix.target }}
+          path: src-tauri/binaries/llm-notch-relay-${{ matrix.target }}
+          if-no-files-found: error
+
+  configure:
+    name: Resolve release plan
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      signing_gate: ${{ steps.signing_gate.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.version' src-tauri/tauri.conf.json)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "mode=signed" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+            echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+            if [ -n "${{ inputs.tag }}" ]; then
+              echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            else
+              echo "tag=app-v$version" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Fail closed without Authenticode secrets (signed mode)
+        id: signing_gate
+        if: steps.plan.outputs.mode == 'signed'
+        shell: bash
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          if [ -z "${WINDOWS_CERTIFICATE_BASE64:-}" ]; then
+            missing+=('WINDOWS_CERTIFICATE_BASE64')
+          fi
+          if [ -z "${WINDOWS_CERTIFICATE_PASSWORD:-}" ]; then
+            missing+=('WINDOWS_CERTIFICATE_PASSWORD')
+          fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Signed Windows publish blocked. Add repository secrets: ${missing[*]}. See https://v2.tauri.app/distribute/sign/windows/ and scripts/signing/README.md. Use workflow_dispatch mode=draft-unsigned for unsigned smoke builds."
+            exit 1
+          fi
+          echo "result=passed" >> "$GITHUB_OUTPUT"
+
+      - name: Record unsigned draft plan
+        id: unsigned_gate
+        if: steps.plan.outputs.mode == 'draft-unsigned'
+        shell: bash
+        run: |
+          echo "result=skipped" >> "$GITHUB_OUTPUT"
+          echo "::notice::draft-unsigned mode — artifacts will be UNSIGNED and must not be distributed as signed releases."
+
+  signed-windows:
+    name: Build and verify signed Windows installers
+    needs: [configure, relay-sidecars]
+    if: needs.configure.outputs.mode == 'signed' && needs.configure.outputs.signing_gate == 'passed'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Re-check signing credentials on runner
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -or
+              [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw 'Signing secrets missing on runner — aborting before build.'
+          }
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: relay-sidecar-*
+          path: src-tauri/binaries
+          merge-multiple: true
+
+      - run: npm run native:prepare-helper
+
+      - name: Sign bundled sidecars before packaging
+        shell: pwsh
+        run: |
+          ./scripts/signing/sign-windows.ps1 `
+            -ArtifactPath ./src-tauri/binaries/llm-notch-hook-x86_64-pc-windows-msvc.exe
+          ./scripts/signing/sign-windows.ps1 `
+            -ArtifactPath ./src-tauri/binaries/llm-notch-relay-x86_64-pc-windows-msvc.exe
+
+      - name: Build signed NSIS and MSI installers
+        shell: pwsh
+        env:
+          LLM_NOTCH_SKIP_HELPER_BUILD: '1'
+        run: npm run tauri -- build --config src-tauri/tauri.windows.signed.conf.json --bundles nsis,msi
+
+      - name: Verify every distributable signature
+        shell: pwsh
+        run: |
+          $artifacts = @(
+            './src-tauri/binaries/llm-notch-hook-x86_64-pc-windows-msvc.exe',
+            './src-tauri/binaries/llm-notch-relay-x86_64-pc-windows-msvc.exe',
+            './target/release/llm-notch-desktop.exe'
+          ) + @(Get-ChildItem ./target/release/bundle -Recurse -File | Where-Object {
+            $_.Extension -in @('.exe', '.msi')
+          } | Select-Object -ExpandProperty FullName)
+          if ($artifacts.Count -lt 5) { throw 'Expected hook, relay, application, NSIS, and MSI artifacts.' }
+          foreach ($artifact in $artifacts) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $artifact
+            if ($signature.Status -ne 'Valid') {
+              throw "Invalid signature for $artifact`: $($signature.Status)"
+            }
+          }
+          Write-Host 'All distributables report Valid Authenticode signatures.'
+
+      - name: Create or update draft release (signed)
+        if: needs.configure.outputs.dry_run != 'true'
+        shell: pwsh
+        run: |
+          $tag = '${{ needs.configure.outputs.tag }}'
+          $version = '${{ needs.configure.outputs.version }}'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --draft --title "LLM Notch v$version (Windows signed)" `
+              --notes @'
+          Authenticode-signed Windows installers (NSIS + MSI) and embedded hook + relay sidecars.
+
+          Signature verification passed in CI (Get-AuthenticodeSignature Status == Valid).
+          macOS publication uses its independent signing workflow.
+          '@
+          }
+          Get-ChildItem ./target/release/bundle -Recurse -File | Where-Object {
+            $_.Extension -in @('.exe', '.msi')
+          } | ForEach-Object {
+            gh release upload $tag $_.FullName --clobber
+          }
+
+      - name: Dry run complete (signed, no release upload)
+        if: needs.configure.outputs.dry_run == 'true'
+        shell: pwsh
+        run: Write-Host 'dry_run=true — signed artifacts built and verified; release upload skipped.'
+
+  draft-unsigned-windows:
+    name: Build unsigned Windows draft (smoke)
+    needs: [configure, relay-sidecars]
+    if: needs.configure.outputs.mode == 'draft-unsigned'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: relay-sidecar-*
+          path: src-tauri/binaries
+          merge-multiple: true
+
+      - run: npm run native:prepare-helper
+
+      - name: Build unsigned NSIS and MSI installers
+        shell: pwsh
+        env:
+          LLM_NOTCH_SKIP_HELPER_BUILD: '1'
+        run: npm run tauri -- build --bundles nsis,msi
+
+      - name: Assert artifacts are not Authenticode-signed
+        shell: pwsh
+        run: |
+          $artifacts = @(
+            './src-tauri/binaries/llm-notch-hook-x86_64-pc-windows-msvc.exe',
+            './src-tauri/binaries/llm-notch-relay-x86_64-pc-windows-msvc.exe',
+            './target/release/llm-notch-desktop.exe'
+          ) + @(Get-ChildItem ./target/release/bundle -Recurse -File | Where-Object {
+            $_.Extension -in @('.exe', '.msi')
+          } | Select-Object -ExpandProperty FullName)
+          foreach ($artifact in $artifacts) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $artifact
+            if ($signature.Status -eq 'Valid') {
+              throw "Unexpected Valid signature on unsigned draft artifact: $artifact"
+            }
+          }
+          Write-Host 'Confirmed draft artifacts are unsigned (no Valid Authenticode signature).'
+
+      - name: Create or update draft release (unsigned smoke)
+        if: needs.configure.outputs.dry_run != 'true'
+        shell: pwsh
+        run: |
+          $tag = '${{ needs.configure.outputs.tag }}'
+          $version = '${{ needs.configure.outputs.version }}'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --draft --prerelease --title "LLM Notch v$version (Windows unsigned draft)" `
+              --notes @'
+          **UNSIGNED** Windows installers (NSIS + MSI) — smoke/CI draft only.
+
+          These artifacts are **not** Authenticode-signed and must **not** be distributed as production releases.
+          SmartScreen will warn end users. Use the signed workflow after adding WINDOWS_CERTIFICATE_* secrets.
+          '@
+          }
+          Get-ChildItem ./target/release/bundle -Recurse -File | Where-Object {
+            $_.Extension -in @('.exe', '.msi')
+          } | ForEach-Object {
+            gh release upload $tag $_.FullName --clobber
+          }
+
+      - name: Dry run complete (unsigned draft, no release upload)
+        if: needs.configure.outputs.dry_run == 'true'
+        shell: pwsh
+        run: Write-Host 'dry_run=true — unsigned draft artifacts built; release upload skipped.'

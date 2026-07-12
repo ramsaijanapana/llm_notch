@@ -3,23 +3,31 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use crate::services::SharedTrayService;
 use notch_core::{
     AcknowledgeAttentionCommand, AppCore, AttentionCommand, Clock, IngestCommand,
     IntegrationHealthCommand, LifecycleEventCommand, ProcessRootCommand, SessionEndCommand,
     SessionStartCommand, SessionUpdateCommand, SqliteRepository, ToolEventCommand,
 };
-use notch_ipc::{IngestServerConfig, NormalizedIngest, SecurityCapabilities, start_ingest_server};
+use notch_decision::{DecisionBroker, DecisionWaitPayload, PendingDecisionWait};
+use notch_ipc::{
+    DecisionWaitPayload as IpcDecisionWaitPayload, IngestServerConfig, NormalizedIngest,
+    PendingDecisionWait as IpcDecisionWait, SecurityCapabilities, start_ingest_server,
+};
 use notch_metrics::MetricsEngine;
 use notch_protocol::{
     AdapterCapabilities, AgentSession, AgentSource, AttentionCapability, AttentionKind,
-    AttributionQuality, EventLevel, PublicSettings, STREAM_HEARTBEAT_INTERVAL_MS, SessionEventKind,
-    SessionStatus,
+    AttributionQuality, DecisionDeliveryState, DecisionKind, EventLevel, PublicSettings,
+    STREAM_HEARTBEAT_INTERVAL_MS, SessionEventKind, SessionStatus,
 };
 use parking_lot::Mutex;
 use tauri::async_runtime::JoinHandle;
+use tauri::{AppHandle, Manager, Wry};
 use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
+use crate::services::AlertNotifier;
+use crate::services::remote::RelaySessionEventIngest;
 use crate::stream::StreamHub;
 
 pub type DesktopCore = AppCore<SystemClock, SqliteRepository, StreamHub>;
@@ -36,12 +44,15 @@ pub struct HostState {
     core: Arc<DesktopCore>,
     metrics: MetricsEngine,
     stream_hub: Arc<StreamHub>,
+    decision_broker: Arc<DecisionBroker>,
     ipc_runtime_dir: Option<PathBuf>,
     ipc_status: Mutex<Option<IpcRuntimeStatus>>,
     metrics_paused: AtomicBool,
     shutting_down: AtomicBool,
     shutdown_tx: watch::Sender<bool>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
+    alert_notifier: Arc<AlertNotifier>,
+    tray_hooks: Mutex<Option<(AppHandle, SharedTrayService<Wry>)>>,
 }
 
 /// Production wall-clock implementation.
@@ -55,32 +66,80 @@ impl Clock for SystemClock {
 }
 
 impl HostState {
-    pub fn new(core: Arc<DesktopCore>, metrics: MetricsEngine, stream_hub: Arc<StreamHub>) -> Self {
-        Self::with_runtime_dir(core, metrics, stream_hub, None)
+    pub fn new(
+        core: Arc<DesktopCore>,
+        metrics: MetricsEngine,
+        stream_hub: Arc<StreamHub>,
+        decision_broker: Arc<DecisionBroker>,
+    ) -> Self {
+        Self::with_runtime_dir(core, metrics, stream_hub, decision_broker, None)
+    }
+
+    pub fn with_alert_notifier(
+        core: Arc<DesktopCore>,
+        metrics: MetricsEngine,
+        stream_hub: Arc<StreamHub>,
+        decision_broker: Arc<DecisionBroker>,
+        alert_notifier: Arc<AlertNotifier>,
+    ) -> Self {
+        Self::with_runtime_dir_and_notifier(
+            core,
+            metrics,
+            stream_hub,
+            decision_broker,
+            None,
+            alert_notifier,
+        )
     }
 
     pub fn with_runtime_dir(
         core: Arc<DesktopCore>,
         metrics: MetricsEngine,
         stream_hub: Arc<StreamHub>,
+        decision_broker: Arc<DecisionBroker>,
         ipc_runtime_dir: Option<PathBuf>,
+    ) -> Self {
+        Self::with_runtime_dir_and_notifier(
+            core,
+            metrics,
+            stream_hub,
+            decision_broker,
+            ipc_runtime_dir,
+            Arc::new(AlertNotifier::new()),
+        )
+    }
+
+    pub fn with_runtime_dir_and_notifier(
+        core: Arc<DesktopCore>,
+        metrics: MetricsEngine,
+        stream_hub: Arc<StreamHub>,
+        decision_broker: Arc<DecisionBroker>,
+        ipc_runtime_dir: Option<PathBuf>,
+        alert_notifier: Arc<AlertNotifier>,
     ) -> Self {
         let (shutdown_tx, _) = watch::channel(false);
         let state = Self {
             core,
             metrics,
             stream_hub,
+            decision_broker,
             ipc_runtime_dir,
             ipc_status: Mutex::new(None),
             metrics_paused: AtomicBool::new(false),
             shutting_down: AtomicBool::new(false),
             shutdown_tx,
             tasks: Mutex::new(Vec::new()),
+            alert_notifier,
+            tray_hooks: Mutex::new(None),
         };
         if let Err(error) = state.reconcile_metric_roots() {
             warn!(%error, "failed to reconcile restored process roots");
         }
         state
+    }
+
+    pub fn decision_broker(&self) -> &Arc<DecisionBroker> {
+        &self.decision_broker
     }
 
     pub fn stream_hub(&self) -> &Arc<StreamHub> {
@@ -147,6 +206,59 @@ impl HostState {
             .map_err(|error| error.to_string())
     }
 
+    pub fn purge_scoped(
+        &self,
+        scope: notch_protocol::PurgeScope,
+        app: &AppHandle,
+    ) -> Result<notch_protocol::PurgeResult, String> {
+        let mut result = self
+            .core
+            .purge_scoped(scope.clone())
+            .map_err(|error| error.to_string())?;
+        if scope.history {
+            self.metrics.clear_history();
+        }
+        if scope.connector_journal {
+            let (_applies, backups) =
+                crate::commands::integration::purge_connector_data(app, scope.include_backups)
+                    .map_err(|error| error.to_string())?;
+            result.backups_removed = u64::from(backups);
+        }
+        Ok(result)
+    }
+
+    pub fn active_alerts(&self) -> Vec<notch_core::ActiveAlert> {
+        self.core.active_alerts()
+    }
+
+    pub fn alert_notifier(&self) -> Arc<AlertNotifier> {
+        Arc::clone(&self.alert_notifier)
+    }
+
+    pub fn attach_tray_hooks(&self, app: AppHandle, tray: SharedTrayService<Wry>) {
+        *self.tray_hooks.lock() = Some((app, tray));
+    }
+
+    pub fn sync_presentation(&self) {
+        let hooks = self.tray_hooks.lock().clone();
+        let Some((app, tray)) = hooks else {
+            return;
+        };
+        self.sync_presentation_with(&app, &tray);
+    }
+
+    pub fn sync_presentation_with(&self, app: &AppHandle, tray: &SharedTrayService<Wry>) {
+        let island_visible = app
+            .get_webview_window("overlay")
+            .and_then(|window| window.is_visible().ok())
+            .unwrap_or(false);
+        if let Err(error) =
+            crate::synchronize_tray_model(app, self, tray, island_visible, &self.alert_notifier)
+        {
+            warn!(%error, "observability tray sync failed");
+        }
+    }
+
     pub fn set_metrics_paused(&self, paused: bool) {
         self.metrics_paused.store(paused, Ordering::Release);
     }
@@ -171,6 +283,110 @@ impl HostState {
         });
 
         self.tasks.lock().extend([ipc_task, metrics_task]);
+    }
+
+    pub fn start_remote_relay_supervisor(
+        self: &Arc<Self>,
+        app: AppHandle,
+        registry: crate::services::remote::SharedRemoteRegistry,
+    ) {
+        let mut shutdown = self.shutdown_tx.subscribe();
+        let host = Arc::clone(self);
+        let task = tauri::async_runtime::spawn(async move {
+            crate::services::remote_supervisor::run_relay_supervisor(
+                app,
+                host,
+                registry,
+                &mut shutdown,
+            )
+            .await;
+        });
+        self.tasks.lock().push(task);
+    }
+
+    /// Ingests a relay `SessionEvent` frame into AppCore and the stream hub.
+    /// Does not fabricate events — only persists what the remote relay reported.
+    pub fn ingest_relay_session_event(
+        &self,
+        event: &RelaySessionEventIngest,
+    ) -> Result<(), String> {
+        let source = parse_ipc_source(&event.source);
+        if source == AgentSource::Unknown {
+            return Err(format!(
+                "relay session event source `{}` is not recognized",
+                event.source
+            ));
+        }
+        if event.external_session_id.is_empty() {
+            return Err("relay session event session id must not be empty".into());
+        }
+        if event.summary.is_empty() {
+            return Err("relay session event summary must not be empty".into());
+        }
+
+        if self
+            .resolve_session(
+                &event.external_session_id,
+                source,
+                Some(&event.external_session_id),
+            )
+            .is_none()
+        {
+            self.core
+                .ingest(IngestCommand::SessionStart(SessionStartCommand {
+                    idempotency_key: Some(format!(
+                        "relay:{}:{}",
+                        event.host_id, event.external_session_id
+                    )),
+                    source,
+                    external_session_id: event.external_session_id.clone(),
+                    label: truncate_for_session_label(&event.summary),
+                    workspace_label: Some(format!("remote:{}", event.host_id)),
+                    status: SessionStatus::Running,
+                    occurred_at_ms: event.occurred_at_ms,
+                }))
+                .map_err(|error| error.to_string())?;
+        }
+
+        let level = relay_event_level(event.attention);
+        let command = if event.kind == Some(SessionEventKind::Attention) {
+            event.attention.map(|attention| {
+                IngestCommand::Attention(AttentionCommand {
+                    source,
+                    external_session_id: event.external_session_id.clone(),
+                    attention,
+                    level,
+                    summary: event.summary.clone(),
+                    occurred_at_ms: event.occurred_at_ms,
+                })
+            })
+        } else {
+            None
+        }
+        .unwrap_or_else(|| match event.kind {
+            Some(SessionEventKind::Tool) => IngestCommand::ToolEvent(ToolEventCommand {
+                source,
+                external_session_id: event.external_session_id.clone(),
+                level,
+                summary: event.summary.clone(),
+                tool_name: event.tool_name.clone(),
+                occurred_at_ms: event.occurred_at_ms,
+            }),
+            _ => IngestCommand::LifecycleEvent(LifecycleEventCommand {
+                source,
+                external_session_id: event.external_session_id.clone(),
+                level,
+                summary: event.summary.clone(),
+                occurred_at_ms: event.occurred_at_ms,
+            }),
+        });
+
+        self.core
+            .ingest(command)
+            .map_err(|error| error.to_string())?;
+        self.record_connector_traffic(source, event.occurred_at_ms);
+        self.sync_presentation();
+        Ok(())
     }
 
     pub fn begin_shutdown(&self) {
@@ -321,8 +537,18 @@ impl HostState {
 
     async fn run_ipc(self: Arc<Self>) {
         let mut shutdown = self.shutdown_tx.subscribe();
+        let (decision_tx, mut decision_rx) = tokio::sync::mpsc::channel(64);
+        let broker_for_confirm = Arc::clone(&self.decision_broker);
+        let broker_for_fail = Arc::clone(&self.decision_broker);
         let mut server = match start_ingest_server(IngestServerConfig {
             runtime_dir: self.ipc_runtime_dir.clone(),
+            decision_wait_tx: Some(decision_tx),
+            decision_delivery_confirm: Some(Arc::new(move |request_id| {
+                let _ = broker_for_confirm.confirm_delivery(request_id);
+            })),
+            decision_delivery_fail: Some(Arc::new(move |request_id, detail| {
+                let _ = broker_for_fail.fail_delivery(request_id, detail);
+            })),
         })
         .await
         {
@@ -359,14 +585,33 @@ impl HostState {
                     };
                     let (ingest, completion) = pending.into_parts();
                     let state = Arc::clone(&self);
+                    let presentation = Arc::clone(&self);
                     let result = match tauri::async_runtime::spawn_blocking(move || state.ingest_normalized(ingest)).await {
                         Ok(result) => result,
                         Err(error) => Err(format!("normalized ingest task failed: {error}")),
                     };
                     if let Err(error) = &result {
                         warn!(%error, "normalized ingest rejected");
+                    } else {
+                        presentation.sync_presentation();
                     }
                     let _ = completion.send(result);
+                }
+                ipc_wait = decision_rx.recv() => {
+                    let Some(IpcDecisionWait { payload, completion }) = ipc_wait else {
+                        continue;
+                    };
+                    let broker = Arc::clone(&self.decision_broker);
+                    let reply = broker
+                        .handle_wait(PendingDecisionWait {
+                            payload: convert_ipc_payload(payload),
+                        })
+                        .await;
+                    let _ = completion.send(notch_ipc::DecisionReplyWire {
+                        nonce: reply.nonce,
+                        stdout_json: reply.stdout_json,
+                        delivery_state: delivery_state_wire(reply.delivery_state),
+                    });
                 }
             }
         }
@@ -481,6 +726,7 @@ impl HostState {
         self.core
             .record_metrics(frame)
             .map_err(|error| error.to_string())?;
+        self.sync_presentation();
         debug!(at_ms, agent_samples, "metrics frame recorded");
         Ok(())
     }
@@ -545,9 +791,18 @@ impl HostState {
                 self.core
                     .ingest(command)
                     .map(|_| ())
-                    .map_err(|error| error.to_string())
+                    .map_err(|error| error.to_string())?;
+                self.record_connector_traffic(source, event.occurred_at_ms);
+                Ok(())
             }
         }
+    }
+
+    fn record_connector_traffic(&self, source: AgentSource, at_ms: i64) {
+        if source == AgentSource::Unknown {
+            return;
+        }
+        crate::commands::integration::record_connector_traffic(source, at_ms);
     }
 
     fn ingest_session_upsert(&self, incoming: AgentSession) -> Result<(), String> {
@@ -709,6 +964,13 @@ impl HostState {
                 .map_err(|error| error.to_string())?;
         }
 
+        if let Some(terminal) = incoming.verified_terminal.clone() {
+            self.core
+                .set_verified_terminal(&session_id, terminal)
+                .map_err(|error| error.to_string())?;
+        }
+
+        self.record_connector_traffic(source, occurred_at_ms);
         self.reconcile_metric_roots()
     }
 
@@ -730,40 +992,31 @@ impl HostState {
 }
 
 pub fn builtin_adapter_capabilities() -> Vec<AdapterCapabilities> {
-    vec![
-        AdapterCapabilities {
-            source: AgentSource::Cursor,
-            events: true,
-            attention: AttentionCapability::None,
-            decision_response: false,
-            context_open: false,
-            process_attribution: AttributionQuality::Unknown,
-        },
-        AdapterCapabilities {
-            source: AgentSource::ClaudeCode,
-            events: true,
-            attention: AttentionCapability::Partial,
-            decision_response: false,
-            context_open: false,
-            process_attribution: AttributionQuality::Unknown,
-        },
-        AdapterCapabilities {
-            source: AgentSource::Codex,
-            events: true,
-            attention: AttentionCapability::None,
-            decision_response: false,
-            context_open: false,
-            process_attribution: AttributionQuality::Unknown,
-        },
-        AdapterCapabilities {
-            source: AgentSource::Generic,
-            events: true,
-            attention: AttentionCapability::Full,
-            decision_response: false,
-            context_open: false,
-            process_attribution: AttributionQuality::Unknown,
-        },
-    ]
+    use notch_protocol::ContextOpenTier;
+
+    let mut caps = vec![
+        AdapterCapabilities::template(AgentSource::Cursor),
+        AdapterCapabilities::template(AgentSource::ClaudeCode),
+        AdapterCapabilities::template(AgentSource::Codex),
+        AdapterCapabilities::template(AgentSource::Gemini),
+        AdapterCapabilities::template(AgentSource::Qwen),
+        AdapterCapabilities::template(AgentSource::AntigravityCli),
+        AdapterCapabilities::template(AgentSource::CopilotCli),
+        AdapterCapabilities::template(AgentSource::Generic),
+    ];
+    for entry in caps.iter_mut() {
+        match entry.source {
+            AgentSource::Cursor
+            | AgentSource::ClaudeCode
+            | AgentSource::Codex
+            | AgentSource::Gemini => {
+                entry.context_open = true;
+                entry.context_open_tier = ContextOpenTier::AppActivate;
+            }
+            _ => {}
+        }
+    }
+    caps
 }
 
 pub fn register_builtin_adapters(core: &DesktopCore) -> Result<(), String> {
@@ -783,9 +1036,89 @@ pub fn register_builtin_adapters(core: &DesktopCore) -> Result<(), String> {
 fn attribution_for_source(source: AgentSource) -> AttributionQuality {
     match source {
         AgentSource::Cursor => AttributionQuality::Shared,
-        AgentSource::ClaudeCode | AgentSource::Codex => AttributionQuality::Heuristic,
-        AgentSource::Generic => AttributionQuality::Exact,
+        AgentSource::ClaudeCode | AgentSource::Codex | AgentSource::Gemini => {
+            AttributionQuality::Heuristic
+        }
+        AgentSource::Qwen
+        | AgentSource::AntigravityCli
+        | AgentSource::CopilotCli
+        | AgentSource::Generic => AttributionQuality::Exact,
         AgentSource::Unknown => AttributionQuality::Unknown,
+    }
+}
+
+fn convert_ipc_payload(payload: IpcDecisionWaitPayload) -> DecisionWaitPayload {
+    let vendor_context = payload
+        .vendor_context_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok());
+    DecisionWaitPayload {
+        nonce: payload.nonce,
+        source: parse_ipc_source(&payload.source),
+        vendor_event: payload.vendor_event,
+        external_session_id: payload.external_session_id,
+        session_id: payload.session_id,
+        decision_kind: parse_ipc_decision_kind(&payload.decision_kind),
+        summary: payload.summary,
+        has_actionable_payload: payload.has_actionable_payload,
+        respondable_hook: payload.respondable_hook,
+        tool_name: payload.tool_name,
+        connection_id: payload.connection_id,
+        vendor_context,
+        created_at_ms: payload.created_at_ms,
+    }
+}
+
+fn parse_ipc_source(raw: &str) -> AgentSource {
+    match raw {
+        "cursor" => AgentSource::Cursor,
+        "claudeCode" => AgentSource::ClaudeCode,
+        "codex" => AgentSource::Codex,
+        "gemini" => AgentSource::Gemini,
+        "antigravityCli" | "antigravity-cli" | "antigravity" | "agy" => AgentSource::AntigravityCli,
+        "copilotCli" | "copilot-cli" | "copilot" => AgentSource::CopilotCli,
+        "qwen" | "qwen-cli" | "qwencode" => AgentSource::Qwen,
+        "generic" => AgentSource::Generic,
+        _ => AgentSource::Unknown,
+    }
+}
+
+fn truncate_for_session_label(summary: &str) -> String {
+    use notch_protocol::MAX_SESSION_LABEL_LEN;
+    if summary.len() <= MAX_SESSION_LABEL_LEN {
+        return summary.to_string();
+    }
+    summary
+        .chars()
+        .take(MAX_SESSION_LABEL_LEN)
+        .collect::<String>()
+}
+
+fn relay_event_level(attention: Option<AttentionKind>) -> EventLevel {
+    if attention == Some(AttentionKind::Error) {
+        return EventLevel::Error;
+    }
+    if attention == Some(AttentionKind::Permission) || attention == Some(AttentionKind::Approval) {
+        return EventLevel::Warning;
+    }
+    EventLevel::Info
+}
+
+fn parse_ipc_decision_kind(raw: &str) -> DecisionKind {
+    match raw {
+        "approval" => DecisionKind::Approval,
+        "question" => DecisionKind::Question,
+        _ => DecisionKind::Permission,
+    }
+}
+
+fn delivery_state_wire(state: DecisionDeliveryState) -> String {
+    match state {
+        DecisionDeliveryState::Pending => "pending".into(),
+        DecisionDeliveryState::Delivered => "delivered".into(),
+        DecisionDeliveryState::EffectObserved => "effectObserved".into(),
+        DecisionDeliveryState::Expired => "expired".into(),
+        DecisionDeliveryState::Failed => "failed".into(),
     }
 }
 
@@ -809,12 +1142,16 @@ mod tests {
                     selected_display: None,
                     show_over_fullscreen: false,
                     history_retention_hours: 24,
+                    alert_sound_enabled: false,
+                    selected_sound_theme_id: None,
+                    sound_routing: notch_protocol::SoundRouting::default(),
                 },
             )
             .unwrap(),
         );
         register_builtin_adapters(&core).unwrap();
-        HostState::new(core, MetricsEngine::new(), stream)
+        let decision_broker = Arc::new(DecisionBroker::in_memory().expect("broker"));
+        HostState::new(core, MetricsEngine::new(), stream, decision_broker)
     }
 
     fn generic_session(
@@ -835,6 +1172,7 @@ mod tests {
             last_event_at_ms: at_ms,
             ended_at_ms: None,
             process_root,
+            verified_terminal: None,
             latest_metric: None,
         }
     }
@@ -950,5 +1288,186 @@ mod tests {
         assert!(state.metrics_paused());
         state.set_metrics_paused(false);
         assert!(!state.metrics_paused());
+    }
+
+    #[test]
+    fn relay_session_event_ingest_creates_session_and_timeline_event() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-42".into(),
+                source: "codex".into(),
+                summary: "Remote tool finished".into(),
+                occurred_at_ms: 1_700_000_000_000,
+                kind: None,
+                tool_name: None,
+                attention: None,
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-session-42")
+            .expect("remote session");
+        assert_eq!(session.source, AgentSource::Codex);
+        assert_eq!(session.workspace_label.as_deref(), Some("remote:dev-box"));
+
+        let events = state
+            .session_event_page(&session.id, None, 10)
+            .expect("session events");
+        assert!(
+            events
+                .events
+                .iter()
+                .any(|event| event.summary == "Remote tool finished")
+        );
+    }
+
+    #[test]
+    fn relay_session_event_ingest_uses_tool_metadata_when_present() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-tool".into(),
+                source: "codex".into(),
+                summary: "Executed cargo test".into(),
+                occurred_at_ms: 1_700_000_000_100,
+                kind: Some(SessionEventKind::Tool),
+                tool_name: Some("run_command".into()),
+                attention: None,
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-session-tool")
+            .expect("remote session");
+        let events = state
+            .session_event_page(&session.id, None, 10)
+            .expect("session events");
+        let tool_event = events
+            .events
+            .iter()
+            .find(|event| event.summary == "Executed cargo test")
+            .expect("tool event");
+        assert_eq!(tool_event.kind, SessionEventKind::Tool);
+        assert_eq!(tool_event.tool_name.as_deref(), Some("run_command"));
+    }
+
+    #[test]
+    fn relay_session_event_ingest_uses_attention_when_present() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-attn".into(),
+                source: "claudeCode".into(),
+                summary: "Approve shell command".into(),
+                occurred_at_ms: 1_700_000_000_200,
+                kind: Some(SessionEventKind::Attention),
+                tool_name: None,
+                attention: Some(AttentionKind::Permission),
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-session-attn")
+            .expect("remote session");
+        assert_eq!(session.attention, AttentionKind::Permission);
+        let events = state
+            .session_event_page(&session.id, None, 10)
+            .expect("session events");
+        let attention_event = events
+            .events
+            .iter()
+            .find(|event| event.summary == "Approve shell command")
+            .expect("attention event");
+        assert_eq!(attention_event.kind, SessionEventKind::Attention);
+    }
+
+    #[test]
+    fn relay_session_event_without_attention_metadata_falls_back_to_lifecycle() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-fallback".into(),
+                source: "codex".into(),
+                summary: "Attention required".into(),
+                occurred_at_ms: 1_700_000_000_300,
+                kind: Some(SessionEventKind::Attention),
+                tool_name: None,
+                attention: None,
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-session-fallback")
+            .expect("remote session");
+        let events = state
+            .session_event_page(&session.id, None, 10)
+            .expect("session events");
+        let event = events
+            .events
+            .iter()
+            .find(|event| event.summary == "Attention required")
+            .expect("lifecycle fallback event");
+        assert_eq!(event.kind, SessionEventKind::Lifecycle);
+    }
+
+    #[test]
+    fn relay_session_event_ingest_accepts_catalog_wire_sources() {
+        let state = test_state();
+        state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-copilot-1".into(),
+                source: "copilotCli".into(),
+                summary: "Copilot finished".into(),
+                occurred_at_ms: 1_700_000_000_200,
+                kind: Some(SessionEventKind::Lifecycle),
+                tool_name: None,
+                attention: None,
+            })
+            .expect("relay ingest");
+
+        let session = state
+            .snapshot()
+            .sessions
+            .into_iter()
+            .find(|session| session.external_session_id == "remote-copilot-1")
+            .expect("remote session");
+        assert_eq!(session.source, AgentSource::CopilotCli);
+    }
+
+    #[test]
+    fn relay_session_event_rejects_unknown_source() {
+        let state = test_state();
+        let error = state
+            .ingest_relay_session_event(&RelaySessionEventIngest {
+                host_id: "dev-box".into(),
+                external_session_id: "remote-session-42".into(),
+                source: "not-a-real-agent".into(),
+                summary: "Remote tool finished".into(),
+                occurred_at_ms: 1_700_000_000_000,
+                kind: None,
+                tool_name: None,
+                attention: None,
+            })
+            .unwrap_err();
+        assert!(error.contains("not recognized"));
+        assert!(state.snapshot().sessions.is_empty());
     }
 }

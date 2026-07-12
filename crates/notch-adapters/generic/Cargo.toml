@@ -1,0 +1,18 @@
+[package]
+name = "notch-adapters-generic"
+description = "Generic ingest protocol adapter: versioned examples and capability declarations"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+notch-protocol.workspace = true
+notch-ipc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

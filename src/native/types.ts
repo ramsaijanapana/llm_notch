@@ -1,10 +1,54 @@
 import type {
   AdapterCapabilities,
+  AgentCatalogEntry,
   AppSnapshot,
+  BackupJournalEntry,
+  ConnectorApplyResult,
+  ConnectorHealthReport,
+  ConnectorPlanPreview,
+  ConnectorScope,
+  ConnectorUserStatus,
+  ContextOpenTier,
+  DecisionRequest,
+  DecisionResponse,
+  DecisionResponseRecord,
+  DetectedConnector,
+  HealthProbeResult,
+  ImportSoundPackRequest,
   PublicSettings,
+  QuotaSnapshotView,
+  RemoteBackendStatus,
+  RemoteConnectionStatusView,
+  RemoteDeploymentPlanView,
+  RemoteDeploymentResultView,
+  RemoteHostConfigInput,
+  RemoteHostView,
   SessionEvent,
+  SoundEvent,
+  SoundPackValidation,
+  SoundPlayRequest,
+  SoundPlayResult,
+  SoundRouting,
+  SoundRoutingPreview,
+  SoundTheme,
   StreamFrame,
 } from './contracts.ts'
+
+export type {
+  AgentCatalogEntry,
+  BackupJournalEntry,
+  ConnectorHealthEntry,
+  ConnectorHealthReport,
+  ConnectorPlanPreview,
+  ConnectorUserStatus,
+  DecisionRequest,
+  DecisionResponse,
+  DecisionResponseRecord,
+  DetectedConnector,
+  HealthProbeResult,
+} from './contracts.ts'
+
+export { mapProbesToUserStatus } from './contracts.ts'
 
 export type NativeClientMode = 'tauri' | 'preview'
 
@@ -20,27 +64,23 @@ export interface StreamSubscription {
   unsubscribe(): Promise<void>
 }
 
-export type IntegrationHealthStatus = 'healthy' | 'degraded' | 'unavailable'
+/** @deprecated Use ConnectorUserStatus from contracts.ts */
+export type IntegrationHealthStatus = ConnectorUserStatus
 
+/** @deprecated Use ConnectorHealthEntry from contracts.ts */
 export interface IntegrationHealthEntry {
   source: AdapterCapabilities['source']
-  status: IntegrationHealthStatus
+  status: ConnectorUserStatus
+  probes: HealthProbeResult[]
   capabilities: AdapterCapabilities
   detail?: string
 }
 
-export interface IntegrationHealthReport {
-  checkedAtMs: number
-  overall: IntegrationHealthStatus
-  adapters: IntegrationHealthEntry[]
-}
+/** @deprecated Use ConnectorHealthReport from contracts.ts */
+export type IntegrationHealthReport = ConnectorHealthReport
 
-export interface ConnectorPreview {
-  planId: string
-  source: AdapterCapabilities['source']
-  summary: string
-  expiresAtMs: number
-}
+/** @deprecated Use ConnectorPlanPreview from contracts.ts */
+export type ConnectorPreview = ConnectorPlanPreview
 
 export type NativeHistoryRange = '15m' | '1h' | '24h'
 
@@ -94,20 +134,43 @@ export interface SessionEventPage {
   hasMore: boolean
 }
 
+export interface OpenSessionResult {
+  contextOpenTier: ContextOpenTier
+  activated: boolean
+  message?: string
+}
+
 export type StreamFrameHandler = (frame: StreamFrame) => void
 export type StreamErrorHandler = (error: Error) => void
+export type RemoteConnectionChangeHandler = (status: RemoteConnectionStatusView) => void
+
+export interface RemoteConnectionSubscription {
+  unsubscribe(): Promise<void>
+}
+
+export type ConnectorHealthChangeHandler = () => void
+
+export interface ConnectorHealthSubscription {
+  unsubscribe(): Promise<void>
+}
 
 export interface NativeClient {
   readonly mode: NativeClientMode
 
   bootstrap(): Promise<BootstrapResult>
   subscribe(onFrame: StreamFrameHandler, onError: StreamErrorHandler): Promise<StreamSubscription>
+  subscribeRemoteConnectionChanges(
+    onChange: RemoteConnectionChangeHandler,
+  ): Promise<RemoteConnectionSubscription>
+  subscribeConnectorHealthChanges(
+    onChange: ConnectorHealthChangeHandler,
+  ): Promise<ConnectorHealthSubscription>
   openDashboard(): Promise<void>
-  openSession(sessionId: string): Promise<void>
+  openSession(sessionId: string): Promise<OpenSessionResult>
   setOverlayMode(mode: OverlayMode): Promise<void>
   acknowledgeLocalAttention(sessionId: string): Promise<void>
   updateSettings(settings: PublicSettings): Promise<PublicSettings>
-  purgeHistory(): Promise<void>
+  purgeHistory(scope?: import('./contracts.ts').PurgeScope): Promise<void>
   getHistory(range: NativeHistoryRange): Promise<NativeHistoryResponse>
   getSessionEvents(
     sessionId: string,
@@ -115,8 +178,48 @@ export interface NativeClient {
     limit?: number,
   ): Promise<SessionEventPage>
   listDisplays(): Promise<NativeDisplayOption[]>
-  getIntegrationHealth(): Promise<IntegrationHealthReport>
-  previewConnector(source: AdapterCapabilities['source']): Promise<ConnectorPreview>
+  getIntegrationHealth(): Promise<ConnectorHealthReport>
+  listAgentCatalog(): Promise<AgentCatalogEntry[]>
+  listQuotaSnapshots(): Promise<QuotaSnapshotView[]>
+  listRemoteHosts(): Promise<RemoteHostView[]>
+  upsertRemoteHost(config: RemoteHostConfigInput): Promise<RemoteHostView>
+  removeRemoteHost(hostId: string): Promise<void>
+  getRemoteBackendStatus(): Promise<RemoteBackendStatus>
+  previewRemoteDeploy(hostId: string): Promise<RemoteDeploymentPlanView>
+  executeRemoteDeploy(hostId: string): Promise<RemoteDeploymentResultView>
+  startRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView>
+  stopRemoteRelay(hostId: string): Promise<RemoteConnectionStatusView>
+  getRemoteConnectionStatus(hostId: string): Promise<RemoteConnectionStatusView>
+  getSoundThemes(): Promise<SoundTheme[]>
+  previewSoundRouting(request: {
+    routing: SoundRouting
+    event: SoundEvent
+    agent?: string
+    localMinute: number
+  }): Promise<SoundRoutingPreview>
+  playSoundEvent(request: SoundPlayRequest): Promise<SoundPlayResult>
+  importSoundPack(request: ImportSoundPackRequest): Promise<SoundPackValidation>
+  detectConnectors(): Promise<DetectedConnector[]>
+  previewConnector(
+    source: AdapterCapabilities['source'],
+    scope?: ConnectorScope,
+  ): Promise<ConnectorPlanPreview>
+  applyConnectorChange(
+    planId: string,
+    selectedDisplayPaths?: string[],
+  ): Promise<ConnectorApplyResult>
+  removeConnector(
+    source: AdapterCapabilities['source'],
+    scope?: ConnectorScope,
+  ): Promise<ConnectorApplyResult>
+  repairConnector(
+    source: AdapterCapabilities['source'],
+    scope?: ConnectorScope,
+  ): Promise<ConnectorPlanPreview>
+  rollbackConnector(backupId: string): Promise<ConnectorPlanPreview>
+  listConnectorBackups(): Promise<BackupJournalEntry[]>
+  getPendingDecisions(): Promise<DecisionRequest[]>
+  respondDecision(requestId: string, response: DecisionResponse): Promise<DecisionResponseRecord>
 }
 
 export interface CreateNativeClientOptions {

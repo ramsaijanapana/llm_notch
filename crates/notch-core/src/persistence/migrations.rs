@@ -130,7 +130,79 @@ UPDATE schema_version SET version = 2;
 COMMIT;
 "#;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 2;
+pub const MIGRATION_003: &str = r#"
+BEGIN IMMEDIATE;
+
+CREATE TABLE remote_hosts (
+    id TEXT PRIMARY KEY,
+    config_json TEXT NOT NULL,
+    updated_at_ms INTEGER NOT NULL
+);
+
+UPDATE schema_version SET version = 3;
+COMMIT;
+"#;
+
+pub const MIGRATION_004: &str = r#"
+BEGIN IMMEDIATE;
+
+ALTER TABLE sessions ADD COLUMN verified_terminal_json TEXT;
+
+UPDATE schema_version SET version = 4;
+COMMIT;
+"#;
+
+/// Backfill pre-wave-10 `Generic` sessions when `sessionStart` labels preserved the wire source.
+/// Skips rows that would violate `UNIQUE(source, external_session_id)`.
+pub const MIGRATION_005: &str = r#"
+BEGIN IMMEDIATE;
+
+UPDATE sessions
+SET source = 'Qwen'
+WHERE source = 'Generic'
+  AND lower(trim(label)) = 'qwen session'
+  AND NOT EXISTS (
+    SELECT 1 FROM sessions typed
+    WHERE typed.source = 'Qwen'
+      AND typed.external_session_id = sessions.external_session_id
+      AND typed.id != sessions.id
+  );
+
+UPDATE sessions
+SET source = 'AntigravityCli'
+WHERE source = 'Generic'
+  AND lower(trim(label)) IN (
+    'antigravitycli session',
+    'antigravity-cli session',
+    'antigravity session'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM sessions typed
+    WHERE typed.source = 'AntigravityCli'
+      AND typed.external_session_id = sessions.external_session_id
+      AND typed.id != sessions.id
+  );
+
+UPDATE sessions
+SET source = 'CopilotCli'
+WHERE source = 'Generic'
+  AND lower(trim(label)) IN (
+    'copilotcli session',
+    'copilot-cli session',
+    'copilot session'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM sessions typed
+    WHERE typed.source = 'CopilotCli'
+      AND typed.external_session_id = sessions.external_session_id
+      AND typed.id != sessions.id
+  );
+
+UPDATE schema_version SET version = 5;
+COMMIT;
+"#;
+
+pub const CURRENT_SCHEMA_VERSION: i32 = 5;
 
 pub fn apply_migrations(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
     let version: Option<i32> = conn
@@ -146,8 +218,20 @@ pub fn apply_migrations(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
         version = Some(1);
     }
 
-    if version.unwrap_or_default() < CURRENT_SCHEMA_VERSION {
+    if version.unwrap_or_default() < 2 {
         conn.execute_batch(MIGRATION_002)?;
+    }
+
+    if version.unwrap_or_default() < 3 {
+        conn.execute_batch(MIGRATION_003)?;
+    }
+
+    if version.unwrap_or_default() < 4 {
+        conn.execute_batch(MIGRATION_004)?;
+    }
+
+    if version.unwrap_or_default() < 5 {
+        conn.execute_batch(MIGRATION_005)?;
     }
 
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;

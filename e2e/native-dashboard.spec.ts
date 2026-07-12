@@ -17,7 +17,7 @@ test.describe('Native dashboard surface', () => {
     )
 
     await selectDashboardTab(page, /integrations/i)
-    await expect(page.getByText(/read-only template/i).first()).toBeVisible()
+    await expect(page.getByText(/llm_notch entries/i).first()).toBeVisible()
 
     await selectDashboardTab(page, /settings/i)
     await expect(page.getByLabel(/show island overlay/i)).toBeVisible()

@@ -1,0 +1,7 @@
+{
+  "thread_id": "codex-thread-abc",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "model": "gpt-5.4",
+  "turn_id": "turn-13"
+}

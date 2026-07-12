@@ -1,22 +1,26 @@
 //! Native Tauri 2 host for llm_notch.
 
 mod commands;
+mod context;
+pub mod runtime;
 mod services;
 mod state;
 mod stream;
-mod window;
+pub mod window;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use notch_core::{AppCore, SqliteRepository};
+use notch_decision::DecisionBroker;
 use notch_protocol::PublicSettings;
 use parking_lot::Mutex;
 use services::global_shortcut::ShortcutHandler;
+use services::remote::{DesktopRemoteRegistry, RemoteRegistryConfig, SharedRemoteRegistry};
 use services::tray::TrayActionHandler;
 use services::{
-    AutostartService, BACKGROUND_LAUNCH_ARG, DEFAULT_DASHBOARD_SHORTCUT, GlobalShortcutService,
-    SharedTrayService, TrayMenuAction, TrayMenuModel, TrayService,
+    AlertNotifier, AutostartService, BACKGROUND_LAUNCH_ARG, DEFAULT_DASHBOARD_SHORTCUT,
+    GlobalShortcutService, SharedTrayService, TrayMenuAction, TrayMenuModel, TrayService,
 };
 use state::{HostState, SystemClock, register_builtin_adapters};
 use stream::StreamHub;
@@ -41,6 +45,7 @@ struct DesktopTrayActions {
     host: Arc<HostState>,
     windows: SharedWindowCoordinator,
     tray: SharedTrayService<Wry>,
+    alert_notifier: Arc<AlertNotifier>,
 }
 
 impl TrayActionHandler for DesktopTrayActions {
@@ -98,9 +103,13 @@ impl DesktopTrayActions {
     }
 
     fn update_tray_model(&self, island_visible: bool) {
-        if let Err(error) =
-            synchronize_tray_model(&self.app, &self.host, &self.tray, island_visible)
-        {
+        if let Err(error) = synchronize_tray_model(
+            &self.app,
+            &self.host,
+            &self.tray,
+            island_visible,
+            &self.alert_notifier,
+        ) {
             warn!(%error, "tray menu update failed");
         }
     }
@@ -111,14 +120,22 @@ pub(crate) fn synchronize_tray_model(
     host: &HostState,
     tray: &SharedTrayService<Wry>,
     island_visible: bool,
+    alert_notifier: &AlertNotifier,
 ) -> Result<(), String> {
     let mut tray = tray
         .lock()
         .map_err(|_| "tray service lock poisoned".to_string())?;
+    let themes_root = services::sound_theme::themes_root_from_app(app)?;
+    let settings = host.settings();
+    let sound_ctx = services::alerts::sound_context_from_settings(&settings, &themes_root);
+    let snapshot = host.snapshot();
+    let resource_alert =
+        alert_notifier.observe(&host.active_alerts(), &snapshot.sessions, &sound_ctx);
     let model = tray
         .model()
         .clone()
-        .synchronize(host.metrics_paused(), island_visible);
+        .synchronize(host.metrics_paused(), island_visible)
+        .with_resource_alert(resource_alert);
     tray.update_model(app, model)
         .map_err(|error| error.to_string())
 }
@@ -160,7 +177,7 @@ pub fn run() {
             commands::bootstrap::get_session_events,
             commands::overlay::set_overlay_mode,
             commands::overlay::open_dashboard,
-            commands::overlay::open_session,
+            commands::context::open_session,
             commands::overlay::acknowledge_attention,
             commands::settings::get_settings,
             commands::settings::list_displays,
@@ -168,32 +185,61 @@ pub fn run() {
             commands::settings::purge_history,
             commands::settings::set_startup_enabled,
             commands::settings::set_global_shortcut,
+            commands::catalog::list_agent_catalog,
+            commands::services::list_quota_snapshots,
+            commands::services::get_sound_themes,
+            commands::services::preview_sound_routing,
+            commands::services::play_sound_event,
+            commands::services::import_sound_pack,
+            commands::remote::list_remote_hosts,
+            commands::remote::upsert_remote_host,
+            commands::remote::remove_remote_host,
+            commands::remote::get_remote_backend_status,
+            commands::remote::preview_remote_deploy,
+            commands::remote::execute_remote_deploy,
+            commands::remote::start_remote_relay,
+            commands::remote::stop_remote_relay,
+            commands::remote::get_remote_connection_status,
             commands::integration::integration_health,
             commands::integration::preview_connector_change,
             commands::integration::apply_connector_change,
             commands::integration::remove_connector,
+            commands::integration::repair_connector,
+            commands::integration::rollback_connector,
             commands::integration::connector_health,
+            commands::integration::detect_connectors,
+            commands::integration::list_connector_backups,
+            commands::decision::list_pending_decisions,
+            commands::decision::submit_decision,
         ])
         .setup(|app| {
             let database_path = application_database_path(app.handle())?;
             let stream_hub = Arc::new(StreamHub::default());
             let repository = Arc::new(SqliteRepository::open(&database_path)?);
             harden_database_file(&database_path)?;
+            let decision_broker = Arc::new(
+                DecisionBroker::open(&database_path).map_err(|error| anyhow::anyhow!(error))?,
+            );
             let core = Arc::new(AppCore::new(
                 SystemClock,
-                repository,
+                Arc::clone(&repository),
                 Arc::clone(&stream_hub),
                 default_settings(),
             )?);
             register_builtin_adapters(&core).map_err(anyhow::Error::msg)?;
 
-            let host = Arc::new(HostState::new(
+            let alert_notifier = Arc::new(AlertNotifier::new());
+            let host = Arc::new(HostState::with_runtime_dir_and_notifier(
                 Arc::clone(&core),
                 notch_metrics::MetricsEngine::new(),
                 Arc::clone(&stream_hub),
+                Arc::clone(&decision_broker),
+                None,
+                Arc::clone(&alert_notifier),
             ));
             let windows = Arc::new(Mutex::new(WindowCoordinator::new(app.handle().clone())));
             app.manage(Arc::clone(&host));
+            app.manage(Arc::clone(&decision_broker));
             app.manage(Arc::clone(&windows));
 
             let shortcuts = Arc::new(StdMutex::new(GlobalShortcutService::<Wry>::default()));
@@ -266,6 +312,7 @@ pub fn run() {
                     host: Arc::clone(&host),
                     windows: Arc::clone(&windows),
                     tray: Arc::clone(&tray),
+                    alert_notifier: Arc::clone(&alert_notifier),
                 });
                 let tray_model = TrayMenuModel {
                     island_visible: app
@@ -291,6 +338,22 @@ pub fn run() {
                 warn!("system tray unavailable because no application icon was generated");
             }
             app.manage(Arc::clone(&tray));
+            host.attach_tray_hooks(app.handle().clone(), Arc::clone(&tray));
+
+            let remote_registry: SharedRemoteRegistry = Arc::new(Mutex::new(
+                DesktopRemoteRegistry::with_config_and_repository(
+                    RemoteRegistryConfig::new(
+                        services::remote::detect_ssh_executable(),
+                        services::remote::detect_scp_executable(),
+                        runtime::relay_path::resolve_relay_binary_path(app.handle()),
+                    )
+                    .with_relay_binaries_dir(runtime::relay_path::resolve_relay_binaries_directory(
+                        app.handle(),
+                    )),
+                    Some(repository),
+                ),
+            ));
+            app.manage(Arc::clone(&remote_registry));
 
             if let Err(error) =
                 AutostartService::sync_with_settings(app.handle(), host.settings().autostart_enabled)
@@ -298,7 +361,19 @@ pub fn run() {
                 warn!(%error, "could not synchronize autostart state");
             }
 
+            let initial_snapshot = host.snapshot();
+            if let Err(error) = commands::integration::initialize_connector_manager(
+                app.handle(),
+                &initial_snapshot.sessions,
+            ) {
+                warn!(%error, "connector manager initialization failed");
+            }
+
             host.start_background();
+            host.start_remote_relay_supervisor(
+                app.handle().clone(),
+                Arc::clone(&remote_registry),
+            );
             let signal_host = Arc::clone(&host);
             let signal_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -307,11 +382,16 @@ pub fn run() {
                     signal_app.exit(0);
                 }
             });
-            let initial_snapshot = host.snapshot();
+            let helper_path = runtime::helper_path::resolve_helper_path(app.handle());
+            let relay_path = runtime::relay_path::resolve_relay_binary_path(app.handle());
             info!(
                 protocol_version = notch_protocol::PROTOCOL_VERSION,
                 captured_at_ms = initial_snapshot.captured_at_ms,
                 database = %database_path.display(),
+                helper = %helper_path.display(),
+                helper_exists = helper_path.is_file(),
+                relay = %relay_path.display(),
+                relay_exists = relay_path.is_file(),
                 windows = ?app.webview_windows().keys().collect::<Vec<_>>(),
                 "llm_notch desktop host initialized"
             );
@@ -337,6 +417,7 @@ pub fn run() {
                             &host,
                             &tray,
                             false,
+                            &host.alert_notifier(),
                         ) {
                             warn!(%error, "tray menu update after overlay close failed");
                         }
@@ -388,6 +469,9 @@ fn default_settings() -> PublicSettings {
         selected_display: None,
         show_over_fullscreen: false,
         history_retention_hours: 24,
+        alert_sound_enabled: false,
+        selected_sound_theme_id: None,
+        sound_routing: notch_protocol::SoundRouting::default(),
     }
 }
 

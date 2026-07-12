@@ -246,11 +246,13 @@ pub fn compute_aggregate(
     let mut cpu = MetricAvailability::Available;
     let mut io = io_quality;
     let mut reasons = Vec::new();
+    let mut contributed = 0_u32;
 
     for tree in session_metrics.values() {
         if tree.quality.cpu == MetricAvailability::Unavailable {
             continue;
         }
+        contributed += 1;
         cpu_core_percent += tree.cpu_core_percent;
         rss_bytes += tree.rss_bytes;
         runtime_ms = runtime_ms.max(tree.runtime_ms);
@@ -266,7 +268,7 @@ pub fn compute_aggregate(
         }
     }
 
-    if session_metrics.is_empty() {
+    if session_metrics.is_empty() || contributed == 0 {
         cpu = MetricAvailability::Unavailable;
         io = IoQuality::Unavailable;
         attribution = AttributionQuality::Unknown;
@@ -356,6 +358,30 @@ mod tests {
     }
 
     #[test]
+    fn aggregate_unavailable_when_no_trees_contribute() {
+        let mut metrics = BTreeMap::new();
+        metrics.insert(
+            "sess-1".into(),
+            TreeMetrics {
+                cpu_core_percent: 0.0,
+                rss_bytes: 0,
+                runtime_ms: 0,
+                process_count: 0,
+                read_bytes_per_sec: 0,
+                write_bytes_per_sec: 0,
+                quality: MetricQuality {
+                    attribution: AttributionQuality::Exact,
+                    cpu: MetricAvailability::Unavailable,
+                    io: IoQuality::Disk,
+                    reason: Some("missing root".into()),
+                },
+            },
+        );
+        let agg = compute_aggregate(&metrics, 2_000, 4, 1, 0, IoQuality::Disk);
+        assert_eq!(agg.quality.cpu, MetricAvailability::Unavailable);
+    }
+
+    #[test]
     fn aggregate_deduplicates_exclusive_trees() {
         let mut processes = BTreeMap::new();
         processes.insert(1, node(1, None, 10.0, 100, 1_000, 2_000));
@@ -384,6 +410,45 @@ mod tests {
         assert_eq!(agg.rss_bytes, 150);
         assert_eq!(agg.process_count, 2);
         assert_eq!(agg.read_bytes_per_sec, 1_500);
+    }
+
+    #[test]
+    fn aggregate_worsens_attribution_quality_honestly() {
+        let mut processes = BTreeMap::new();
+        processes.insert(1, node(1, None, 1.0, 10, 100, 100));
+        processes.insert(2, node(2, None, 1.0, 10, 100, 100));
+        let sessions = vec![
+            RegisteredSession {
+                session_id: "exact".into(),
+                root: ProcessIdentity {
+                    pid: 1,
+                    started_at_ms: 1_000,
+                },
+                attribution: AttributionQuality::Exact,
+                registered_at_ms: 0,
+            },
+            RegisteredSession {
+                session_id: "shared".into(),
+                root: ProcessIdentity {
+                    pid: 2,
+                    started_at_ms: 1_000,
+                },
+                attribution: AttributionQuality::Shared,
+                registered_at_ms: 0,
+            },
+        ];
+        let (metrics, _) = compute_session_metrics(
+            &sessions,
+            &processes,
+            4,
+            1_000,
+            2_000,
+            CounterReadiness::Ready,
+            CounterReadiness::Ready,
+            IoQuality::Disk,
+        );
+        let agg = compute_aggregate(&metrics, 2_000, 4, 2, 0, IoQuality::Disk);
+        assert_eq!(agg.quality.attribution, AttributionQuality::Shared);
     }
 
     #[test]
@@ -442,5 +507,6 @@ mod tests {
         assert_eq!(tree.quality.io, IoQuality::Unavailable);
         assert_eq!(tree.cpu_core_percent, 0.0);
         assert!(tree.quality.reason.is_some());
+        assert_eq!(tree.quality.attribution, AttributionQuality::Unknown);
     }
 }

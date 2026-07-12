@@ -1,4 +1,6 @@
-use notch_protocol::{AttentionKind, HostMetricSample, MetricSample};
+use notch_protocol::{
+    AttentionKind, HostMetricSample, MetricSample, ResourceAlert, ResourceAlertKind,
+};
 
 use crate::constants::{
     CPU_CRITICAL_DURATION, CPU_CRITICAL_THRESHOLD, CPU_WARN_DURATION, CPU_WARN_THRESHOLD,
@@ -6,7 +8,7 @@ use crate::constants::{
 };
 
 /// V1 alert kinds evaluated by the core (never focus windows).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlertKind {
     NewAttention,
     CpuWarn,
@@ -18,6 +20,8 @@ pub enum AlertKind {
 pub struct ActiveAlert {
     pub kind: AlertKind,
     pub session_id: Option<String>,
+    /// Populated for `NewAttention` alerts so native sound routing can map events.
+    pub attention: Option<AttentionKind>,
     pub message: String,
     pub raised_at_ms: i64,
 }
@@ -85,6 +89,7 @@ impl AlertEvaluator {
             let alert = ActiveAlert {
                 kind: AlertKind::NewAttention,
                 session_id: Some(session_id.to_string()),
+                attention: Some(attention),
                 message: format!("Session requires attention: {attention:?}"),
                 raised_at_ms: now_ms,
             };
@@ -111,6 +116,7 @@ impl AlertEvaluator {
             let alert = ActiveAlert {
                 kind: AlertKind::CpuCritical,
                 session_id: None,
+                attention: None,
                 message: format!("Host CPU sustained above {:.0}%", CPU_CRITICAL_THRESHOLD),
                 raised_at_ms: now_ms,
             };
@@ -124,6 +130,7 @@ impl AlertEvaluator {
             let alert = ActiveAlert {
                 kind: AlertKind::CpuWarn,
                 session_id: None,
+                attention: None,
                 message: format!("Host CPU sustained above {:.0}%", CPU_WARN_THRESHOLD),
                 raised_at_ms: now_ms,
             };
@@ -141,6 +148,7 @@ impl AlertEvaluator {
             let alert = ActiveAlert {
                 kind: AlertKind::MemoryHigh,
                 session_id: None,
+                attention: None,
                 message: format!("Aggregate RSS sustained above {} bytes", rss_threshold),
                 raised_at_ms: now_ms,
             };
@@ -166,6 +174,34 @@ impl AlertEvaluator {
             self.active.push(alert);
         }
     }
+}
+
+/// Maps core alerts to wire resource alerts (host metrics only; attention stays separate).
+pub fn resource_alerts_from_active(alerts: &[ActiveAlert]) -> Vec<ResourceAlert> {
+    alerts
+        .iter()
+        .filter_map(|alert| match alert.kind {
+            AlertKind::CpuWarn => Some(ResourceAlert {
+                kind: ResourceAlertKind::CpuWarn,
+                message: alert.message.clone(),
+                session_id: alert.session_id.clone(),
+                raised_at_ms: alert.raised_at_ms,
+            }),
+            AlertKind::CpuCritical => Some(ResourceAlert {
+                kind: ResourceAlertKind::CpuCritical,
+                message: alert.message.clone(),
+                session_id: alert.session_id.clone(),
+                raised_at_ms: alert.raised_at_ms,
+            }),
+            AlertKind::MemoryHigh => Some(ResourceAlert {
+                kind: ResourceAlertKind::MemoryHigh,
+                message: alert.message.clone(),
+                session_id: alert.session_id.clone(),
+                raised_at_ms: alert.raised_at_ms,
+            }),
+            AlertKind::NewAttention => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -260,5 +296,20 @@ mod tests {
         assert!(first.is_some());
         let second = eval.evaluate_attention("s1", AttentionKind::Error, 2);
         assert!(second.is_none());
+    }
+
+    #[test]
+    fn resource_alerts_exclude_attention() {
+        let mut eval = AlertEvaluator::new();
+        eval.evaluate_attention("s1", AttentionKind::Permission, 1);
+        let agg = aggregate(0);
+        let total = 16 * 1024 * 1024 * 1024;
+        for t in (0..29_000).step_by(1_000) {
+            eval.evaluate_host_metrics(&host(95.0, total, 0), &agg, t);
+        }
+        eval.evaluate_host_metrics(&host(95.0, total, 0), &agg, 30_000);
+        let mapped = resource_alerts_from_active(eval.active_alerts());
+        assert_eq!(mapped.len(), 1);
+        assert_eq!(mapped[0].kind, ResourceAlertKind::CpuCritical);
     }
 }

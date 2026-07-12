@@ -1,7 +1,13 @@
 {
-  "session_id": "cursor-session-42",
-  "workspace_roots": ["/Users/dev/projects/llm_notch"],
+  "hook_event_name": "sessionStart",
+  "cursor_version": "1.7.2",
   "conversation_id": "conv-abc123",
+  "generation_id": "gen-001",
+  "model": "composer-2",
+  "workspace_roots": ["/Users/dev/projects/llm_notch"],
+  "session_id": "cursor-session-42",
   "is_background_agent": false,
-  "model": "composer-2"
+  "composer_mode": "agent",
+  "user_email": null,
+  "transcript_path": null
 }

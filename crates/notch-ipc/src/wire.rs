@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::{IpcError, IpcResult},
     limits::{
-        IPC_WIRE_VERSION, MAX_ERROR_CODE_LEN, MAX_ERROR_MESSAGE_LEN, MAX_FRAME_BYTES,
-        MAX_REQUEST_ID_LEN,
+        IPC_WIRE_VERSION, MAX_DECISION_CONTEXT_BYTES, MAX_ERROR_CODE_LEN, MAX_ERROR_MESSAGE_LEN,
+        MAX_FRAME_BYTES, MAX_REQUEST_ID_LEN,
     },
 };
 
@@ -39,6 +39,48 @@ pub enum WireMessage {
         code: String,
         message: String,
     },
+    /// Interactive decision wait from hook helper. Never spooled or replayed.
+    DecisionWait {
+        v: u16,
+        #[serde(rename = "requestId")]
+        request_id: String,
+        source: String,
+        #[serde(rename = "vendorEvent")]
+        vendor_event: String,
+        #[serde(rename = "externalSessionId")]
+        external_session_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "sessionId")]
+        session_id: Option<String>,
+        #[serde(rename = "decisionKind")]
+        decision_kind: String,
+        summary: String,
+        #[serde(rename = "hasActionablePayload")]
+        has_actionable_payload: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "respondableHook")]
+        respondable_hook: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "toolName")]
+        tool_name: Option<String>,
+        #[serde(rename = "connectionId")]
+        connection_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "vendorContextJson")]
+        vendor_context_json: Option<String>,
+        #[serde(rename = "createdAtMs")]
+        created_at_ms: i64,
+    },
+    /// Broker reply for an interactive decision wait.
+    DecisionReply {
+        v: u16,
+        #[serde(rename = "requestId")]
+        request_id: String,
+        #[serde(rename = "stdoutJson")]
+        stdout_json: String,
+        #[serde(rename = "deliveryState")]
+        delivery_state: String,
+    },
 }
 
 /// Bounded ingest payload accepted from hook clients.
@@ -69,6 +111,36 @@ pub struct IngestPayload {
     pub process_started_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub occurred_at_ms: Option<i64>,
+    /// Verified terminal session identifier (for example Windows Terminal `WT_SESSION`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_session_id: Option<String>,
+    /// Verified tab index or identifier for exact-pane navigation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_id: Option<String>,
+    /// Verified pane index or identifier for exact-pane navigation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane_id: Option<String>,
+    /// Native window handle for verified window-focus activation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_handle: Option<u64>,
+}
+
+/// Hook-side decision wait registration payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecisionWaitPayload {
+    pub nonce: String,
+    pub source: String,
+    pub vendor_event: String,
+    pub external_session_id: String,
+    pub session_id: Option<String>,
+    pub decision_kind: String,
+    pub summary: String,
+    pub has_actionable_payload: bool,
+    pub respondable_hook: Option<String>,
+    pub tool_name: Option<String>,
+    pub connection_id: String,
+    pub vendor_context_json: Option<String>,
+    pub created_at_ms: i64,
 }
 
 impl WireMessage {
@@ -77,7 +149,9 @@ impl WireMessage {
             Self::Auth { v, .. }
             | Self::Ingest { v, .. }
             | Self::Ack { v, .. }
-            | Self::Error { v, .. } => *v,
+            | Self::Error { v, .. }
+            | Self::DecisionWait { v, .. }
+            | Self::DecisionReply { v, .. } => *v,
         }
     }
 
@@ -86,7 +160,9 @@ impl WireMessage {
             Self::Auth { request_id, .. }
             | Self::Ingest { request_id, .. }
             | Self::Ack { request_id, .. }
-            | Self::Error { request_id, .. } => request_id,
+            | Self::Error { request_id, .. }
+            | Self::DecisionWait { request_id, .. }
+            | Self::DecisionReply { request_id, .. } => request_id,
         }
     }
 }
@@ -124,6 +200,58 @@ pub fn validate_wire_message(message: &WireMessage) -> IpcResult<()> {
         }
         WireMessage::Ingest { payload, .. } => validate_ingest_payload(payload)?,
         WireMessage::Ack { .. } => {}
+        WireMessage::DecisionWait {
+            source,
+            vendor_event,
+            external_session_id,
+            session_id,
+            decision_kind,
+            summary,
+            respondable_hook,
+            tool_name,
+            connection_id,
+            vendor_context_json,
+            ..
+        } => {
+            validate_bounded(source, 32, "source")?;
+            validate_bounded(vendor_event, 64, "vendorEvent")?;
+            validate_bounded(
+                external_session_id,
+                notch_protocol::MAX_EXTERNAL_SESSION_ID_LEN,
+                "externalSessionId",
+            )?;
+            if let Some(value) = session_id {
+                validate_bounded(value, notch_protocol::MAX_SESSION_ID_LEN, "sessionId")?;
+            }
+            validate_bounded(decision_kind, 32, "decisionKind")?;
+            validate_bounded(summary, notch_protocol::MAX_DECISION_SUMMARY_LEN, "summary")?;
+            if let Some(value) = respondable_hook {
+                validate_bounded(value, 64, "respondableHook")?;
+            }
+            if let Some(value) = tool_name {
+                validate_bounded(value, notch_protocol::MAX_TOOL_NAME_LEN, "toolName")?;
+            }
+            validate_bounded(connection_id, 64, "connectionId")?;
+            if let Some(value) = vendor_context_json {
+                if value.len() > MAX_DECISION_CONTEXT_BYTES {
+                    return Err(IpcError::FrameRejected(format!(
+                        "vendorContextJson exceeds {MAX_DECISION_CONTEXT_BYTES} bytes"
+                    )));
+                }
+            }
+        }
+        WireMessage::DecisionReply {
+            stdout_json,
+            delivery_state,
+            ..
+        } => {
+            if stdout_json.len() > MAX_DECISION_CONTEXT_BYTES {
+                return Err(IpcError::FrameRejected(
+                    "stdoutJson exceeds decision context bounds".into(),
+                ));
+            }
+            validate_bounded(delivery_state, 32, "deliveryState")?;
+        }
         WireMessage::Error { code, message, .. } => {
             if code.is_empty() || code.len() > MAX_ERROR_CODE_LEN {
                 return Err(IpcError::FrameRejected("error code out of bounds".into()));
@@ -180,6 +308,20 @@ pub fn validate_ingest_payload(payload: &IngestPayload) -> IpcResult<()> {
     {
         return Err(IpcError::FrameRejected(
             "processStartedAtMs must be positive".into(),
+        ));
+    }
+    if let Some(value) = &payload.terminal_session_id {
+        crate::collector::validate_terminal_id_field(value, "terminalSessionId")?;
+    }
+    if let Some(value) = &payload.tab_id {
+        crate::collector::validate_terminal_id_field(value, "tabId")?;
+    }
+    if let Some(value) = &payload.pane_id {
+        crate::collector::validate_terminal_id_field(value, "paneId")?;
+    }
+    if payload.window_handle.is_some_and(|value| value == 0) {
+        return Err(IpcError::FrameRejected(
+            "windowHandle must be positive when provided".into(),
         ));
     }
     Ok(())

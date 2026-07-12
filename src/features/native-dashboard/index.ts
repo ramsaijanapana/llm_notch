@@ -1,10 +1,14 @@
 export { DashboardShell } from './components/DashboardShell'
 export { DashboardTabs } from './components/DashboardTabs'
+export { DecisionSurface } from './components/decisions/DecisionSurface'
 export { IntegrationsPanel } from './components/integrations/IntegrationsPanel'
 export { MetricsPanel } from './components/metrics/MetricsPanel'
 export { OnboardingFlow } from './components/OnboardingFlow'
+export { RemoteConnectionBadge } from './components/remote/RemoteConnectionBadge'
+export { RemotePanel } from './components/remote/RemotePanel'
 export { SessionsPanel } from './components/sessions/SessionsPanel'
 export { SettingsPanel } from './components/settings/SettingsPanel'
+export { AgentStatusRail } from './components/shared/AgentStatusRail'
 export { EmptyState } from './components/shared/EmptyState'
 export { ErrorState } from './components/shared/ErrorState'
 export { LoadingState } from './components/shared/LoadingState'
@@ -13,29 +17,30 @@ export { SparklineChart } from './components/shared/SparklineChart'
 export { useDashboardShortcuts, useRovingTablist } from './hooks/useDashboardShortcuts'
 export type {
   AgentMetricHistory,
+  AgentStatusEntry,
+  ApplyProgressEntry,
   AutostartChangeHandler,
+  ConnectFileSelection,
   DashboardLoadState,
   DashboardShellProps,
   DashboardTab,
+  DecisionSurfaceProps,
   DisplayChangeHandler,
   DisplayOption,
   HistoryRangeChangeHandler,
   IntegrationActionHandler,
   IntegrationCardState,
-  IntegrationDiffPreview,
-  IntegrationHealth,
-  IntegrationsPanelProps,
   MetricHistoryPoint,
   MetricSeriesCoverage,
   MetricsHistoryBundle,
   MetricsHistoryRange,
   MetricsPanelProps,
   OnboardingFlowProps,
-  OnboardingIntegrationChangeHandler,
-  OnboardingIntegrationChoice,
   OnboardingStep,
   OpenContextHandler,
+  PendingPlanReview,
   PurgeHistoryHandler,
+  RemotePanelProps,
   SessionSelectHandler,
   SessionsPanelProps,
   SettingsChangeHandler,
@@ -57,6 +62,20 @@ export {
   isModifierPressed,
   metricAvailabilityLabel,
 } from './utils/formatters'
+
+export {
+  connectorStatusGuidance,
+  connectorStatusLabel,
+  DOCUMENTED_CONNECTOR_PATHS,
+  decisionDeliveryLabel,
+} from './utils/integrationLabels'
+
+export {
+  remoteBackendGuidance,
+  remoteConnectionBadgeTone,
+  remoteConnectionStateLabel,
+  remoteDeploymentStepLabel,
+} from './utils/remoteLabels'
 
 export {
   activeSessions,

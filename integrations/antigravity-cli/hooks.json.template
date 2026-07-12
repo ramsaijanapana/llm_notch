@@ -1,0 +1,44 @@
+{
+  "_comment": "TEMPLATE FRAGMENT - merge the llm-notch named block into .agents/hooks.json. Antigravity uses a top-level map of hook names. Preserve unrelated named hooks. Hook stdin uses conversationId and workspacePaths; the helper maps those fields via --source antigravityCli.",
+  "llm-notch": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-pre-tool-use",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source antigravityCli --vendor-event PreToolUse --hook-mode",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-post-tool-use",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source antigravityCli --vendor-event PostToolUse --hook-mode",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-stop",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source antigravityCli --vendor-event Stop --hook-mode",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -16,6 +16,11 @@ export function OverlayShell({
   nowMs = Date.now(),
   onOpenDashboard,
   onAcknowledge,
+  pendingDecision,
+  decisionControlsEnabled,
+  onDecisionAllow,
+  onDecisionDeny,
+  emptyMessage,
 }: OverlayShellProps) {
   return (
     <div
@@ -40,6 +45,9 @@ export function OverlayShell({
           cpuHistory={cpuHistory}
           nowMs={nowMs}
           reducedMotion={reducedMotion}
+          emptyMessage={emptyMessage}
+          staleMessage={staleMessage}
+          errorMessage={errorMessage}
         />
       ) : (
         <PeekPanel
@@ -48,8 +56,13 @@ export function OverlayShell({
           snapshot={snapshot}
           staleMessage={staleMessage}
           errorMessage={errorMessage}
+          emptyMessage={emptyMessage}
           onOpenDashboard={onOpenDashboard}
           onAcknowledge={onAcknowledge}
+          pendingDecision={pendingDecision}
+          decisionControlsEnabled={decisionControlsEnabled}
+          onDecisionAllow={onDecisionAllow}
+          onDecisionDeny={onDecisionDeny}
         />
       )}
     </div>

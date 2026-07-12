@@ -6,6 +6,7 @@ import type {
   MetricAvailability,
   SessionStatus,
 } from '../../../native/contracts'
+import { attributionQualityLabel } from '../../../native/contracts'
 
 export function formatAgentSource(source: AgentSource): string {
   switch (source) {
@@ -15,6 +16,15 @@ export function formatAgentSource(source: AgentSource): string {
       return 'Claude Code'
     case 'codex':
       return 'Codex'
+    case 'gemini':
+      return 'Gemini CLI'
+    case 'antigravityCli':
+    case 'agy':
+      return 'Antigravity CLI'
+    case 'copilotCli':
+      return 'GitHub Copilot CLI'
+    case 'qwen':
+      return 'Qwen Code'
     case 'generic':
       return 'Generic'
     case 'unknown':
@@ -57,16 +67,7 @@ export function formatAttentionKind(kind: AttentionKind): string {
 }
 
 export function formatAttributionQuality(quality: AttributionQuality): string {
-  switch (quality) {
-    case 'exact':
-      return 'Exact'
-    case 'shared':
-      return 'Shared'
-    case 'heuristic':
-      return 'Heuristic'
-    case 'unknown':
-      return 'Unavailable'
-  }
+  return attributionQualityLabel(quality)
 }
 
 export function formatIoQuality(quality: IoQuality): string {

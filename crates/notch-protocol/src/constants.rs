@@ -38,3 +38,24 @@ pub const STREAM_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 
 /// Maximum concurrent sessions represented in a snapshot.
 pub const MAX_SNAPSHOT_SESSIONS: usize = 128;
+
+/// Maximum UTF-8 byte length for connector plan identifiers.
+pub const MAX_PLAN_ID_LEN: usize = 128;
+
+/// Maximum UTF-8 byte length for display-only connector path labels.
+pub const MAX_CONNECTOR_DISPLAY_PATH_LEN: usize = 512;
+
+/// Maximum UTF-8 byte length for connector diff preview text.
+pub const MAX_CONNECTOR_DIFF_LEN: usize = 65_536;
+
+/// Maximum files represented in one connector plan preview.
+pub const MAX_CONNECTOR_PLAN_FILES: usize = 16;
+
+/// Default connector plan preview TTL (milliseconds).
+pub const CONNECTOR_PLAN_TTL_MS: u64 = 300_000;
+
+/// Maximum UTF-8 byte length for redacted decision summaries.
+pub const MAX_DECISION_SUMMARY_LEN: usize = 512;
+
+/// Maximum UTF-8 byte length for free-text decision answers when enabled.
+pub const MAX_DECISION_ANSWER_LEN: usize = 4_096;

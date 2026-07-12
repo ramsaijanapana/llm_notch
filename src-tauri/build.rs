@@ -1,4 +1,7 @@
 fn main() {
+    #[cfg(target_os = "windows")]
+    embed_common_controls_manifest_for_lib_tests();
+
     const COMMANDS: &[&str] = &[
         "bootstrap",
         "subscribe_stream",
@@ -19,9 +22,38 @@ fn main() {
         "preview_connector_change",
         "apply_connector_change",
         "remove_connector",
+        "repair_connector",
+        "rollback_connector",
+        "detect_connectors",
         "connector_health",
+        "list_connector_backups",
+        "list_pending_decisions",
+        "submit_decision",
+        "get_sound_themes",
+        "preview_sound_routing",
+        "play_sound_event",
+        "import_sound_pack",
+        "list_remote_hosts",
+        "upsert_remote_host",
+        "remove_remote_host",
+        "get_remote_backend_status",
+        "preview_remote_deploy",
+        "execute_remote_deploy",
+        "start_remote_relay",
+        "stop_remote_relay",
+        "get_remote_connection_status",
     ];
     let attributes = tauri_build::Attributes::new()
         .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS));
     tauri_build::try_build(attributes).expect("failed to generate Tauri command permissions");
+}
+
+#[cfg(target_os = "windows")]
+fn embed_common_controls_manifest_for_lib_tests() {
+    let manifest =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-test.manifest.xml");
+    let manifest = manifest.to_string_lossy().replace('\\', "/");
+    // Applied to test/integration binaries only in CI (`--lib` / `--test`); avoid `cargo test --workspace` linking the app bin twice.
+    println!("cargo:rustc-link-arg-tests=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg-tests=/MANIFESTINPUT:{manifest}");
 }

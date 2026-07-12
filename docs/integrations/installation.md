@@ -17,10 +17,34 @@ Integrations are **never silently installed**. This document describes the inten
 | Cursor | `~/.cursor/hooks.json` | `<repo>/.cursor/hooks.json` |
 | Claude Code | `~/.claude/settings.json` | `<repo>/.claude/settings.json` |
 | Codex | `~/.codex/hooks.json` | `<repo>/.codex/hooks.json` |
+| Gemini CLI | `~/.gemini/settings.json` | `<repo>/.gemini/settings.json` |
 
 Project scope is preferred when the team wants shared, reviewable config.
 
-## Future installer design (not implemented)
+## Installer flow (implemented in `notch-connectors`)
+
+The dashboard can call Tauri commands backed by `notch-connectors`:
+
+| Command | Input | Output |
+|---------|-------|--------|
+| `detect_connectors` | — | Allowlisted-path scan results |
+| `preview_connector_change` | `source`, optional `scope` | `ConnectorPlanPreview` (5-minute TTL) |
+| `apply_connector_change` | `planId` only | `ConnectorApplyResult` |
+| `remove_connector` | `source`, optional `scope` | `ConnectorApplyResult` |
+| `repair_connector` | `source`, optional `scope` | `ConnectorPlanPreview` |
+| `rollback_connector` | `backupId` | `ConnectorPlanPreview` |
+
+Apply accepts **only** `planId`. Display paths in previews are redacted labels; canonical identities stay backend-only.
+
+### Safety guarantees
+
+- Cross-process lock + hash re-check under lock before write
+- Per-file atomic replace (`ReplaceFileW` on Windows, rename on Unix)
+- Backup journal at `<app-data>/connector-journal.json`
+- Idempotent reinstall → empty diff, `Skipped` outcome, no backup
+- Rollback: exact restore when `currentHash == appliedHash`; hash mismatch yields a recomputed additive recovery preview (remove managed entries only)
+
+## Legacy sequence diagram
 
 ```mermaid
 sequenceDiagram
@@ -41,8 +65,6 @@ sequenceDiagram
   Planner-->>Dashboard: success + health probe hint
 ```
 
-The current dashboard exposes read-only template preview. `apply_connector_change` and `remove_connector` return an explicit `not available` error and do not touch vendor files. A future installer must accept only a short-lived `plan_id` — never arbitrary paths or file contents from the frontend — and satisfy the flow below before it can be enabled.
-
 ## Merge algorithm (hooks.json)
 
 Applies to Cursor and Codex `hooks.json` (version `1` for Cursor).
@@ -58,7 +80,7 @@ for each event in template:
 return target
 ```
 
-Claude Code uses nested `hooks → Event → [{matcher, hooks:[...]}]`. Merge matches on `(event, matcher, command)` triples.
+Claude Code uses nested `hooks → Event → [{matcher, hooks:[...]}]`. Merge matches on `(event, matcher, command)` triples. Gemini CLI uses the same nested `settings.json` hook structure.
 
 **Never remove** entries the user or other tools added.
 
@@ -86,7 +108,7 @@ Claude Code uses nested `hooks → Event → [{matcher, hooks:[...]}]`. Merge ma
 
 4. Merge manually or copy template after editing paths to `hooks/llm-notch-hook-wrapper.sh`.
 
-5. Restart Cursor / Claude Code / Codex.
+5. Restart Cursor / Claude Code / Codex / Gemini CLI.
 
 ## Backup naming
 

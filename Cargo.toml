@@ -6,6 +6,16 @@ members = [
     "crates/notch-metrics",
     "crates/notch-ipc",
     "crates/notch-hook",
+    "crates/notch-connectors",
+    "crates/notch-decision",
+    "crates/notch-remote",
+    "crates/notch-platform",
+    "crates/notch-agent-catalog",
+    "crates/notch-services",
+    "crates/notch-adapters/cursor",
+    "crates/notch-adapters/claude-code",
+    "crates/notch-adapters/codex",
+    "crates/notch-adapters/generic",
     "src-tauri",
 ]
 
@@ -46,6 +56,7 @@ bytes = "1.12.1"
 futures = "0.3.32"
 tokio-util = { version = "0.7.18", features = ["codec", "io-util"] }
 crossbeam-channel = "0.5.16"
+ureq = { version = "3.1.2", default-features = false, features = ["rustls"] }
 tauri = { version = "2.11.5", features = ["tray-icon"] }
 tauri-build = { version = "2.6.3", features = [] }
 tauri-plugin-single-instance = "2.4.2"
@@ -81,3 +92,13 @@ notch-protocol = { path = "crates/notch-protocol" }
 notch-core = { path = "crates/notch-core" }
 notch-metrics = { path = "crates/notch-metrics" }
 notch-ipc = { path = "crates/notch-ipc" }
+notch-connectors = { path = "crates/notch-connectors" }
+notch-decision = { path = "crates/notch-decision" }
+notch-agent-catalog = { path = "crates/notch-agent-catalog" }
+notch-platform = { path = "crates/notch-platform" }
+notch-remote = { path = "crates/notch-remote" }
+notch-services = { path = "crates/notch-services" }
+notch-adapters-cursor = { path = "crates/notch-adapters/cursor" }
+notch-adapters-claude-code = { path = "crates/notch-adapters/claude-code" }
+notch-adapters-codex = { path = "crates/notch-adapters/codex" }
+notch-adapters-generic = { path = "crates/notch-adapters/generic" }

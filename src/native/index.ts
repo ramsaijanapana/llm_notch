@@ -1,6 +1,6 @@
 export type { NativeClient } from './client.ts'
 export { createNativeClient } from './client.ts'
-export { NATIVE_COMMANDS } from './commands.ts'
+export { NATIVE_COMMANDS, NATIVE_EVENTS } from './commands.ts'
 export { PROTOCOL_VERSION } from './contracts.ts'
 export {
   isBrowserMarketingApp,
@@ -18,6 +18,7 @@ export {
 } from './streamProcessor.ts'
 export { createTauriNativeClient, TauriNativeClient } from './TauriNativeClient.ts'
 export type {
+  AgentCatalogEntry,
   BootstrapResult,
   CreateNativeClientOptions,
   IntegrationHealthEntry,

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "hooks/approve-network.sh",
+        "matcher": "curl|wget",
+        "failClosed": true
+      }
+    ]
+  }
+}

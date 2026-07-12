@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-execute-remote-deploy"
+description = "Enables the execute_remote_deploy command without any pre-configured scope."
+commands.allow = ["execute_remote_deploy"]
+
+[[permission]]
+identifier = "deny-execute-remote-deploy"
+description = "Denies the execute_remote_deploy command without any pre-configured scope."
+commands.deny = ["execute_remote_deploy"]

@@ -1,0 +1,12 @@
+{
+  "session_id": "codex-thread-abc",
+  "hook_event_name": "PermissionRequest",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "model": "gpt-5.4",
+  "permission_mode": "default",
+  "turn_id": "turn-12",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "npm test"
+  }
+}

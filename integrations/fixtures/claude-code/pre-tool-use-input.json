@@ -1,0 +1,9 @@
+{
+  "session_id": "claude-thread-9f2a",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git status"
+  }
+}

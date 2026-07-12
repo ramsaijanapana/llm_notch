@@ -19,6 +19,12 @@ notch-protocol.workspace = true
 notch-core.workspace = true
 notch-metrics.workspace = true
 notch-ipc.workspace = true
+notch-connectors.workspace = true
+notch-decision.workspace = true
+notch-agent-catalog = { path = "../crates/notch-agent-catalog" }
+notch-platform.workspace = true
+notch-services.workspace = true
+notch-remote.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -29,6 +35,8 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 parking_lot.workspace = true
+base64.workspace = true
+sysinfo.workspace = true
 tauri = { workspace = true, features = ["macos-private-api"] }
 tauri-plugin-single-instance.workspace = true
 tauri-plugin-global-shortcut.workspace = true
@@ -41,3 +49,13 @@ objc2-foundation.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+notch-remote.workspace = true
+
+[[bin]]
+name = "llm-notch-desktop"
+path = "src/main.rs"
+test = false
+bench = false

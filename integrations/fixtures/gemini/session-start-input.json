@@ -1,0 +1,8 @@
+{
+  "session_id": "gemini-session-7c4a",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "hook_event_name": "SessionStart",
+  "source": "startup",
+  "transcript_path": "/Users/dev/.gemini/sessions/gemini-session-7c4a/transcript.json",
+  "timestamp": "2026-07-11T18:00:00.000Z"
+}

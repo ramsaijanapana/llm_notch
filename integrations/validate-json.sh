@@ -50,7 +50,12 @@ done
 for file in \
   "$ROOT/cursor/hooks.json.template" \
   "$ROOT/claude-code/settings.hooks.template.json" \
-  "$ROOT/codex/hooks.json.template"
+  "$ROOT/codex/hooks.json.template" \
+  "$ROOT/gemini/settings.hooks.template.json" \
+  "$ROOT/qwen/settings.hooks.template.json" \
+  "$ROOT/antigravity-cli/hooks.json.template" \
+  "$ROOT/copilot/hooks.json.template" \
+  "$ROOT/remote/hooks.cursor.template.json"
 do
   if [ -f "$file" ]; then
     validate_file "$file"

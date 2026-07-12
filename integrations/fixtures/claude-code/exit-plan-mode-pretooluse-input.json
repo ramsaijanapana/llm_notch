@@ -1,0 +1,9 @@
+{
+  "session_id": "claude-thread-9f2a",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "ExitPlanMode",
+  "tool_input": {},
+  "plan": "## Refactor auth\n1. Extract session module",
+  "planFilePath": "/Users/dev/.claude/plans/refactor-auth.md"
+}

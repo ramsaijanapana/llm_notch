@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-sound-routing"
+description = "Enables the preview_sound_routing command without any pre-configured scope."
+commands.allow = ["preview_sound_routing"]
+
+[[permission]]
+identifier = "deny-preview-sound-routing"
+description = "Denies the preview_sound_routing command without any pre-configured scope."
+commands.deny = ["preview_sound_routing"]

@@ -3,12 +3,12 @@ use std::sync::Arc;
 use notch_protocol::{
     AdapterCapabilities, AgentSession, AppSnapshot, AttentionCapability, AttentionKind,
     AttributionQuality, EventLevel, MetricsFrame, PROTOCOL_VERSION, PublicSettings, SessionEvent,
-    SessionStatus, StreamFrame, StreamPayload,
+    SessionStatus, StreamFrame, StreamPayload, VerifiedTerminalContext,
 };
 use parking_lot::RwLock;
 use uuid::Uuid;
 
-use crate::alerts::AlertEvaluator;
+use crate::alerts::{AlertEvaluator, resource_alerts_from_active};
 use crate::constants::{MAX_SESSIONS, METRIC_BUCKET_SECS, STALE_SESSION_MS};
 use crate::domain::{
     AcknowledgeAttentionCommand, AttentionCommand, IngestCommand, IngestResult,
@@ -170,10 +170,15 @@ impl<C: Clock, R: SessionRepository, S: StreamSink> AppCore<C, R, S> {
                 sessions,
                 settings: inner.settings.clone(),
                 adapters: inner.integrations.clone(),
+                resource_alerts: resource_alerts_from_active(inner.alerts.active_alerts()),
             },
             sequence: inner.stream_sequence,
             events: inner.registry.bootstrap_events(),
         }
+    }
+
+    pub fn active_alerts(&self) -> Vec<crate::ActiveAlert> {
+        self.inner.read().alerts.active_alerts().to_vec()
     }
 
     pub fn tick(&self) -> CoreResult<()> {
@@ -202,6 +207,35 @@ impl<C: Clock, R: SessionRepository, S: StreamSink> AppCore<C, R, S> {
         inner.registry.clear_latest_metrics();
         inner.latest_metrics = None;
         Ok(removed)
+    }
+
+    pub fn purge_session_events(&self) -> CoreResult<u64> {
+        let removed = self.repository.purge_session_events()?;
+        let mut inner = self.inner.write();
+        inner.registry.clear_events();
+        Ok(removed)
+    }
+
+    pub fn purge_scoped(
+        &self,
+        scope: notch_protocol::PurgeScope,
+    ) -> CoreResult<notch_protocol::PurgeResult> {
+        let mut history_rows_removed = 0_u64;
+        let mut events_removed = 0_u64;
+
+        if scope.history {
+            history_rows_removed = self.purge_metric_history()?;
+        }
+        if scope.session_events {
+            events_removed = self.purge_session_events()?;
+        }
+
+        Ok(notch_protocol::PurgeResult {
+            history_rows_removed,
+            events_removed,
+            backups_removed: 0,
+            active_connectors_disconnected: 0,
+        })
     }
 
     pub fn metric_history(
@@ -290,6 +324,28 @@ impl<C: Clock, R: SessionRepository, S: StreamSink> AppCore<C, R, S> {
         }
         session.process_root = None;
         session.latest_metric = None;
+        self.repository.upsert_session(session)?;
+        let updated = session.clone();
+        self.queue_payload(
+            &mut inner,
+            StreamPayload::SessionUpsert { session: updated },
+        );
+        self.flush_pending(&mut inner);
+        Ok(())
+    }
+
+    pub fn set_verified_terminal(
+        &self,
+        session_id: &str,
+        terminal: VerifiedTerminalContext,
+    ) -> CoreResult<()> {
+        validate_session_id(session_id)?;
+        let mut inner = self.inner.write();
+        let session = inner
+            .registry
+            .get_mut(session_id)
+            .ok_or_else(|| CoreError::SessionNotFound(session_id.to_string()))?;
+        session.verified_terminal = Some(terminal);
         self.repository.upsert_session(session)?;
         let updated = session.clone();
         self.queue_payload(
@@ -414,6 +470,7 @@ impl<C: Clock, R: SessionRepository, S: StreamSink> AppCore<C, R, S> {
                     last_event_at_ms: cmd.occurred_at_ms,
                     ended_at_ms: None,
                     process_root: None,
+                    verified_terminal: None,
                     latest_metric: None,
                 })?;
 
@@ -948,7 +1005,7 @@ mod tests {
     use crate::traits::VecStreamSink;
     use notch_protocol::{
         AgentAggregate, AgentSource, AttributionQuality, HostMetricSample, IoQuality,
-        MetricAvailability, MetricQuality, MetricSample, SessionEventKind,
+        MetricAvailability, MetricQuality, MetricSample, SessionEventKind, SoundRouting,
     };
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -973,20 +1030,20 @@ mod tests {
             selected_display: None,
             show_over_fullscreen: false,
             history_retention_hours: 24,
+            alert_sound_enabled: false,
+            selected_sound_theme_id: None,
+            sound_routing: SoundRouting::default(),
         }
     }
 
     fn register_cursor<R: SessionRepository, S: StreamSink>(inner: &AppCore<ManualClock, R, S>) {
+        let mut capabilities = AdapterCapabilities::template(AgentSource::Cursor);
+        capabilities.attention = AttentionCapability::Partial;
+        capabilities.context_open = true;
+        capabilities.process_attribution = AttributionQuality::Shared;
         inner
             .ingest(IngestCommand::IntegrationHealth(IntegrationHealthCommand {
-                capabilities: AdapterCapabilities {
-                    source: AgentSource::Cursor,
-                    events: true,
-                    attention: AttentionCapability::Partial,
-                    decision_response: false,
-                    context_open: true,
-                    process_attribution: AttributionQuality::Shared,
-                },
+                capabilities,
                 healthy: true,
                 message: None,
                 occurred_at_ms: 0,
@@ -1061,15 +1118,10 @@ mod tests {
         let repo = Arc::new(SqliteRepository::in_memory().unwrap());
         let stream = Arc::new(VecStreamSink::new());
         let core = AppCore::new(ManualClock(0), repo, stream, default_settings()).unwrap();
+        let mut capabilities = AdapterCapabilities::template(AgentSource::Codex);
+        capabilities.events = false;
         core.ingest(IngestCommand::IntegrationHealth(IntegrationHealthCommand {
-            capabilities: AdapterCapabilities {
-                source: AgentSource::Codex,
-                events: false,
-                attention: AttentionCapability::None,
-                decision_response: false,
-                context_open: false,
-                process_attribution: AttributionQuality::Unknown,
-            },
+            capabilities,
             healthy: true,
             message: None,
             occurred_at_ms: 0,
@@ -1226,14 +1278,7 @@ mod tests {
         let stream = Arc::new(VecStreamSink::new());
         let core = AppCore::new(ManualClock(0), repo, stream, default_settings()).unwrap();
         core.ingest(IngestCommand::IntegrationHealth(IntegrationHealthCommand {
-            capabilities: AdapterCapabilities {
-                source: AgentSource::Cursor,
-                events: true,
-                attention: AttentionCapability::None,
-                decision_response: false,
-                context_open: false,
-                process_attribution: AttributionQuality::Unknown,
-            },
+            capabilities: AdapterCapabilities::template(AgentSource::Cursor),
             healthy: true,
             message: None,
             occurred_at_ms: 0,
@@ -1310,6 +1355,7 @@ mod tests {
             last_event_at_ms: 0,
             ended_at_ms: None,
             process_root: None,
+            verified_terminal: None,
             latest_metric: None,
         };
         registry.upsert_session(session).unwrap();

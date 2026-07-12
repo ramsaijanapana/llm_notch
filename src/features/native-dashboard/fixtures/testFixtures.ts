@@ -4,6 +4,8 @@ import type {
   MetricQuality,
   MetricSample,
   PublicSettings,
+  RemoteBackendStatus,
+  RemoteHostView,
   SessionEvent,
 } from '../../../native/contracts'
 import type { IntegrationCardState, MetricsHistoryBundle } from '../types/contracts'
@@ -140,6 +142,14 @@ export const mockAdapters: AdapterCapabilities[] = [
     processAttribution: 'heuristic',
   },
   {
+    source: 'gemini',
+    events: true,
+    attention: 'partial',
+    decisionResponse: false,
+    contextOpen: true,
+    processAttribution: 'heuristic',
+  },
+  {
     source: 'generic',
     events: false,
     attention: 'none',
@@ -164,23 +174,21 @@ export const mockDisplays = [
   { id: 'display-external', label: 'External Monitor' },
 ]
 
-export const mockIntegrations: IntegrationCardState[] = mockAdapters.map((adapter) => {
-  const card: IntegrationCardState = {
-    adapter,
-    health: adapter.source === 'generic' ? 'offline' : 'healthy',
-    configured: adapter.source !== 'generic',
-  }
+export const mockIntegrations: IntegrationCardState[] = mockAdapters
+  .filter((adapter) => adapter.source !== 'generic')
+  .map((adapter) => {
+    const card: IntegrationCardState = {
+      adapter,
+      status: adapter.source === 'generic' ? 'notInstalled' : 'waitingFirstEvent',
+      managedEntriesPresent: adapter.source === 'cursor',
+    }
 
-  if (adapter.events) {
-    card.lastEventAtMs = now - 45_000
-  }
+    if (adapter.events) {
+      card.lastEventAtMs = now - 45_000
+    }
 
-  if (adapter.source !== 'generic') {
-    card.previewConfig = `{\n  "source": "${adapter.source}",\n  "enabled": true\n}`
-  }
-
-  return card
-})
+    return card
+  })
 
 export function buildHistory(points = 12): MetricsHistoryBundle {
   const requestedStartMs = now - 24 * 60 * 60_000
@@ -271,5 +279,25 @@ export const mockAgentMetrics: Record<string, MetricSample> = {
     quality: metricQuality({ attribution: 'shared' }),
   }),
 }
+
+export const mockRemoteBackendStatus: RemoteBackendStatus = {
+  availability: 'unavailable',
+  message: 'SSH relay backend is not available in this build.',
+}
+
+export const mockRemoteHosts: RemoteHostView[] = [
+  {
+    config: {
+      id: 'dev-box',
+      destination: 'dev@example.internal',
+      port: 22,
+      hostKeyPolicy: 'strict',
+      connectTimeoutSeconds: 30,
+    },
+    availability: 'unavailable',
+    connectionState: 'disconnected',
+    message: 'SSH relay backend is not available in this build.',
+  },
+]
 
 export const FIXED_NOW_MS = now

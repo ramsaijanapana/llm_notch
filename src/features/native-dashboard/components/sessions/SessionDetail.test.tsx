@@ -1,6 +1,11 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { AdapterCapabilities, AgentSession, MetricSample } from '../../../../native/contracts'
+import type {
+  AdapterCapabilities,
+  AgentSession,
+  DecisionRequest,
+  MetricSample,
+} from '../../../../native/contracts'
 import { SessionDetail } from './SessionDetail'
 
 const adapter: AdapterCapabilities = {
@@ -58,5 +63,38 @@ describe('SessionDetail', () => {
     const { latestMetric: _latestMetric, ...withoutMetric } = session
     rerender(<SessionDetail session={withoutMetric} adapters={[adapter]} />)
     expect(screen.getByText(/metrics unavailable for this session/i)).toBeInTheDocument()
+  })
+
+  it('shows decision controls when the pending request matches the session', () => {
+    const claudeAdapter: AdapterCapabilities = {
+      source: 'claudeCode',
+      events: true,
+      attention: 'full',
+      decisionResponse: true,
+      contextOpen: false,
+      processAttribution: 'exact',
+    }
+    const pendingDecision: DecisionRequest = {
+      id: 'dec-1',
+      sessionId: session.externalSessionId,
+      source: 'claudeCode',
+      kind: 'permission',
+      summary: 'Allow destructive command',
+      hasActionablePayload: true,
+      createdAtMs: Date.now(),
+    }
+
+    render(
+      <SessionDetail
+        session={{ ...session, source: 'claudeCode', attention: 'permission' }}
+        adapters={[claudeAdapter]}
+        pendingDecision={pendingDecision}
+        onDecisionAllow={() => undefined}
+        onDecisionDeny={() => undefined}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /^allow$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^deny$/i })).toBeInTheDocument()
   })
 })

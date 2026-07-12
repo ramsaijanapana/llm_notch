@@ -1,0 +1,67 @@
+{
+  "_comment": "TEMPLATE FRAGMENT - merge only the hooks object into .gemini/settings.json or ~/.gemini/settings.json. Preserve unrelated settings. {{LLM_NOTCH_HELPER}} is replaced with the bundled helper absolute path at install time.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-session-start",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source gemini --vendor-event SessionStart --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-before-tool",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source gemini --vendor-event BeforeTool --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-after-tool",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source gemini --vendor-event AfterTool --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-notification",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source gemini --vendor-event Notification --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "llm-notch-session-end",
+            "command": "\"{{LLM_NOTCH_HELPER}}\" hook --source gemini --vendor-event SessionEnd --hook-mode",
+            "timeout": 2000
+          }
+        ]
+      }
+    ]
+  }
+}

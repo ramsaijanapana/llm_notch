@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "native:prepare-helper": "node scripts/prepare-native-helper.mjs",
+    "native:prepare-relay": "node scripts/prepare-native-helper.mjs --relay-only",
     "native:dev": "npm run native:prepare-helper -- --debug && tauri dev",
     "native:build": "tauri build",
     "native:check": "cargo check --workspace && tauri build --no-bundle"

@@ -6,11 +6,11 @@ import { DashboardTabs } from './DashboardTabs'
 describe('DashboardTabs', () => {
   afterEach(() => cleanup())
 
-  it('renders four semantic tabs with roving focus', () => {
+  it('renders five semantic tabs with roving focus', () => {
     render(<DashboardTabs activeTab="sessions" onTabChange={vi.fn()} />)
 
     const tabs = screen.getAllByRole('tab')
-    expect(tabs).toHaveLength(4)
+    expect(tabs).toHaveLength(5)
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
     expect(tabs[0]).toHaveAttribute('tabindex', '0')
     expect(tabs[1]).toHaveAttribute('tabindex', '-1')
@@ -26,7 +26,17 @@ describe('DashboardTabs', () => {
     expect(onTabChange).toHaveBeenCalledWith('metrics')
   })
 
-  it('supports arrow key roving selection', async () => {
+  it('exposes the remote tab with shortcut 4', async () => {
+    const user = userEvent.setup()
+    const onTabChange = vi.fn()
+
+    render(<DashboardTabs activeTab="sessions" onTabChange={onTabChange} />)
+    await user.click(screen.getByRole('tab', { name: /remote/i }))
+
+    expect(onTabChange).toHaveBeenCalledWith('remote')
+  })
+
+  it('supports vertical arrow key roving selection', async () => {
     const user = userEvent.setup()
     const onTabChange = vi.fn()
 
@@ -34,7 +44,7 @@ describe('DashboardTabs', () => {
 
     const sessionsTab = screen.getByRole('tab', { name: /sessions/i })
     sessionsTab.focus()
-    await user.keyboard('{ArrowRight}')
+    await user.keyboard('{ArrowDown}')
 
     expect(onTabChange).toHaveBeenCalledWith('metrics')
   })

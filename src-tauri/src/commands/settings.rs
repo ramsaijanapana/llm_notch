@@ -92,8 +92,13 @@ pub fn update_settings(
         }
         return Err(CommandError::Internal(error.to_string()));
     }
-    if let Err(error) = crate::synchronize_tray_model(&app, &host, &tray, settings.overlay_enabled)
-    {
+    if let Err(error) = crate::synchronize_tray_model(
+        &app,
+        &host,
+        &tray,
+        settings.overlay_enabled,
+        &host.alert_notifier(),
+    ) {
         coordinator.set_target_monitor(previous.selected_display.clone());
         let _ = coordinator.set_show_over_fullscreen(previous.show_over_fullscreen);
         let _ = if previous.overlay_enabled {
@@ -101,7 +106,13 @@ pub fn update_settings(
         } else {
             coordinator.hide_overlay()
         };
-        let _ = crate::synchronize_tray_model(&app, &host, &tray, previous.overlay_enabled);
+        let _ = crate::synchronize_tray_model(
+            &app,
+            &host,
+            &tray,
+            previous.overlay_enabled,
+            &host.alert_notifier(),
+        );
         return Err(CommandError::Internal(error));
     }
 
@@ -118,7 +129,13 @@ pub fn update_settings(
             if previous.autostart_enabled != settings.autostart_enabled {
                 let _ = AutostartService::set_enabled(&app, previous.autostart_enabled);
             }
-            let _ = crate::synchronize_tray_model(&app, &host, &tray, previous.overlay_enabled);
+            let _ = crate::synchronize_tray_model(
+                &app,
+                &host,
+                &tray,
+                previous.overlay_enabled,
+                &host.alert_notifier(),
+            );
             return Err(CommandError::Internal(error));
         }
     };
@@ -127,8 +144,14 @@ pub fn update_settings(
 }
 
 #[tauri::command]
-pub fn purge_history(host: State<'_, Arc<HostState>>) -> Result<u64, CommandError> {
-    host.purge_metric_history().map_err(CommandError::Internal)
+pub fn purge_history(
+    scope: Option<notch_protocol::PurgeScope>,
+    app: AppHandle,
+    host: State<'_, Arc<HostState>>,
+) -> Result<notch_protocol::PurgeResult, CommandError> {
+    let scope = scope.unwrap_or_default();
+    host.purge_scoped(scope, &app)
+        .map_err(CommandError::Internal)
 }
 
 #[tauri::command]

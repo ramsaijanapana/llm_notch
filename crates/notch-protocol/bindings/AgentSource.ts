@@ -3,4 +3,4 @@
 /**
  * Identifies which agent runtime produced a session.
  */
-export type AgentSource = "cursor" | "claudeCode" | "codex" | "generic" | "unknown";
+export type AgentSource = "cursor" | "claudeCode" | "codex" | "gemini" | "antigravityCli" | "copilotCli" | "qwen" | "generic" | "unknown";

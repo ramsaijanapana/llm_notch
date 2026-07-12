@@ -1,0 +1,6 @@
+{
+  "hook_event_name": "sessionStart",
+  "cursor_version": "99.0.0-beta",
+  "conversation_id": "conv-future",
+  "session_id": "cursor-session-future"
+}

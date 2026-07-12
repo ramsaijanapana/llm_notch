@@ -1,0 +1,13 @@
+{
+  "sessionId": "copilot-session-8f2a",
+  "timestamp": 1718123456791,
+  "cwd": "/Users/dev/projects/llm_notch",
+  "toolName": "bash",
+  "toolArgs": {
+    "command": "cargo test -p notch-agent-catalog"
+  },
+  "toolResult": {
+    "resultType": "success",
+    "textResultForLlm": "test result: ok. 3 passed"
+  }
+}

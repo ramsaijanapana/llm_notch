@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use tauri::{State, WebviewWindow};
 
 use crate::commands::error::CommandError;
@@ -43,28 +41,9 @@ pub fn open_dashboard(
 #[tauri::command]
 pub fn acknowledge_attention(
     session_id: String,
-    host: State<'_, Arc<HostState>>,
+    host: State<'_, std::sync::Arc<HostState>>,
 ) -> Result<(), CommandError> {
     validate_session_id(&session_id)?;
     host.acknowledge_attention(session_id)
         .map_err(CommandError::Internal)
-}
-
-#[tauri::command]
-pub fn open_session(
-    session_id: String,
-    host: State<'_, Arc<HostState>>,
-) -> Result<(), CommandError> {
-    validate_session_id(&session_id)?;
-    if !host
-        .snapshot()
-        .sessions
-        .iter()
-        .any(|session| session.id == session_id)
-    {
-        return Err(CommandError::NotFound("session".into()));
-    }
-    Err(CommandError::NotAvailable(
-        "opening vendor context is unsupported by protocol v1 adapters".into(),
-    ))
 }

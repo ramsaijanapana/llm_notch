@@ -12,6 +12,18 @@ pub enum AgentSource {
     Cursor,
     ClaudeCode,
     Codex,
+    Gemini,
+    #[serde(
+        alias = "antigravity-cli",
+        alias = "antigravity",
+        alias = "antigravitycli",
+        alias = "agy"
+    )]
+    AntigravityCli,
+    #[serde(alias = "copilot-cli", alias = "copilot", alias = "copilotcli")]
+    CopilotCli,
+    #[serde(alias = "qwen-cli", alias = "qwencode")]
+    Qwen,
     Generic,
     Unknown,
 }
@@ -106,6 +118,23 @@ pub enum AttentionCapability {
     None,
 }
 
+/// Granularity of context-open support advertised by an adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub enum ContextOpenTier {
+    None,
+    AppActivate,
+    WindowFocus,
+    ExactPane,
+}
+
+impl Default for ContextOpenTier {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 /// Stable identity for an OS process associated with a session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -116,6 +145,27 @@ pub struct ProcessIdentity {
     /// Process creation time; paired with PID to survive PID reuse.
     #[ts(type = "number")]
     pub started_at_ms: i64,
+}
+
+/// Verified terminal navigation identifiers supplied by a collector or OS bridge.
+///
+/// Callers must not populate these values by parsing mutable window titles.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, rename_all = "camelCase")]
+pub struct VerifiedTerminalContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub terminal_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tab_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub window_handle: Option<u64>,
 }
 
 /// Quality metadata carried beside every per-agent and aggregate sample.
@@ -226,6 +276,9 @@ pub struct AgentSession {
     pub process_root: Option<ProcessIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub verified_terminal: Option<VerifiedTerminalContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub latest_metric: Option<MetricSample>,
 }
 
@@ -249,6 +302,26 @@ pub struct SessionEvent {
     pub tool_name: Option<String>,
 }
 
+/// Observation paths supported by an adapter (Sol capability matrix).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, rename_all = "camelCase")]
+pub struct AdapterObservationPaths {
+    pub lifecycle_events: bool,
+    pub tool_events: bool,
+    pub attention_events: bool,
+}
+
+/// Response paths supported by an adapter (Sol capability matrix).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, rename_all = "camelCase")]
+pub struct AdapterResponsePaths {
+    pub decisions: bool,
+    pub questions: bool,
+    pub context_open_tier: ContextOpenTier,
+}
+
 /// Capability flags advertised by an adapter integration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -260,10 +333,154 @@ pub struct AdapterCapabilities {
     pub decision_response: bool,
     pub context_open: bool,
     pub process_attribution: AttributionQuality,
+    /// Additive v2 field; supersedes coarse `context_open` when non-`none`.
+    #[serde(default)]
+    pub context_open_tier: ContextOpenTier,
+    #[serde(default)]
+    pub observe_lifecycle: bool,
+    #[serde(default)]
+    pub observe_tools: bool,
+    #[serde(default)]
+    pub respond_decisions: bool,
+    #[serde(default)]
+    pub respond_questions: bool,
+    #[serde(default = "default_fail_open_hooks")]
+    pub fail_open_hooks: bool,
+    #[serde(default)]
+    pub requires_external_trust: bool,
+}
+
+fn default_fail_open_hooks() -> bool {
+    true
+}
+
+impl AdapterCapabilities {
+    /// Shipped template defaults aligned with `docs/integrations/capability-matrix.md`.
+    pub fn template(source: AgentSource) -> Self {
+        let (attention, requires_external_trust) = match source {
+            AgentSource::ClaudeCode | AgentSource::Qwen => (AttentionCapability::Partial, false),
+            AgentSource::Codex => (AttentionCapability::None, true),
+            AgentSource::Generic => (AttentionCapability::Full, false),
+            AgentSource::Gemini | AgentSource::CopilotCli => (AttentionCapability::Partial, false),
+            AgentSource::AntigravityCli => (AttentionCapability::None, false),
+            AgentSource::Cursor | AgentSource::Unknown => (AttentionCapability::None, false),
+        };
+
+        Self {
+            source,
+            events: source != AgentSource::Unknown,
+            attention,
+            decision_response: false,
+            context_open: false,
+            process_attribution: AttributionQuality::Unknown,
+            context_open_tier: ContextOpenTier::None,
+            observe_lifecycle: source != AgentSource::Unknown,
+            observe_tools: source != AgentSource::Unknown,
+            respond_decisions: false,
+            respond_questions: false,
+            fail_open_hooks: true,
+            requires_external_trust,
+        }
+    }
+
+    /// Derives the Sol matrix observation/response split from wire flags.
+    pub fn observation_paths(&self) -> AdapterObservationPaths {
+        AdapterObservationPaths {
+            lifecycle_events: self.observe_lifecycle || self.events,
+            tool_events: self.observe_tools || self.events,
+            attention_events: self.attention != AttentionCapability::None,
+        }
+    }
+
+    pub fn response_paths(&self) -> AdapterResponsePaths {
+        AdapterResponsePaths {
+            decisions: self.respond_decisions || self.decision_response,
+            questions: self.respond_questions,
+            context_open_tier: if self.context_open_tier != ContextOpenTier::None {
+                self.context_open_tier
+            } else if self.context_open {
+                ContextOpenTier::AppActivate
+            } else {
+                ContextOpenTier::None
+            },
+        }
+    }
+}
+
+/// Non-attention host resource alert surfaced to overlay and tray (never focus-steals).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, rename_all = "camelCase")]
+pub struct ResourceAlert {
+    pub kind: ResourceAlertKind,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub session_id: Option<String>,
+    #[ts(type = "number")]
+    pub raised_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub enum ResourceAlertKind {
+    CpuWarn,
+    CpuCritical,
+    MemoryHigh,
+}
+
+/// Sound event kinds mapped by installed themes (never invent new variants here).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub enum SoundEvent {
+    Approval,
+    Question,
+    Completed,
+    Failed,
+    Notification,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub struct QuietHours {
+    #[ts(type = "number")]
+    pub start_minute: u16,
+    #[ts(type = "number")]
+    pub end_minute: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, rename_all = "camelCase")]
+pub struct SoundRouting {
+    pub enabled: bool,
+    pub volume: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub quiet_hours: Option<QuietHours>,
+    #[serde(default)]
+    pub event_volume: BTreeMap<SoundEvent, f32>,
+    #[serde(default)]
+    pub agent_volume: BTreeMap<String, f32>,
+}
+
+impl Default for SoundRouting {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            volume: 0.8,
+            quiet_hours: None,
+            event_volume: BTreeMap::new(),
+            agent_volume: BTreeMap::new(),
+        }
+    }
 }
 
 /// User-visible settings safe to expose to overlay and dashboard surfaces.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export, rename_all = "camelCase")]
 pub struct PublicSettings {
@@ -277,6 +494,16 @@ pub struct PublicSettings {
     pub selected_display: Option<String>,
     pub show_over_fullscreen: bool,
     pub history_retention_hours: u32,
+    /// Optional alert sound; off by default and never activates windows.
+    #[serde(default)]
+    pub alert_sound_enabled: bool,
+    /// Installed theme id; falls back to `builtin.8-bit` when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub selected_sound_theme_id: Option<String>,
+    /// Per-event and quiet-hours routing applied to native playback.
+    #[serde(default)]
+    pub sound_routing: SoundRouting,
 }
 
 /// One live metrics update delivered to renderer subscribers.
@@ -306,6 +533,8 @@ pub struct AppSnapshot {
     pub sessions: Vec<AgentSession>,
     pub settings: PublicSettings,
     pub adapters: Vec<AdapterCapabilities>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resource_alerts: Vec<ResourceAlert>,
 }
 
 /// Individual stream payload variants.

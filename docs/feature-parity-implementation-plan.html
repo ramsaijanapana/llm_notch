@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -7,7 +7,7 @@
       name="description"
       content="Implementation plan and orchestration prompt for bringing llm_notch to feature parity with Vibe Island while extending it for Windows, macOS, and resource observability."
     />
-    <title>llm_notch — Feature Parity Implementation Plan</title>
+    <title>llm_notch â€” Feature Parity Implementation Plan</title>
     <style>
       :root {
         color-scheme: dark;
@@ -256,7 +256,7 @@
   </head>
   <body>
     <header>
-      <div class="eyebrow">llm_notch · Product and execution specification</div>
+      <div class="eyebrow">llm_notch Â· Product and execution specification</div>
       <h1>Feature parity, then beyond.</h1>
       <p class="lead">
         A staged implementation plan and reusable orchestration prompt for bringing
@@ -264,17 +264,17 @@
         with native Windows support, resource observability, open integrations, and stronger
         diagnostics.
       </p>
-      <div class="meta" aria-label="Document metadata">
-        <span class="tag">GPT-5.6 Sol · architecture and review</span>
-        <span class="tag">Claude Fable · product and design</span>
-        <span class="tag">Composer 2.5 Fast · up to 10 executors</span>
+      <div class="meta">
+        <span class="tag">GPT-5.6 Sol Â· architecture and review</span>
+        <span class="tag">Claude Fable Â· product and design</span>
+        <span class="tag">Composer 2.5 Fast Â· up to 10 executors</span>
         <span class="tag">Local-first</span>
       </div>
     </header>
 
     <main>
       <section>
-        <div class="section-index">01 · Discovery</div>
+        <div class="section-index">01 Â· Discovery</div>
         <h2>Establish verified parity</h2>
         <p>
           GPT-5.6 Sol and Claude Fable independently audit the existing llm_notch
@@ -285,14 +285,14 @@
       </section>
 
       <section>
-        <div class="section-index">02 · Integrations</div>
+        <div class="section-index">02 Â· Integrations</div>
         <h2>Zero-manual-configuration connector manager</h2>
         <ul class="steps">
           <li><strong>Detect</strong>Find installed agents and user/project configuration paths.</li>
           <li><strong>Preview</strong>Show a human-reviewable diff before any modification.</li>
           <li><strong>Protect</strong>Back up, lock, hash-check, and atomically merge configuration.</li>
           <li><strong>Preserve</strong>Keep every unrelated existing hook and configuration entry.</li>
-          <li><strong>Connect</strong>Use the bundled helper’s absolute, signed path.</li>
+          <li><strong>Connect</strong>Use the bundled helperâ€™s absolute, signed path.</li>
           <li><strong>Recover</strong>Support health checks, repair, disable, and exact rollback.</li>
           <li><strong>Defend</strong>Reject path escapes, unsafe symlinks, and concurrent changes.</li>
           <li><strong>Simplify</strong>Require one onboarding confirmation, not terminal commands.</li>
@@ -300,7 +300,7 @@
       </section>
 
       <section>
-        <div class="section-index">03 · Adapters</div>
+        <div class="section-index">03 Â· Adapters</div>
         <h2>Agent-specific vertical slices</h2>
         <p>
           Build and test adapters for Cursor, Claude Code, Codex, and the open generic protocol.
@@ -311,7 +311,7 @@
       </section>
 
       <section>
-        <div class="section-index">04 · Parity</div>
+        <div class="section-index">04 Â· Parity</div>
         <h2>Interaction and workflow parity</h2>
         <ul class="criteria">
           <li><strong>Live sessions</strong>Reliable lifecycle, tool, completion, and failure events.</li>
@@ -326,7 +326,7 @@
       </section>
 
       <section>
-        <div class="section-index">05 · Differentiation</div>
+        <div class="section-index">05 Â· Differentiation</div>
         <h2>Better than parity</h2>
         <ul class="criteria">
           <li><strong>Cross-platform</strong>Native Windows and macOS overlays and dashboards.</li>
@@ -341,29 +341,29 @@
       </section>
 
       <section>
-        <div class="section-index">06 · Execution</div>
+        <div class="section-index">06 Â· Execution</div>
         <h2>Ten-agent execution model</h2>
         <ol class="agents">
-          <li><strong>1 · Connector manager</strong>Detection, preview, backup, merge, repair, disable, rollback.</li>
-          <li><strong>2 · Cursor adapter</strong>Hooks, normalization, capability/version and health checks.</li>
-          <li><strong>3 · Claude Code adapter</strong>Lifecycle, permissions, plans/questions, and health.</li>
-          <li><strong>4 · Codex + generic</strong>Current hooks, legacy fallback, and open SDK.</li>
-          <li><strong>5 · Decision broker</strong>Acknowledged decisions, answers, expiry, and failure.</li>
-          <li><strong>6 · Context navigation</strong>Safe editor/terminal activation on each platform.</li>
-          <li><strong>7 · Native UX</strong>Onboarding, reviewed diffs, progress, repair, and accessibility.</li>
-          <li><strong>8 · Observability</strong>Usage, sounds, alerts, metrics, and history.</li>
-          <li><strong>9 · Release engineering</strong>Updater, signing, installers, and CI matrices.</li>
-          <li><strong>10 · Integration + QA</strong>Resolve interface drift, test, harden, and release.</li>
+          <li><strong>1 Â· Connector manager</strong>Detection, preview, backup, merge, repair, disable, rollback.</li>
+          <li><strong>2 Â· Cursor adapter</strong>Hooks, normalization, capability/version and health checks.</li>
+          <li><strong>3 Â· Claude Code adapter</strong>Lifecycle, permissions, plans/questions, and health.</li>
+          <li><strong>4 Â· Codex + generic</strong>Current hooks, legacy fallback, and open SDK.</li>
+          <li><strong>5 Â· Decision broker</strong>Acknowledged decisions, answers, expiry, and failure.</li>
+          <li><strong>6 Â· Context navigation</strong>Safe editor/terminal activation on each platform.</li>
+          <li><strong>7 Â· Native UX</strong>Onboarding, reviewed diffs, progress, repair, and accessibility.</li>
+          <li><strong>8 Â· Observability</strong>Usage, sounds, alerts, metrics, and history.</li>
+          <li><strong>9 Â· Release engineering</strong>Updater, signing, installers, and CI matrices.</li>
+          <li><strong>10 Â· Integration + QA</strong>Resolve interface drift, test, harden, and release.</li>
         </ol>
         <p>
-          Agents 1–4 establish and freeze contracts first. Agents 5–9 execute against those
+          Agents 1â€“4 establish and freeze contracts first. Agents 5â€“9 execute against those
           contracts. Agent 10 runs only after all implementation branches are ready. No concurrent
           ownership of root manifests or shared contracts is allowed.
         </p>
       </section>
 
       <section>
-        <div class="section-index">07 · Release gate</div>
+        <div class="section-index">07 Â· Release gate</div>
         <h2>Definition of done</h2>
         <ul class="criteria">
           <li><strong>One-click setup</strong>A fresh install connects supported agents after one reviewed confirmation.</li>
@@ -445,7 +445,7 @@ NON-NEGOTIABLE REQUIREMENTS
 
 Zero-config onboarding:
 - Detect installed Cursor, Claude Code, and Codex configurations.
-- Present one explicit “Connect agents” confirmation.
+- Present one explicit â€œConnect agentsâ€ confirmation.
 - Show a diff before modifications.
 - Preserve unrelated hooks.
 - Back up existing configuration.
@@ -453,7 +453,7 @@ Zero-config onboarding:
 - Detect concurrent changes.
 - Reject symlinks and path escapes.
 - Support install, health check, repair, disable, and exact rollback.
-- Use the bundled helper’s absolute path.
+- Use the bundled helperâ€™s absolute path.
 - Never require users to manually edit JSON or configure environment variables.
 
 Adapter behavior:
@@ -591,9 +591,10 @@ Return:
 
     <footer>
       <p>
-        llm_notch implementation blueprint · Generated July 2026 · This document describes a
+        llm_notch implementation blueprint Â· Generated July 2026 Â· This document describes a
         target plan, not a claim that every listed capability is already shipped.
       </p>
     </footer>
   </body>
 </html>
+

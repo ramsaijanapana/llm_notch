@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "command": "./scripts/security-check.sh",
+        "timeoutSec": 15
+      }
+    ]
+  }
+}

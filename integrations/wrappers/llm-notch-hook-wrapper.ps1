@@ -8,6 +8,10 @@
 # Environment:
 #   LLM_NOTCH_HOOK_BIN            — helper path (default: llm-notch-hook)
 #   LLM_NOTCH_HOOK_TIMEOUT_SEC    — max wait seconds (default: 2)
+#
+# Windows Terminal collector (optional, same directory):
+#   llm-notch-wt-collector.ps1 exports WT_SESSION / LLM_NOTCH_* for hook ingest.
+#   See integrations/windows-terminal/README.md for tab/pane limitations.
 
 [CmdletBinding()]
 param(
@@ -24,6 +28,12 @@ param(
 function Write-FailOpen {
     Write-Output '{}'
     exit 0
+}
+
+$wtCollector = Join-Path $PSScriptRoot 'llm-notch-wt-collector.ps1'
+if (Test-Path -LiteralPath $wtCollector) {
+    . $wtCollector
+    Export-LlmNotchWtCollectorEnv | Out-Null
 }
 
 $helper = if ($env:LLM_NOTCH_HOOK_BIN) { $env:LLM_NOTCH_HOOK_BIN } else { 'llm-notch-hook' }

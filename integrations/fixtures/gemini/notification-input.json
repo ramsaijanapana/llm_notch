@@ -1,0 +1,12 @@
+{
+  "session_id": "gemini-session-7c4a",
+  "cwd": "/Users/dev/projects/llm_notch",
+  "hook_event_name": "Notification",
+  "notification_type": "ToolPermission",
+  "message": "Allow write_file on src/example.ts?",
+  "details": {
+    "tool_name": "write_file",
+    "file_path": "src/example.ts"
+  },
+  "timestamp": "2026-07-11T18:01:02.000Z"
+}

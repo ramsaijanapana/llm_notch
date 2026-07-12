@@ -16,6 +16,8 @@ import {
 describe('overlay.helpers', () => {
   it('formats agent sources and session statuses', () => {
     expect(formatAgentSource('claudeCode')).toBe('Claude Code')
+    expect(formatAgentSource('gemini')).toBe('Gemini CLI')
+    expect(formatAgentSource('qwen')).toBe('Qwen Code')
     expect(formatSessionStatus('waiting')).toBe('Waiting')
     expect(formatAttentionKind('permission')).toBe('Permission needed')
   })
@@ -24,7 +26,7 @@ describe('overlay.helpers', () => {
     expect(formatAttributionQuality('exact')).toBe('Exact')
     expect(formatAttributionQuality('shared')).toBe('Shared')
     expect(formatAttributionQuality('heuristic')).toBe('Heuristic')
-    expect(formatAttributionQuality('unknown')).toBe('Unavailable')
+    expect(formatAttributionQuality('unknown')).toBe('Not attributed')
   })
 
   it('labels Windows all I/O quality as All I/O', () => {

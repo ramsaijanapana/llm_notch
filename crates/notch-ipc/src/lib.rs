@@ -5,6 +5,7 @@
 //! passed via argv, environment variables, logs, or SQLite.
 
 pub mod auth;
+pub mod collector;
 pub mod descriptor;
 pub mod error;
 pub mod framing;
@@ -21,6 +22,10 @@ mod server;
 
 pub use auth::AuthToken;
 pub use client::IngestClient;
+pub use collector::{
+    ENV_PANE_ID, ENV_TAB_ID, ENV_TERMINAL_SESSION_ID, ENV_WINDOW_HANDLE, ENV_WT_SESSION,
+    enrich_ingest_with_collector_env, verified_terminal_from_ingest,
+};
 pub use descriptor::{
     RuntimeDescriptor, connect_path_for, default_runtime_dir, descriptor_path_for, find_descriptor,
     find_descriptor_in, socket_path_for,
@@ -30,12 +35,13 @@ pub use limits::*;
 pub use normalize::{NormalizedIngest, normalize_ingest, stable_session_id};
 pub use security::{PeerCheckCapability, SecurityCapabilities};
 pub use server::{
-    IngestServerConfig, IngestServerHandle, PendingIngest, open_runtime_descriptor,
-    start_ingest_server,
+    DecisionReplyWire, IngestServerConfig, IngestServerHandle, PendingDecisionWait, PendingIngest,
+    open_runtime_descriptor, start_ingest_server,
 };
 pub use spool::EventSpool;
 pub use wire::{
-    IngestPayload, WireMessage, encode_message, validate_ingest_payload, vendor_json_to_payload,
+    DecisionWaitPayload, IngestPayload, WireMessage, encode_message, validate_ingest_payload,
+    vendor_json_to_payload,
 };
 
 /// Legacy placeholder kept for workspace compatibility while host wiring lands.
@@ -131,6 +137,10 @@ mod integration_tests {
             pid: None,
             process_started_at_ms: None,
             occurred_at_ms: Some(1),
+            terminal_session_id: None,
+            tab_id: None,
+            pane_id: None,
+            window_handle: None,
         };
         let limits = crate::rate::IngestRateLimiters::new();
         let (tx, _rx) = tokio::sync::mpsc::channel(crate::MAX_INGEST_QUEUE);

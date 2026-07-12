@@ -1,0 +1,18 @@
+{
+  "model": "qwen3-coder-plus",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "audit-shell",
+            "command": "/usr/local/bin/audit-shell.sh",
+            "timeout": 3000
+          }
+        ]
+      }
+    ]
+  }
+}

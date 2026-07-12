@@ -20,7 +20,9 @@ export default defineConfig({
         }
       : undefined,
     watch: {
-      ignored: ['**/src-tauri/**'],
+      // Ignore Rust build outputs — watching locked .dll/.exe on Windows
+      // races cargo and crashes Vite with EBUSY.
+      ignored: ['**/src-tauri/**', '**/target/**'],
     },
   },
   test: {

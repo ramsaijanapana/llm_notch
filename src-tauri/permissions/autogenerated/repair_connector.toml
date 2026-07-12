@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-repair-connector"
+description = "Enables the repair_connector command without any pre-configured scope."
+commands.allow = ["repair_connector"]
+
+[[permission]]
+identifier = "deny-repair-connector"
+description = "Denies the repair_connector command without any pre-configured scope."
+commands.deny = ["repair_connector"]
