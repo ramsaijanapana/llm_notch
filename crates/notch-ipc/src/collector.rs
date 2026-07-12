@@ -143,6 +143,9 @@ fn contains_unsafe_shell_chars(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::wire::IngestPayload;
+    use std::sync::Mutex;
+
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn sample_payload() -> IngestPayload {
         IngestPayload {
@@ -198,6 +201,7 @@ mod tests {
 
     #[test]
     fn payload_fields_are_not_overwritten_by_env_enrichment() {
+        let _guard = ENV_TEST_LOCK.lock().expect("env test lock");
         let mut payload = sample_payload();
         payload.tab_id = Some("2".into());
         unsafe {
@@ -218,6 +222,7 @@ mod tests {
 
     #[test]
     fn env_enrichment_fills_missing_fields() {
+        let _guard = ENV_TEST_LOCK.lock().expect("env test lock");
         let mut payload = sample_payload();
         unsafe {
             env::set_var(ENV_WT_SESSION, "wt-session-guid");
