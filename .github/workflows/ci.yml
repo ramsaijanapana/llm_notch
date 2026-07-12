@@ -27,6 +27,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run native:prepare-helper
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --all-targets
       - run: cargo test --workspace
@@ -43,6 +44,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run native:prepare-helper
       - run: cargo check --workspace --all-targets
       - run: cargo test --workspace
       - run: cargo test -p llm-notch-desktop --test native_macos
