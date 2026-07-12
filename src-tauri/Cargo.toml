@@ -54,3 +54,8 @@ windows.workspace = true
 tempfile.workspace = true
 notch-remote.workspace = true
 
+[[bin]]
+name = "llm-notch-desktop"
+path = "src/main.rs"
+test = false
+bench = false

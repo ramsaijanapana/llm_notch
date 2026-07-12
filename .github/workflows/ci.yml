@@ -30,8 +30,13 @@ jobs:
       - run: npm run native:prepare-helper
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --all-targets
-      - run: cargo test --workspace
+      - run: cargo test --workspace --exclude llm-notch-desktop
+      - run: cargo test -p llm-notch-desktop --lib
+        env:
+          RUSTFLAGS: "-C link-arg=/MANIFEST:EMBED -C link-arg=/MANIFESTINPUT=${{ github.workspace }}/src-tauri/windows-test.manifest.xml"
       - run: cargo test -p llm-notch-desktop --test native_windows
+        env:
+          RUSTFLAGS: "-C link-arg=/MANIFEST:EMBED -C link-arg=/MANIFESTINPUT=${{ github.workspace }}/src-tauri/windows-test.manifest.xml"
 
   rust-macos:
     name: Rust check / test (macOS)
@@ -46,7 +51,8 @@ jobs:
       - run: npm ci
       - run: npm run native:prepare-helper
       - run: cargo check --workspace --all-targets
-      - run: cargo test --workspace
+      - run: cargo test --workspace --exclude llm-notch-desktop
+      - run: cargo test -p llm-notch-desktop --lib
       - run: cargo test -p llm-notch-desktop --test native_macos
 
   frontend:
@@ -163,3 +169,4 @@ jobs:
           test -f "$sidecar"
           test -x "$sidecar"
           cargo test -p notch-remote -- relay_artifact
+
