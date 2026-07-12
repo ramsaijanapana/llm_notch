@@ -351,7 +351,9 @@ impl TerminalNavigator for WindowsTerminalNavigator {
 
 /// Classifies a verified executable path without consulting mutable window titles.
 pub fn classify_windows_host(executable: &str) -> TerminalHost {
-    let file_name = Path::new(executable)
+    // Windows paths may be classified on Unix CI; normalize separators before basename.
+    let normalized = executable.replace("\\", "/");
+    let file_name = Path::new(&normalized)
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or(executable)

@@ -305,13 +305,18 @@ mod tests {
         let mut session = sample_session(
             AgentSource::Generic,
             Some(ProcessIdentity {
-                pid: 42,
+                pid: std::process::id(),
                 started_at_ms: 1_700_000_000_000,
             }),
         );
         session.verified_terminal = Some(wt_verified_terminal());
         let resolved = resolve_session(&session).expect("resolve").expect("some");
-        assert!(resolved.pane_verified);
+        assert_eq!(resolved.locator.verified_terminal(), wt_verified_terminal());
+        assert!(
+            resolved.pane_verified,
+            "expected pane verification for host {:?}",
+            resolved.host
+        );
         assert_eq!(resolved.locator.verified_terminal(), wt_verified_terminal());
     }
 

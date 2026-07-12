@@ -1,4 +1,7 @@
 fn main() {
+    #[cfg(target_os = "windows")]
+    embed_common_controls_manifest();
+
     const COMMANDS: &[&str] = &[
         "bootstrap",
         "subscribe_stream",
@@ -43,4 +46,13 @@ fn main() {
     let attributes = tauri_build::Attributes::new()
         .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS));
     tauri_build::try_build(attributes).expect("failed to generate Tauri command permissions");
+}
+
+#[cfg(target_os = "windows")]
+fn embed_common_controls_manifest() {
+    let manifest =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-test.manifest.xml");
+    let manifest = manifest.to_string_lossy().replace('\\', "/");
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg=/MANIFESTINPUT:{manifest}");
 }

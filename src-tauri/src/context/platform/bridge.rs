@@ -245,6 +245,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn mac_terminal_locator_without_verified_metadata_stays_below_exact_pane() {
         let locator = ContextLocator::encode(
             HostKind::TerminalApp,
@@ -262,6 +263,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn mac_iterm_locator_verified_metadata_enables_exact_pane_mapping() {
         let verified = VerifiedTerminalContext {
             tab_id: Some("2".into()),
