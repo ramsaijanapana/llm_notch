@@ -1,4 +1,4 @@
-﻿use std::fs::File;
+use std::fs::File;
 use std::io::{BufReader, Cursor};
 use std::sync::{Arc, Mutex};
 
@@ -23,6 +23,13 @@ struct RodioBackend {
 enum WorkerCommand {
     Play(PlaybackRequest, std::sync::mpsc::SyncSender<Result<(), SoundError>>),
     StopAll(std::sync::mpsc::SyncSender<Result<(), SoundError>>),
+}
+
+#[cfg(target_os = "macos")]
+fn open_default_stream() -> Result<OutputStream, SoundError> {
+    OutputStreamBuilder::open_default_stream().map_err(|error| {
+        SoundError::Backend(format!("failed to open CoreAudio output stream: {error}"))
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -76,10 +83,21 @@ impl RodioBackend {
 
 #[cfg(target_os = "macos")]
 impl RodioBackend {
-    fn spawn_worker(stream: OutputStream) -> Result<Self, SoundError> {
+    fn spawn_worker() -> Result<Self, SoundError> {
         let (command_tx, command_rx) = std::sync::mpsc::sync_channel(8);
-        let mixer = stream.mixer().clone();
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(0);
+
         let worker = std::thread::spawn(move || {
+            let stream = match open_default_stream() {
+                Ok(stream) => stream,
+                Err(error) => {
+                    let _ = ready_tx.send(Err(error));
+                    return;
+                }
+            };
+            let mixer = stream.mixer().clone();
+            let _ = ready_tx.send(Ok(()));
+
             let mut sinks = Vec::<Sink>::new();
             let _stream = stream;
             while let Ok(command) = command_rx.recv() {
@@ -97,6 +115,11 @@ impl RodioBackend {
                 }
             }
         });
+
+        ready_rx
+            .recv()
+            .map_err(|_| SoundError::Backend("audio worker failed to start".into()))??;
+
         Ok(Self {
             command_tx,
             _worker: worker,
@@ -199,23 +222,21 @@ pub struct RodioBackendFactory;
 
 impl SoundBackendFactory for RodioBackendFactory {
     fn create(&self) -> Result<Box<dyn SoundBackend>, SoundError> {
-        let stream = OutputStreamBuilder::open_default_stream().map_err(|error| {
-            #[cfg(windows)]
-            let message = format!("failed to open WASAPI output stream: {error}");
-            #[cfg(target_os = "macos")]
-            let message = format!("failed to open CoreAudio output stream: {error}");
-            #[cfg(not(any(windows, target_os = "macos")))]
-            let message = format!("failed to open audio output stream: {error}");
-            SoundError::Backend(message)
-        })?;
-
         #[cfg(target_os = "macos")]
         {
-            return Ok(Box::new(RodioBackend::spawn_worker(stream)?));
+            return Ok(Box::new(RodioBackend::spawn_worker()?));
         }
 
         #[cfg(not(target_os = "macos"))]
         {
+            let stream = OutputStreamBuilder::open_default_stream().map_err(|error| {
+                #[cfg(windows)]
+                let message = format!("failed to open WASAPI output stream: {error}");
+                #[cfg(not(windows))]
+                let message = format!("failed to open audio output stream: {error}");
+                SoundError::Backend(message)
+            })?;
+
             Ok(Box::new(RodioBackend {
                 stream,
                 sinks: Arc::new(Mutex::new(Vec::new())),
@@ -223,4 +244,3 @@ impl SoundBackendFactory for RodioBackendFactory {
         }
     }
 }
-
