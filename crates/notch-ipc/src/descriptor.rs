@@ -86,6 +86,22 @@ pub fn find_descriptor_in(runtime_dir: &Path) -> IpcResult<RuntimeDescriptor> {
     RuntimeDescriptor::read_from(&descriptor_path_for(runtime_dir))
 }
 
+#[cfg(windows)]
+pub(crate) fn windows_pipe_base_name(runtime_dir: &Path) -> String {
+    const DEFAULT: &str = "llm_notch_ingest";
+    if let Ok(default_dir) = default_runtime_dir() {
+        if runtime_dir == default_dir.as_path() {
+            return DEFAULT.into();
+        }
+    }
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    runtime_dir.hash(&mut hasher);
+    format!("llm_notch_ingest_{:016x}", hasher.finish())
+}
+
 pub fn socket_path_for(runtime_dir: &Path) -> PathBuf {
     runtime_dir.join(crate::platform::socket_filename())
 }
@@ -97,8 +113,7 @@ pub fn connect_path_for(runtime_dir: &Path) -> String {
     }
     #[cfg(windows)]
     {
-        let _ = runtime_dir;
-        r"\\.\pipe\llm_notch_ingest".into()
+        format!(r"\\.\pipe\{}", windows_pipe_base_name(runtime_dir))
     }
     #[cfg(not(any(unix, windows)))]
     {

@@ -152,10 +152,13 @@ fn connect_name(descriptor: &RuntimeDescriptor) -> IpcResult<Name<'_>> {
     #[cfg(windows)]
     {
         use interprocess::local_socket::GenericNamespaced;
-        let _ = descriptor;
-        "llm_notch_ingest"
-            .to_ns_name::<GenericNamespaced>()
-            .map_err(IpcError::Io)
+        use interprocess::local_socket::ToNsName;
+
+        let name = descriptor
+            .socket_path
+            .strip_prefix(r"\\.\pipe\")
+            .unwrap_or(descriptor.socket_path.as_str());
+        name.to_ns_name::<GenericNamespaced>().map_err(IpcError::Io)
     }
     #[cfg(not(any(unix, windows)))]
     {

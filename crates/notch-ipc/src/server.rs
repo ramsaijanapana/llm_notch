@@ -524,8 +524,14 @@ fn listener_name(socket_path: &Path) -> IpcResult<Name<'_>> {
     #[cfg(windows)]
     {
         use interprocess::local_socket::GenericNamespaced;
-        let _ = socket_path;
-        "llm_notch_ingest"
+        use interprocess::local_socket::ToNsName;
+
+        let runtime_dir = socket_path
+            .parent()
+            .ok_or_else(|| IpcError::InvalidConfig("ingest runtime directory missing".into()))?;
+        let base = crate::descriptor::windows_pipe_base_name(runtime_dir);
+        let leaked: &'static str = Box::leak(base.into_boxed_str());
+        leaked
             .to_ns_name::<GenericNamespaced>()
             .map_err(IpcError::Io)
     }
