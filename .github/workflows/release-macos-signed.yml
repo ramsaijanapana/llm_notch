@@ -57,6 +57,9 @@ jobs:
   signing-readiness:
     name: macOS signing readiness
     runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.report.outputs.signed }}
+
     steps:
       - name: Report required Apple secrets
         env:
@@ -84,12 +87,7 @@ jobs:
   signed-macos:
     name: Signed ${{ matrix.label }} DMG
     needs: [signing-readiness, relay-sidecars]
-    if: >-
-      ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' &&
-          secrets.APPLE_CERTIFICATE_PASSWORD != '' &&
-          secrets.APPLE_ID != '' &&
-          secrets.APPLE_ID_PASSWORD != '' &&
-          secrets.APPLE_TEAM_ID != '' }}
+    if: needs.signing-readiness.outputs.signed == 'true'
     runs-on: macos-latest
     permissions:
       contents: write

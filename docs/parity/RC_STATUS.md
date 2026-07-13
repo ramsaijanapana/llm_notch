@@ -320,7 +320,7 @@ Compile surface is green for the workspace; vitest/typecheck pass; crate-level R
 
 **Honest bottom line:** **In-repo work is complete** for parity RC goals. Waves 9–11 closed relay metadata, sound routing UI, quota refresh UX, remote ingest stats, `AgentSource` extension, and SQLite Generic backfill. For **signed production**, only **external blockers** (signing secrets + protected CI runs + real-host SSH soak for confidence) remain. For **full catalog parity**, **vendor contracts**, **upstream**, and **external** items dominate — do not invent verified agents or quota numbers.
 
-**Signed release publish:** **BLOCKED** until signing secrets land, protected CI jobs produce stapled/notarized macOS + Authenticode Windows artifacts, and release-matrix bundle verification passes. Playwright E2E on CI and macOS overlay hardening are secondary gates documented under **Blocked**. This RC does **not** publish a GitHub Release with signed installers until those gates close.
+**Signed release publish:** **BLOCKED** until signing secrets land, protected CI jobs produce stapled/notarized macOS + Authenticode Windows artifacts, and release-matrix bundle verification passes. Playwright E2E on CI and macOS overlay hardening are secondary gates documented under **Blocked**. **Unsigned RC:** [app-v0.1.2](https://github.com/ramsaijanapana/llm_notch/releases/tag/app-v0.1.2) is published as a prerelease; signed installers remain blocked until those gates close.
 
 ---
 
